@@ -7,7 +7,7 @@
  * buffer handling, debug output and other low-level operations that are
  * not specific to a single protocol layer.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsk 
  *
  * SPDX-License-Identifier: MIT
  *
@@ -17,6 +17,8 @@
  
 #ifndef MACSEC_COMMON_H
 #define MACSEC_COMMON_H
+
+#include <string.h>
 
 #include <stdint.h>
 #include <stddef.h>
@@ -39,7 +41,7 @@ typedef uint8_t macsec_bool_t;
  *   2 = medium / important protocol events
  *   3 = info / detailed packet-level debug
  */
-#define MACSEC_DEBUG_LEVEL            2
+#define MACSEC_DEBUG_LEVEL            1
 
 #define MACSEC_DEBUG_LEVEL_ERROR      1u
 #define MACSEC_DEBUG_LEVEL_MEDIUM     2u

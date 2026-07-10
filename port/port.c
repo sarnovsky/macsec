@@ -15,9 +15,7 @@
  * See LICENSE file in the project root for full license text.
  */
 
-#include <macsec/port/port.h>
-
-#include <string.h>
+#include "port/port.h"
 
 #if (MACSEC_DEBUG_LEVEL > 0)
 #include <stdarg.h>

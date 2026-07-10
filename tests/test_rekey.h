@@ -21,9 +21,9 @@
 extern "C" {
 #endif
 
-#include <macsec/common.h>
+#include "common.h"
 
-#include <macsec/frame_crypto.h>
+#include "frame_crypto.h"
 
 #if (MACSEC_SELF_TEST != 0)
 

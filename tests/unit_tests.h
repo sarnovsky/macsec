@@ -17,11 +17,10 @@
 #ifndef MACSEC_UNIT_TESTS_H
 #define MACSEC_UNIT_TESTS_H
 
-#include <macsec/common.h>
-#include <string.h>
+#include "common.h"
 
 #include <tests/test_common.h>
-#include <tests/test_mbedtls_selftest.h>
+#include <tests/test_math_selftest.h>
 #include <tests/test_mka_crypto.h>
 #include <tests/test_mka_frames.h>
 #include <tests/test_frame_crypto.h>
@@ -76,7 +75,7 @@ extern "C" {
     } while (0)
 
 typedef union {
-    macsec_test_mbedtls_selftest_data_t test_mbedtls_selftest_data;
+    macsec_test_math_selftest_data_t test_math_selftest_data;
     macsec_test_mka_crypto_data_t test_mka_crypto_data;
     macsec_test_mka_frames_data_t test_mka_frames_data;
     macsec_test_frame_crypto_data_t test_frame_crypto_data;

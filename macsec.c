@@ -14,9 +14,7 @@
  * See LICENSE file in the project root for full license text.
  */
 
-#include <macsec/macsec.h>
-
-#include <string.h>
+#include "macsec.h"
 
 
 static macsec_bool_t macsec_is_eapol_frame(const uint8_t *frame, size_t len)

@@ -18,9 +18,9 @@
 #ifndef MACSEC_MKA_CRYPTO_H
 #define MACSEC_MKA_CRYPTO_H
 
-#include <macsec/common.h>
-#include <mbedtls/aes.h>
-#include <mbedtls/cmac.h>
+#include "common.h"
+#include "math/aes.h"
+#include "math/cmac.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,10 +62,10 @@ typedef struct
     macsec_mka_psk_t psk;
     macsec_mka_keys_t keys;
 
-    mbedtls_cmac_context_t cmac_ctx;
+    math_cmac_context_t cmac_ctx;
     macsec_bool_t cmac_initialized;
 
-    mbedtls_aes_context aes_ctx;
+    math_aes_context aes_ctx;
     macsec_bool_t aes_initialized;
 } macsec_mka_crypto_ctx_t;
 

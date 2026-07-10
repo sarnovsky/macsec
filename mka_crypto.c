@@ -15,9 +15,7 @@
  * See LICENSE file in the project root for full license text.
  */
 
-#include <macsec/mka_crypto.h>
-
-#include <string.h>
+#include "mka_crypto.h"
 
 #define MACSEC_MKA_AES_BLOCK_LEN        16u
 #define MACSEC_MKA_AES_KW_IV_BYTE       0xA6u
@@ -42,7 +40,7 @@ static int macsec_mka_cmac(macsec_mka_crypto_ctx_t *ctx,
     macsec_assert(out != NULL);
     macsec_check(macsec_mka_key_len_valid(key_len), MACSEC_ERR_PARAM);
 
-    ret = mbedtls_cmac_aes(&ctx->cmac_ctx,
+    ret = math_cmac_aes(&ctx->cmac_ctx,
                            key,
                            (unsigned int)(key_len * 8u),
                            input,
@@ -239,11 +237,11 @@ static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx,
 
     if (!ctx->aes_initialized)
     {
-        mbedtls_aes_init(&ctx->aes_ctx);
+        math_aes_init(&ctx->aes_ctx);
         ctx->aes_initialized = MACSEC_TRUE;
     }
 
-    ret = mbedtls_aes_setkey_enc(&ctx->aes_ctx, kek, 128u);
+    ret = math_aes_setkey_enc(&ctx->aes_ctx, kek, 128u);
     if (ret != 0)
     {
         MACSEC_ERROR(("MKA AES-KW setkey enc failed ret=%d\n", ret));
@@ -266,10 +264,10 @@ static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx,
             memcpy(&block[0], a, 8u);
             memcpy(&block[8], &wrapped[8u + (i * 8u)], 8u);
 
-            ret = mbedtls_aes_crypt_ecb(&ctx->aes_ctx,
-                                        MBEDTLS_AES_ENCRYPT,
-                                        block,
-                                        b);
+            ret = math_aes_crypt_ecb(&ctx->aes_ctx,
+                                     MATH_AES_ENCRYPT,
+                                     block,
+                                     b);
             if (ret != 0)
             {
                 MACSEC_ERROR(("MKA AES-KW encrypt failed ret=%d\n", ret));
@@ -348,11 +346,11 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx,
 
     if (!ctx->aes_initialized)
     {
-        mbedtls_aes_init(&ctx->aes_ctx);
+        math_aes_init(&ctx->aes_ctx);
         ctx->aes_initialized = MACSEC_TRUE;
     }
 
-    ret = mbedtls_aes_setkey_dec(&ctx->aes_ctx, kek, 128u);
+    ret = math_aes_setkey_dec(&ctx->aes_ctx, kek, 128u);
     if (ret != 0)
     {
         MACSEC_ERROR(("MKA AES-KW setkey dec failed ret=%d\n", ret));
@@ -387,10 +385,10 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx,
 
             memcpy(&block[8], &plain[idx * 8u], 8u);
 
-            ret = mbedtls_aes_crypt_ecb(&ctx->aes_ctx,
-                                        MBEDTLS_AES_DECRYPT,
-                                        block,
-                                        b);
+            ret = math_aes_crypt_ecb(&ctx->aes_ctx,
+                                     MATH_AES_DECRYPT,
+                                     block,
+                                     b);
             if (ret != 0)
             {
                 MACSEC_ERROR(("MKA AES-KW decrypt failed ret=%d\n", ret));
@@ -438,10 +436,10 @@ int macsec_mka_crypto_init(macsec_mka_crypto_ctx_t *ctx)
 
     memset(ctx, 0, sizeof(*ctx));
 
-    mbedtls_cmac_init(&ctx->cmac_ctx);
+    math_cmac_init(&ctx->cmac_ctx);
     ctx->cmac_initialized = MACSEC_TRUE;
 
-    mbedtls_aes_init(&ctx->aes_ctx);
+    math_aes_init(&ctx->aes_ctx);
     ctx->aes_initialized = MACSEC_TRUE;
 
     MACSEC_MEDIUM(("MKA crypto init done\n"));
@@ -457,13 +455,13 @@ void macsec_mka_crypto_clear(macsec_mka_crypto_ctx_t *ctx)
 
     if (ctx->cmac_initialized)
     {
-        mbedtls_cmac_free(&ctx->cmac_ctx);
+        math_cmac_free(&ctx->cmac_ctx);
         ctx->cmac_initialized = MACSEC_FALSE;
     }
 
     if (ctx->aes_initialized)
     {
-        mbedtls_aes_free(&ctx->aes_ctx);
+        math_aes_free(&ctx->aes_ctx);
         ctx->aes_initialized = MACSEC_FALSE;
     }
 

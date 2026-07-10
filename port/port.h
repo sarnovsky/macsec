@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-#include <macsec/common.h>
+#include "common.h"
 
 #include <stddef.h>
 #include <stdint.h>

@@ -14,9 +14,7 @@
  * See LICENSE file in the project root for full license text.
  */
 
-#include <macsec/frame_crypto.h>
-
-#include <string.h>
+#include "frame_crypto.h"
 
 #define MACSEC_FRAME_TCI_BASE          0x2Cu
 #define MACSEC_FRAME_SHORT_LEN_MAX     48u
@@ -38,17 +36,16 @@ static int macsec_frame_gcm_setkey(macsec_frame_crypto_ctx_t *ctx,
 
     if (ctx->gcm_initialized)
     {
-        mbedtls_gcm_free(&ctx->gcm);
+        math_gcm_free(&ctx->gcm);
         ctx->gcm_initialized = MACSEC_FALSE;
     }
 
-    mbedtls_gcm_init(&ctx->gcm);
+    math_gcm_init(&ctx->gcm);
     ctx->gcm_initialized = MACSEC_TRUE;
 
-    ret = mbedtls_gcm_setkey(&ctx->gcm,
-                             MBEDTLS_CIPHER_ID_AES,
-                             key,
-                             (unsigned int)key_len * 8u);
+    ret = math_gcm_setkey(&ctx->gcm,
+                          key,
+                          (unsigned int)key_len * 8u);
 
     if (ret != 0)
     {
@@ -71,7 +68,7 @@ int macsec_frame_crypto_init(macsec_frame_crypto_ctx_t *ctx,
     ctx->replay_protect = MACSEC_TRUE;
     ctx->replay_window = 0u;
 
-    mbedtls_gcm_init(&ctx->gcm);
+    math_gcm_init(&ctx->gcm);
     ctx->gcm_initialized = MACSEC_TRUE;
 
     MACSEC_MEDIUM(("Frame crypto init: encrypt=%u replay=%u window=%lu\n",
@@ -91,7 +88,7 @@ void macsec_frame_crypto_clear(macsec_frame_crypto_ctx_t *ctx)
 
     if (ctx->gcm_initialized)
     {
-        mbedtls_gcm_free(&ctx->gcm);
+        math_gcm_free(&ctx->gcm);
         ctx->gcm_initialized = MACSEC_FALSE;
     }
 
@@ -267,17 +264,17 @@ int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx,
         return ret;
     }
 
-    ret = mbedtls_gcm_crypt_and_tag(&ctx->gcm,
-                                    MBEDTLS_GCM_ENCRYPT,
-                                    secure_len,
-                                    iv,
-                                    sizeof(iv),
-                                    secure_eth,
-                                    MACSEC_FRAME_AAD_LEN,
-                                    secure_data,
-                                    ciphertext,
-                                    MACSEC_FRAME_ICV_LEN,
-                                    icv);
+    ret = math_gcm_crypt_and_tag(&ctx->gcm,
+                                 MATH_GCM_ENCRYPT,
+                                 secure_len,
+                                 iv,
+                                 sizeof(iv),
+                                 secure_eth,
+                                 MACSEC_FRAME_AAD_LEN,
+                                 secure_data,
+                                 ciphertext,
+                                 MACSEC_FRAME_ICV_LEN,
+                                 icv);
 
     macsec_zeroize(iv, sizeof(iv));
 
@@ -391,16 +388,16 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx,
         return ret;
     }
 
-    ret = mbedtls_gcm_auth_decrypt(&ctx->gcm,
-                                   ciphertext_len,
-                                   iv,
-                                   sizeof(iv),
-                                   aad,
-                                   MACSEC_FRAME_AAD_LEN,
-                                   icv,
-                                   MACSEC_FRAME_ICV_LEN,
-                                   ciphertext,
-                                   plain_eth + 12u);
+    ret = math_gcm_auth_decrypt(&ctx->gcm,
+                                ciphertext_len,
+                                iv,
+                                sizeof(iv),
+                                aad,
+                                MACSEC_FRAME_AAD_LEN,
+                                icv,
+                                MACSEC_FRAME_ICV_LEN,
+                                ciphertext,
+                                plain_eth + 12u);
 
     macsec_zeroize(iv, sizeof(iv));
 

@@ -20,8 +20,6 @@
 
 int macsec_test_all(macsec_test_data_t *data, int verbose)
 {
-    int ret;
-
     if (verbose)
     {
         MACSEC_PRINT(("========================================\n"));
@@ -30,7 +28,7 @@ int macsec_test_all(macsec_test_data_t *data, int verbose)
     }
 
     TEST_OK(macsec_test_common(verbose));
-    TEST_OK(macsec_test_mbedtls_selftests(&data->test_mbedtls_selftest_data, verbose));
+    TEST_OK(macsec_test_math_selftests(&data->test_math_selftest_data, verbose));
     TEST_OK(macsec_test_mka_crypto(&data->test_mka_crypto_data, verbose));
     TEST_OK(macsec_test_mka_frames(&data->test_mka_frames_data, verbose));
     TEST_OK(macsec_test_frame_crypto(&data->test_frame_crypto_data, verbose));

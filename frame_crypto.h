@@ -17,8 +17,8 @@
 #ifndef MACSEC_FRAME_CRYPTO_H
 #define MACSEC_FRAME_CRYPTO_H
 
-#include <macsec/common.h>
-#include <mbedtls/gcm.h>
+#include "common.h"
+#include "math/gcm.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -66,7 +66,7 @@ typedef struct
     macsec_bool_t replay_protect;
     uint32_t replay_window;
 
-    mbedtls_gcm_context gcm;
+    math_gcm_context gcm;
     macsec_bool_t gcm_initialized;
 
     uint8_t current_gcm_key[MACSEC_FRAME_MAX_KEY_LEN];

@@ -14,9 +14,7 @@
  * See LICENSE file in the project root for full license text.
  */
 
-#include <macsec/mka.h>
-
-#include <string.h>
+#include "mka.h"
 
 static const uint8_t macsec_mka_dst_mac[6] =
 {

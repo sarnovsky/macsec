@@ -17,8 +17,8 @@
 #ifndef MACSEC_MKA_H
 #define MACSEC_MKA_H
 
-#include <macsec/common.h>
-#include <macsec/mka_crypto.h>
+#include "common.h"
+#include "mka_crypto.h"
 
 #ifdef __cplusplus
 extern "C" {
