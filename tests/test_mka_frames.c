@@ -481,6 +481,8 @@ static int macsec_test_mka_frames_distributed_sak_layout(macsec_test_mka_frames_
     uint32_t key_number;
     uint8_t an;
 
+    (void)data;
+
     if (verbose)
     {
         MACSEC_PRINT(("  MKA Distributed SAK layout test\n"));

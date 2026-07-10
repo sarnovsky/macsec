@@ -37,6 +37,17 @@ int main(int argc, char *argv[])
 
     MACSEC_PRINT(("ALL TESTS OK\n"));
 
+    MACSEC_PRINT(("========================================\n"));
+
+    MACSEC_PRINT(("sizeof(macsec_ctx_t) = %u bytes\n",
+                  (unsigned)sizeof(macsec_ctx_t)));
+
+    MACSEC_PRINT(("sizeof(macsec_mka_ctx_t) = %u bytes\n",
+                  (unsigned)sizeof(macsec_mka_ctx_t)));
+
+    MACSEC_PRINT(("sizeof(macsec_test_data_t) = %u bytes\n",
+                  (unsigned)sizeof(macsec_test_data_t)));
+
     return 0;
 }
 

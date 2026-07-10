@@ -19,6 +19,9 @@
 
 #include "common.h"
 #include "mka_crypto.h"
+/* macsec_random */
+#include "port/port.h"
+
 
 #ifdef __cplusplus
 extern "C" {
