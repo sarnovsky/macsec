@@ -581,7 +581,6 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
     macsec_mka_basic_t basic;
     macsec_bool_t peer_changed;
     macsec_bool_t local_seen_by_peer;
-    macsec_bool_t local_key_server_before;
     uint32_t listed_mn;
 
     macsec_assert(ctx != NULL);
@@ -662,13 +661,10 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
                    (memcmp(ctx->peer.mi, basic.actor_mi, MACSEC_MKA_MI_LEN) != 0) ||
                    (basic.actor_mn != ctx->peer.mn);
 
-    local_key_server_before = ctx->local_key_server;
-
-    MACSEC_MEDIUM(("MKA peer update: peer_changed=%u local_seen_by_peer=%u peer_mn=%lu local_key_server_before=%u\n",
+    MACSEC_MEDIUM(("MKA peer update: peer_changed=%u local_seen_by_peer=%u peer_mn=%lu\n",
                    peer_changed ? 1u : 0u,
                    local_seen_by_peer ? 1u : 0u,
-                   (unsigned long)basic.actor_mn,
-                   local_key_server_before ? 1u : 0u));
+                   (unsigned long)basic.actor_mn));
 
     memcpy(ctx->peer.mac, basic.src_mac, 6u);
     memcpy(ctx->peer.sci, basic.sci, MACSEC_MKA_SCI_LEN);

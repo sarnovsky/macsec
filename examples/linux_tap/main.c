@@ -19,7 +19,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <macsec/macsec.h>
+#include <macsec.h>
 
 #include "raw_socket.h"
 #include "tap.h"
