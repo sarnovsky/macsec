@@ -431,7 +431,7 @@ fail:
     return 1;
 }
 
-int math_cmac_self_test(int verbose)
+int math_cmac_self_test( math_cmac_context_t *ctx, int verbose )
 {
     /*
      * NIST SP 800-38B CMAC-AES examples.
@@ -606,7 +606,6 @@ int math_cmac_self_test(int verbose)
         }
     };
 
-    math_cmac_context_t ctx;
     unsigned char out[16];
     size_t i;
     int ret;
@@ -616,7 +615,7 @@ int math_cmac_self_test(int verbose)
         macsec_printf("  AES-CMAC self-test:\n");
     }
 
-    math_cmac_init(&ctx);
+    math_cmac_init(ctx);
     memset(out, 0, sizeof(out));
 
     /*
@@ -624,7 +623,7 @@ int math_cmac_self_test(int verbose)
      */
     for (i = 0u; i < (sizeof(suites) / sizeof(suites[0])); i++)
     {
-        ret = cmac_run_vector_suite(&ctx,
+        ret = cmac_run_vector_suite(ctx,
                                     &suites[i],
                                     msg,
                                     msg_len,
@@ -641,7 +640,7 @@ int math_cmac_self_test(int verbose)
      * and AES-256. The CMAC result must match the 64-byte
      * one-shot NIST vector.
      */
-    ret = cmac_run_streaming_test(&ctx,
+    ret = cmac_run_streaming_test(ctx,
                                   key_128,
                                   128u,
                                   msg,
@@ -653,7 +652,7 @@ int math_cmac_self_test(int verbose)
         goto fail;
     }
 
-    ret = cmac_run_streaming_test(&ctx,
+    ret = cmac_run_streaming_test(ctx,
                                   key_256,
                                   256u,
                                   msg,
@@ -669,12 +668,12 @@ int math_cmac_self_test(int verbose)
      * Invalid-argument tests.
      */
     if ((cmac_starts(NULL, key_128, 128u) == 0) ||
-        (cmac_starts(&ctx, NULL, 128u) == 0) ||
-        (cmac_starts(&ctx, key_128, 129u) == 0) ||
+        (cmac_starts(ctx, NULL, 128u) == 0) ||
+        (cmac_starts(ctx, key_128, 129u) == 0) ||
         (cmac_update(NULL, msg, 1u) == 0) ||
-        (cmac_update(&ctx, NULL, 1u) == 0) ||
+        (cmac_update(ctx, NULL, 1u) == 0) ||
         (cmac_finish(NULL, out) == 0) ||
-        (cmac_finish(&ctx, NULL) == 0) ||
+        (cmac_finish(ctx, NULL) == 0) ||
         (math_cmac_aes(NULL,
                        key_128,
                        128u,
@@ -685,7 +684,7 @@ int math_cmac_self_test(int verbose)
         goto fail;
     }
 
-    math_cmac_free(&ctx);
+    math_cmac_free(ctx);
     cmac_zeroize(out, sizeof(out));
 
     if (verbose != 0)
@@ -696,7 +695,7 @@ int math_cmac_self_test(int verbose)
     return 0;
 
 fail:
-    math_cmac_free(&ctx);
+    math_cmac_free(ctx);
     cmac_zeroize(out, sizeof(out));
 
     if (verbose != 0)

@@ -741,18 +741,14 @@ static const unsigned char tag[MAX_TESTS * 3][GCM_BLOCK_SIZE] =
       0xc8, 0xb5, 0xd4, 0xcf, 0x5a, 0xe9, 0xf1, 0x9a },
 };
 
-#define GCM_BUF_SIZE 256u
-
-int math_gcm_self_test(int verbose)
+int math_gcm_self_test( math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE] , int verbose )
 {
-    math_gcm_context ctx;
-    unsigned char buf[GCM_BUF_SIZE];
-    unsigned char tag_buf[GCM_BLOCK_SIZE];
     int i;
     int key_size;
     int ret;
     int vector_index;
     int array_index = 0;
+    unsigned char tag_buf[GCM_BLOCK_SIZE];
 
     for(key_size = 128;
         key_size <= 256;
@@ -773,14 +769,14 @@ int math_gcm_self_test(int verbose)
             if(verbose != 0)
                 macsec_printf("  AES-GCM-%3d #%d (enc): ", key_size, i);
 
-            math_gcm_init(&ctx);
+            math_gcm_init(ctx);
 
-            ret = math_gcm_setkey(&ctx,
+            ret = math_gcm_setkey(ctx,
                                   key[key_index[i]],
                                   (unsigned int)key_size);
             if(ret == 0)
             {
-                ret = math_gcm_crypt_and_tag(&ctx,
+                ret = math_gcm_crypt_and_tag(ctx,
                                              MATH_GCM_ENCRYPT,
                                              pt_len[i],
                                              iv[iv_index[i]],
@@ -802,11 +798,11 @@ int math_gcm_self_test(int verbose)
                 if(verbose != 0)
                     macsec_printf("failed\n");
 
-                math_gcm_free(&ctx);
+                math_gcm_free(ctx);
                 return 1;
             }
 
-            math_gcm_free(&ctx);
+            math_gcm_free(ctx);
 
             if(verbose != 0)
                 macsec_printf("passed\n");
@@ -814,14 +810,14 @@ int math_gcm_self_test(int verbose)
             if(verbose != 0)
                 macsec_printf("  AES-GCM-%3d #%d (dec): ", key_size, i);
 
-            math_gcm_init(&ctx);
+            math_gcm_init(ctx);
 
-            ret = math_gcm_setkey(&ctx,
+            ret = math_gcm_setkey(ctx,
                                   key[key_index[i]],
                                   (unsigned int)key_size);
             if(ret == 0)
             {
-                ret = math_gcm_auth_decrypt(&ctx,
+                ret = math_gcm_auth_decrypt(ctx,
                                             pt_len[i],
                                             iv[iv_index[i]],
                                             iv_len[i],
@@ -839,11 +835,11 @@ int math_gcm_self_test(int verbose)
                 if(verbose != 0)
                     macsec_printf("failed\n");
 
-                math_gcm_free(&ctx);
+                math_gcm_free(ctx);
                 return 1;
             }
 
-            math_gcm_free(&ctx);
+            math_gcm_free(ctx);
 
             if(verbose != 0)
                 macsec_printf("passed\n");

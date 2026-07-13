@@ -31,6 +31,10 @@
 #define GCM_BLOCK_SIZE          16u
 #define GCM_NIBBLE_TABLE_SIZE   16u
 
+#if defined(MATH_SELF_TEST)
+#define GCM_BUF_SIZE 256u
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -84,7 +88,7 @@ int math_gcm_auth_decrypt( math_gcm_context *ctx,
                            unsigned char *output );
 
 #if defined(MATH_SELF_TEST)
-int math_gcm_self_test( int verbose );
+int math_gcm_self_test( math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], int verbose );
 #endif
 
 #ifdef __cplusplus

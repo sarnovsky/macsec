@@ -40,14 +40,14 @@ void math_cmac_init( math_cmac_context_t *ctx );
 void math_cmac_free( math_cmac_context_t *ctx );
 
 int math_cmac_aes( math_cmac_context_t *ctx,
-                      const unsigned char *key,
-                      size_t keybits,
-                      const unsigned char *input,
-                      size_t ilen,
-                      unsigned char output[16] );
+                   const unsigned char *key,
+                   size_t keybits,
+                   const unsigned char *input,
+                   size_t ilen,
+                   unsigned char output[16] );
 
 #if defined(MATH_SELF_TEST)
-int math_cmac_self_test( int verbose );
+int math_cmac_self_test( math_cmac_context_t *ctx, int verbose );
 #endif
 
 #ifdef __cplusplus

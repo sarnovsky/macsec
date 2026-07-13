@@ -26,9 +26,9 @@ int macsec_test_math_selftests(macsec_test_math_selftest_data_t *data, int verbo
         MACSEC_PRINT(("MACsec math self-tests\n"));
     }
 
-    TEST_OK(math_aes_self_test(&data->test_math_aes_selftest_data_t.ctx, verbose ? 1 : 0));
-    TEST_OK(math_gcm_self_test(verbose ? 1 : 0));
-    TEST_OK(math_cmac_self_test(verbose ? 1 : 0));
+    TEST_OK(math_aes_self_test(&data->test_math_aes_selftest_data.ctx, verbose ? 1 : 0));
+    TEST_OK(math_gcm_self_test(&data->test_math_gcm_selftest_data.ctx, data->test_math_gcm_selftest_data.buf, verbose ? 1 : 0));
+    TEST_OK(math_cmac_self_test(&data->test_math_cmac_selftest_data.ctx, verbose ? 1 : 0));
 
     if (verbose)
     {

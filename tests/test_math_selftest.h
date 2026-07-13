@@ -18,7 +18,9 @@
 #define TESTS_TEST_MATH_SELFTEST_H
 
 #include "common.h"
-#include "mka_crypto.h"
+#include "math/aes.h"
+#include "math/gcm.h"
+#include "math/cmac.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,17 +35,20 @@ typedef struct
 
 typedef struct
 {
+    math_gcm_context ctx;
+    unsigned char buf[GCM_BUF_SIZE];
 } macsec_test_math_gcm_selftest_data_t;
 
 typedef struct
 {
+    math_cmac_context_t ctx;
 } macsec_test_math_cmac_selftest_data_t;
 
 typedef union
 {
-    macsec_test_math_aes_selftest_data_t test_math_aes_selftest_data_t;
-    macsec_test_math_gcm_selftest_data_t test_math_gcm_selftest_data_t;
-    macsec_test_math_cmac_selftest_data_t test_math_cmac_selftest_data_t;
+    macsec_test_math_aes_selftest_data_t test_math_aes_selftest_data;
+    macsec_test_math_gcm_selftest_data_t test_math_gcm_selftest_data;
+    macsec_test_math_cmac_selftest_data_t test_math_cmac_selftest_data;
 } macsec_test_math_selftest_data_t;
 
 
