@@ -17,8 +17,6 @@
 #include <tests/test_rekey.h>
 #include <tests/unit_tests.h>
 
-#include <string.h>
-
 #if (MACSEC_SELF_TEST != 0)
 
 static void macsec_test_fill_plain_frame(uint8_t *frame,

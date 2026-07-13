@@ -24,9 +24,6 @@ extern "C" {
 
 #include "common.h"
 
-#include <stddef.h>
-#include <stdint.h>
-
 /* Panic */
 void macsec_sysPanic(void);
 

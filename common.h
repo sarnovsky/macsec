@@ -19,9 +19,10 @@
 #define MACSEC_COMMON_H
 
 #include <string.h>
-
+#include <stdio.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <inttypes.h>
 
 typedef uint8_t macsec_bool_t;
 #define MACSEC_TRUE                   1

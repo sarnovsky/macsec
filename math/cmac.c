@@ -13,8 +13,6 @@
  */
 #include "cmac.h"
 
-#include <string.h>
-
 #define CMAC_BLOCK_SIZE 16u
 #define CMAC_RB         0x87u
 

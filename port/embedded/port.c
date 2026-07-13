@@ -18,7 +18,6 @@
 #include "port/port.h"
 
 #if (MACSEC_DEBUG_LEVEL > 0)
-#include <stdarg.h>
 #include "xprintf.h"
 #endif
 

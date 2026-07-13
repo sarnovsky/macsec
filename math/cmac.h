@@ -22,8 +22,6 @@
 
 #include "aes.h"
 
-#include <stddef.h>
-
 #define MATH_AES_BLOCK_SIZE 16
 
 #ifdef __cplusplus

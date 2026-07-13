@@ -17,8 +17,6 @@
 #include <tests/test_mka_frames.h>
 #include <tests/unit_tests.h>
 
-#include <string.h>
-
 #if (MACSEC_SELF_TEST != 0)
 
 static const uint8_t s_cak[16] =

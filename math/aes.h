@@ -23,8 +23,6 @@
 #define MATH_AES_ROM_TABLES
 // #define MBEDTLS_AES_FEWER_TABLES
 
-#include <stdint.h>
-
 #define MATH_AES_ENCRYPT     1
 #define MATH_AES_DECRYPT     0
 

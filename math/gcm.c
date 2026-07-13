@@ -13,9 +13,6 @@
  */
 #include "gcm.h"
 
-#include <stdint.h>
-#include <string.h>
-
 #define GCM_GET_BE32(B, I)                                      \
     ( ((uint32_t)(B)[(I) + 0u] << 24) |                         \
       ((uint32_t)(B)[(I) + 1u] << 16) |                         \

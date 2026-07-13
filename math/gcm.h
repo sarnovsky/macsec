@@ -22,9 +22,6 @@
 
 #include "aes.h"
 
-#include <stddef.h>
-#include <stdint.h>
-
 #define MATH_GCM_ENCRYPT     1
 #define MATH_GCM_DECRYPT     0
 

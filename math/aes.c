@@ -11,8 +11,6 @@
  * This file is part of the lightweight MACsec stack.
  * See LICENSE file in the project root for full license text.
  */
-#include <stddef.h>
-#include <string.h>
 #include "aes.h"
 
 static void math_zeroize( void *v, size_t n )
@@ -773,8 +771,6 @@ int math_aes_crypt_ecb( math_aes_context *ctx,
 }
 
 #if defined(MATH_SELF_TEST)
-
-#include <string.h>
 
 static const unsigned char aes_test_ecb_dec[3][16] =
 {
