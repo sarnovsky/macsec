@@ -267,30 +267,194 @@ int math_cmac_aes( math_cmac_context_t *ctx,
 
 #if defined(MATH_SELF_TEST)
 
-int math_cmac_self_test( int verbose )
+typedef struct
 {
-    static const unsigned char key[16] =
-    {
-        0x2Bu, 0x7Eu, 0x15u, 0x16u,
-        0x28u, 0xAEu, 0xD2u, 0xA6u,
-        0xABu, 0xF7u, 0x15u, 0x88u,
-        0x09u, 0xCFu, 0x4Fu, 0x3Cu
-    };
+    const unsigned char *key;
+    size_t keybits;
+    const unsigned char (*expected)[16];
+    const char *name;
+} cmac_test_suite_t;
 
+static int cmac_run_vector_suite(math_cmac_context_t *ctx,
+                                 const cmac_test_suite_t *suite,
+                                 const unsigned char *msg,
+                                 const size_t msg_len[4],
+                                 unsigned char out[16],
+                                 int verbose)
+{
+    size_t i;
+    int ret;
+
+    if ((ctx == NULL) ||
+        (suite == NULL) ||
+        (suite->key == NULL) ||
+        (suite->expected == NULL) ||
+        (msg == NULL) ||
+        (msg_len == NULL) ||
+        (out == NULL))
+    {
+        return 1;
+    }
+
+    if (verbose != 0)
+    {
+        macsec_printf("    %s: ", suite->name);
+    }
+
+    for (i = 0u; i < 4u; i++)
+    {
+        memset(out, 0, 16u);
+
+        ret = math_cmac_aes(ctx,
+                            suite->key,
+                            suite->keybits,
+                            msg,
+                            msg_len[i],
+                            out);
+        if (ret != 0)
+        {
+            if (verbose != 0)
+            {
+                macsec_printf("crypto error %d\n", ret);
+            }
+
+            return 1;
+        }
+
+        if (memcmp(out, suite->expected[i], 16u) != 0)
+        {
+            if (verbose != 0)
+            {
+                macsec_printf("vector %u failed\n", (unsigned)i + 1u);
+                MACSEC_PRINT_HEX(("Calculated CMAC", out, 16));
+                MACSEC_PRINT_HEX(("Expected CMAC",
+                                  suite->expected[i],
+                                  16));
+            }
+
+            return 1;
+        }
+    }
+
+    if (verbose != 0)
+    {
+        macsec_printf("passed\n");
+    }
+
+    return 0;
+}
+
+static int cmac_run_streaming_test(math_cmac_context_t *ctx,
+                                   const unsigned char *key,
+                                   size_t keybits,
+                                   const unsigned char *msg,
+                                   const unsigned char expected[16],
+                                   unsigned char out[16],
+                                   int verbose)
+{
+    int ret;
+
+    if (verbose != 0)
+    {
+        macsec_printf("    AES-%u streaming: ",
+                      (unsigned)keybits);
+    }
+
+    ret = cmac_starts(ctx, key, keybits);
+    if (ret != 0)
+    {
+        goto fail;
+    }
+
+    /*
+     * Exercise boundaries around complete and partial blocks:
+     *
+     *   1 + 15 + 17 + 31 = 64 bytes
+     */
+    ret = cmac_update(ctx, msg, 1u);
+    if (ret != 0)
+    {
+        goto fail;
+    }
+
+    ret = cmac_update(ctx, msg + 1u, 15u);
+    if (ret != 0)
+    {
+        goto fail;
+    }
+
+    ret = cmac_update(ctx, msg + 16u, 17u);
+    if (ret != 0)
+    {
+        goto fail;
+    }
+
+    ret = cmac_update(ctx, msg + 33u, 31u);
+    if (ret != 0)
+    {
+        goto fail;
+    }
+
+    memset(out, 0, 16u);
+
+    ret = cmac_finish(ctx, out);
+    if (ret != 0)
+    {
+        goto fail;
+    }
+
+    if (memcmp(out, expected, 16u) != 0)
+    {
+        if (verbose != 0)
+        {
+            macsec_printf("failed\n");
+            MACSEC_PRINT_HEX(("Calculated CMAC", out, 16));
+            MACSEC_PRINT_HEX(("Expected CMAC", expected, 16));
+        }
+
+        return 1;
+    }
+
+    if (verbose != 0)
+    {
+        macsec_printf("passed\n");
+    }
+
+    return 0;
+
+fail:
+    if (verbose != 0)
+    {
+        macsec_printf("crypto error %d\n", ret);
+    }
+
+    return 1;
+}
+
+int math_cmac_self_test(int verbose)
+{
+    /*
+     * NIST SP 800-38B CMAC-AES examples.
+     *
+     * The message is shared by AES-128, AES-192 and AES-256 suites.
+     */
     static const unsigned char msg[64] =
     {
         0x6Bu, 0xC1u, 0xBEu, 0xE2u,
         0x2Eu, 0x40u, 0x9Fu, 0x96u,
         0xE9u, 0x3Du, 0x7Eu, 0x11u,
         0x73u, 0x93u, 0x17u, 0x2Au,
+
         0xAEu, 0x2Du, 0x8Au, 0x57u,
         0x1Eu, 0x03u, 0xACu, 0x9Cu,
         0x9Eu, 0xB7u, 0x6Fu, 0xACu,
         0x45u, 0xAFu, 0x8Eu, 0x51u,
+
         0x30u, 0xC8u, 0x1Cu, 0x46u,
         0xA3u, 0x5Cu, 0xE4u, 0x11u,
         0xE5u, 0xFBu, 0xC1u, 0x19u,
         0x1Au, 0x0Au, 0x52u, 0xEFu,
+
         0xF6u, 0x9Fu, 0x24u, 0x45u,
         0xDFu, 0x4Fu, 0x9Bu, 0x17u,
         0xADu, 0x2Bu, 0x41u, 0x7Bu,
@@ -301,11 +465,19 @@ int math_cmac_self_test( int verbose )
     {
         0u,
         16u,
-        40u,
+        20u,
         64u
     };
 
-    static const unsigned char expected[4][16] =
+    static const unsigned char key_128[16] =
+    {
+        0x2Bu, 0x7Eu, 0x15u, 0x16u,
+        0x28u, 0xAEu, 0xD2u, 0xA6u,
+        0xABu, 0xF7u, 0x15u, 0x88u,
+        0x09u, 0xCFu, 0x4Fu, 0x3Cu
+    };
+
+    static const unsigned char expected_128[4][16] =
     {
         {
             0xBBu, 0x1Du, 0x69u, 0x29u,
@@ -320,10 +492,10 @@ int math_cmac_self_test( int verbose )
             0xD0u, 0x4Au, 0x28u, 0x7Cu
         },
         {
-            0xDFu, 0xA6u, 0x67u, 0x47u,
-            0xDEu, 0x9Au, 0xE6u, 0x30u,
-            0x30u, 0xCAu, 0x32u, 0x61u,
-            0x14u, 0x97u, 0xC8u, 0x27u
+            0x7Du, 0x85u, 0x44u, 0x9Eu,
+            0xA6u, 0xEAu, 0x19u, 0xC8u,
+            0x23u, 0xA7u, 0xBFu, 0x78u,
+            0x83u, 0x7Du, 0xFAu, 0xDEu
         },
         {
             0x51u, 0xF0u, 0xBEu, 0xBFu,
@@ -333,96 +505,204 @@ int math_cmac_self_test( int verbose )
         }
     };
 
+    static const unsigned char key_192[24] =
+    {
+        0x8Eu, 0x73u, 0xB0u, 0xF7u,
+        0xDAu, 0x0Eu, 0x64u, 0x52u,
+        0xC8u, 0x10u, 0xF3u, 0x2Bu,
+        0x80u, 0x90u, 0x79u, 0xE5u,
+        0x62u, 0xF8u, 0xEAu, 0xD2u,
+        0x52u, 0x2Cu, 0x6Bu, 0x7Bu
+    };
+
+    static const unsigned char expected_192[4][16] =
+    {
+        {
+            0xD1u, 0x7Du, 0xDFu, 0x46u,
+            0xADu, 0xAAu, 0xCDu, 0xE5u,
+            0x31u, 0xCAu, 0xC4u, 0x83u,
+            0xDEu, 0x7Au, 0x93u, 0x67u
+        },
+        {
+            0x9Eu, 0x99u, 0xA7u, 0xBFu,
+            0x31u, 0xE7u, 0x10u, 0x90u,
+            0x06u, 0x62u, 0xF6u, 0x5Eu,
+            0x61u, 0x7Cu, 0x51u, 0x84u
+        },
+        {
+            0x3Du, 0x75u, 0xC1u, 0x94u,
+            0xEDu, 0x96u, 0x07u, 0x04u,
+            0x44u, 0xA9u, 0xFAu, 0x7Eu,
+            0xC7u, 0x40u, 0xECu, 0xF8u
+        },
+        {
+            0xA1u, 0xD5u, 0xDFu, 0x0Eu,
+            0xEDu, 0x79u, 0x0Fu, 0x79u,
+            0x4Du, 0x77u, 0x58u, 0x96u,
+            0x59u, 0xF3u, 0x9Au, 0x11u
+        }
+    };
+
+    static const unsigned char key_256[32] =
+    {
+        0x60u, 0x3Du, 0xEBu, 0x10u,
+        0x15u, 0xCAu, 0x71u, 0xBEu,
+        0x2Bu, 0x73u, 0xAEu, 0xF0u,
+        0x85u, 0x7Du, 0x77u, 0x81u,
+
+        0x1Fu, 0x35u, 0x2Cu, 0x07u,
+        0x3Bu, 0x61u, 0x08u, 0xD7u,
+        0x2Du, 0x98u, 0x10u, 0xA3u,
+        0x09u, 0x14u, 0xDFu, 0xF4u
+    };
+
+    static const unsigned char expected_256[4][16] =
+    {
+        {
+            0x02u, 0x89u, 0x62u, 0xF6u,
+            0x1Bu, 0x7Bu, 0xF8u, 0x9Eu,
+            0xFCu, 0x6Bu, 0x55u, 0x1Fu,
+            0x46u, 0x67u, 0xD9u, 0x83u
+        },
+        {
+            0x28u, 0xA7u, 0x02u, 0x3Fu,
+            0x45u, 0x2Eu, 0x8Fu, 0x82u,
+            0xBDu, 0x4Bu, 0xF2u, 0x8Du,
+            0x8Cu, 0x37u, 0xC3u, 0x5Cu
+        },
+        {
+            0x15u, 0x67u, 0x27u, 0xDCu,
+            0x08u, 0x78u, 0x94u, 0x4Au,
+            0x02u, 0x3Cu, 0x1Fu, 0xE0u,
+            0x3Bu, 0xADu, 0x6Du, 0x93u
+        },
+        {
+            0xE1u, 0x99u, 0x21u, 0x90u,
+            0x54u, 0x9Fu, 0x6Eu, 0xD5u,
+            0x69u, 0x6Au, 0x2Cu, 0x05u,
+            0x6Cu, 0x31u, 0x54u, 0x10u
+        }
+    };
+
+    static const cmac_test_suite_t suites[] =
+    {
+        {
+            key_128,
+            128u,
+            expected_128,
+            "AES-128-CMAC"
+        },
+        {
+            key_192,
+            192u,
+            expected_192,
+            "AES-192-CMAC"
+        },
+        {
+            key_256,
+            256u,
+            expected_256,
+            "AES-256-CMAC"
+        }
+    };
+
     math_cmac_context_t ctx;
     unsigned char out[16];
-    int ret = 0;
     size_t i;
+    int ret;
 
-    if( verbose != 0 )
-        macsec_printf( "  AES-CMAC: " );
-
-    math_cmac_init( &ctx );
-
-    for( i = 0u; i < 4u; i++ )
+    if (verbose != 0)
     {
-        memset( out, 0, sizeof( out ) );
+        macsec_printf("  AES-CMAC self-test:\n");
+    }
 
-        ret = math_cmac_aes( &ctx,
-                                key,
-                                128u,
-                                msg,
-                                msg_len[i],
-                                out );
-        if( ret != 0 )
-            goto fail;
+    math_cmac_init(&ctx);
+    memset(out, 0, sizeof(out));
 
-        if( memcmp( out, expected[i], sizeof( out ) ) != 0 )
+    /*
+     * Known-answer tests for all AES key lengths.
+     */
+    for (i = 0u; i < (sizeof(suites) / sizeof(suites[0])); i++)
+    {
+        ret = cmac_run_vector_suite(&ctx,
+                                    &suites[i],
+                                    msg,
+                                    msg_len,
+                                    out,
+                                    verbose);
+        if (ret != 0)
         {
-            ret = 1;
             goto fail;
         }
     }
 
-    /* Internal streaming path sanity check, split RFC 4493 vector #4. */
-    ret = cmac_starts( &ctx, key, 128u );
-    if( ret != 0 )
-        goto fail;
-
-    ret = cmac_update( &ctx, msg, 1u );
-    if( ret != 0 )
-        goto fail;
-
-    ret = cmac_update( &ctx, msg + 1u, 15u );
-    if( ret != 0 )
-        goto fail;
-
-    ret = cmac_update( &ctx, msg + 16u, 17u );
-    if( ret != 0 )
-        goto fail;
-
-    ret = cmac_update( &ctx, msg + 33u, 31u );
-    if( ret != 0 )
-        goto fail;
-
-    memset( out, 0, sizeof( out ) );
-
-    ret = cmac_finish( &ctx, out );
-    if( ret != 0 )
-        goto fail;
-
-    if( memcmp( out, expected[3], sizeof( out ) ) != 0 )
+    /*
+     * Exercise the streaming path independently for AES-128
+     * and AES-256. The CMAC result must match the 64-byte
+     * one-shot NIST vector.
+     */
+    ret = cmac_run_streaming_test(&ctx,
+                                  key_128,
+                                  128u,
+                                  msg,
+                                  expected_128[3],
+                                  out,
+                                  verbose);
+    if (ret != 0)
     {
-        ret = 1;
         goto fail;
     }
 
-    if( cmac_starts( NULL, key, 128u ) == 0 ||
-        cmac_starts( &ctx, NULL, 128u ) == 0 ||
-        cmac_starts( &ctx, key, 129u ) == 0 ||
-        cmac_update( NULL, msg, 1u ) == 0 ||
-        cmac_update( &ctx, NULL, 1u ) == 0 ||
-        cmac_finish( NULL, out ) == 0 ||
-        cmac_finish( &ctx, NULL ) == 0 ||
-        math_cmac_aes( NULL, key, 128u, msg, 1u, out ) == 0 )
+    ret = cmac_run_streaming_test(&ctx,
+                                  key_256,
+                                  256u,
+                                  msg,
+                                  expected_256[3],
+                                  out,
+                                  verbose);
+    if (ret != 0)
     {
-        ret = 1;
         goto fail;
     }
 
-    math_cmac_free( &ctx );
-    cmac_zeroize( out, sizeof( out ) );
+    /*
+     * Invalid-argument tests.
+     */
+    if ((cmac_starts(NULL, key_128, 128u) == 0) ||
+        (cmac_starts(&ctx, NULL, 128u) == 0) ||
+        (cmac_starts(&ctx, key_128, 129u) == 0) ||
+        (cmac_update(NULL, msg, 1u) == 0) ||
+        (cmac_update(&ctx, NULL, 1u) == 0) ||
+        (cmac_finish(NULL, out) == 0) ||
+        (cmac_finish(&ctx, NULL) == 0) ||
+        (math_cmac_aes(NULL,
+                       key_128,
+                       128u,
+                       msg,
+                       1u,
+                       out) == 0))
+    {
+        goto fail;
+    }
 
-    if( verbose != 0 )
-        macsec_printf( "passed\n" );
+    math_cmac_free(&ctx);
+    cmac_zeroize(out, sizeof(out));
+
+    if (verbose != 0)
+    {
+        macsec_printf("  AES-CMAC self-test passed\n");
+    }
 
     return 0;
 
 fail:
-    math_cmac_free( &ctx );
-    cmac_zeroize( out, sizeof( out ) );
+    math_cmac_free(&ctx);
+    cmac_zeroize(out, sizeof(out));
 
-    if( verbose != 0 )
-        macsec_printf( "failed\n" );
+    if (verbose != 0)
+    {
+        macsec_printf("  AES-CMAC self-test failed\n");
+    }
 
     return 1;
 }
