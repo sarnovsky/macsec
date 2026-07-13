@@ -6,7 +6,7 @@
  * This file verifies generation, parsing and validation of MKA protocol
  * frames and their individual parameter sets.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal SarnovskÃ½
  *
  * SPDX-License-Identifier: MIT
  *
@@ -58,6 +58,7 @@ typedef struct
     uint8_t cak[32];
     uint8_t ckn[32];
     uint8_t frame[MACSEC_MKA_MAX_FRAME_LEN];
+
     macsec_mka_ctx_t a;
     macsec_mka_ctx_t b;
 } macsec_test_mka_frames_two_peer_exchange_data_t;
@@ -76,6 +77,7 @@ typedef struct
 {
     macsec_mka_ctx_t a;
     macsec_mka_ctx_t b;
+
     uint8_t frame_a[MACSEC_MKA_MAX_FRAME_LEN];
     uint8_t frame_b[MACSEC_MKA_MAX_FRAME_LEN];
 } macsec_test_mka_frames_stm32_key_server_distributes_sak_data_t;
@@ -84,6 +86,7 @@ typedef struct
 {
     macsec_mka_ctx_t a;
     macsec_mka_ctx_t b;
+
     uint8_t frame_a[MACSEC_MKA_MAX_FRAME_LEN];
     uint8_t frame_b[MACSEC_MKA_MAX_FRAME_LEN];
 } macsec_test_mka_frames_sak_use_key_server_mi_data_t;
@@ -92,27 +95,48 @@ typedef struct
 {
     macsec_mka_ctx_t a;
     macsec_mka_ctx_t b;
+
     uint8_t frame_a[MACSEC_MKA_MAX_FRAME_LEN];
     uint8_t frame_b[MACSEC_MKA_MAX_FRAME_LEN];
 } macsec_test_mka_frames_sak_use_tx_rx_flags_data_t;
 
 typedef union
 {
-    macsec_test_mka_frames_linux_basic_icv_data_t test_mka_frames_linux_basic_icv_data;
-    macsec_test_mka_frames_build_parse_basic_data_t test_mka_frames_build_parse_basic_data;
-    macsec_test_mka_frames_generated_icv_ok_data_t test_mka_frames_generated_icv_ok_data;
-    macsec_test_mka_frames_generated_icv_bad_data_t test_mka_frames_generated_icv_bad_data;
-    macsec_test_mka_frames_two_peer_exchange_data_t test_mka_frames_two_peer_exchange_data;
-    macsec_test_mka_frames_tx_pending_timing_data_t test_mka_frames_tx_pending_timing_data;
-    macsec_test_mka_frames_distributed_sak_layout_data_t test_mka_frames_distributed_sak_layout_data;
-    macsec_test_mka_frames_stm32_key_server_distributes_sak_data_t test_mka_frames_stm32_key_server_distributes_sak_data;
-    macsec_test_mka_frames_sak_use_key_server_mi_data_t test_mka_frames_sak_use_key_server_mi_data;
-    macsec_test_mka_frames_sak_use_tx_rx_flags_data_t test_mka_frames_sak_use_tx_rx_flags_data;
+    macsec_test_mka_frames_linux_basic_icv_data_t
+        test_mka_frames_linux_basic_icv_data;
+
+    macsec_test_mka_frames_build_parse_basic_data_t
+        test_mka_frames_build_parse_basic_data;
+
+    macsec_test_mka_frames_generated_icv_ok_data_t
+        test_mka_frames_generated_icv_ok_data;
+
+    macsec_test_mka_frames_generated_icv_bad_data_t
+        test_mka_frames_generated_icv_bad_data;
+
+    macsec_test_mka_frames_two_peer_exchange_data_t
+        test_mka_frames_two_peer_exchange_data;
+
+    macsec_test_mka_frames_tx_pending_timing_data_t
+        test_mka_frames_tx_pending_timing_data;
+
+    macsec_test_mka_frames_distributed_sak_layout_data_t
+        test_mka_frames_distributed_sak_layout_data;
+
+    macsec_test_mka_frames_stm32_key_server_distributes_sak_data_t
+        test_mka_frames_stm32_key_server_distributes_sak_data;
+
+    macsec_test_mka_frames_sak_use_key_server_mi_data_t
+        test_mka_frames_sak_use_key_server_mi_data;
+
+    macsec_test_mka_frames_sak_use_tx_rx_flags_data_t
+        test_mka_frames_sak_use_tx_rx_flags_data;
 } macsec_test_mka_frames_data_t;
 
-int macsec_test_mka_frames(macsec_test_mka_frames_data_t *data, int verbose);
+int macsec_test_mka_frames(macsec_test_mka_frames_data_t *data,
+                           int verbose);
 
-#endif
+#endif /* MACSEC_SELF_TEST */
 
 #ifdef __cplusplus
 }

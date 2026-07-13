@@ -6,7 +6,7 @@
  * This file validates complete MACsec communication scenarios, including
  * secure frame transmission, reception and protocol state transitions.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal SarnovskÃ½
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,12 +21,25 @@
 
 #if (MACSEC_SELF_TEST != 0)
 
-static const uint8_t test_cak[16] =
+static const uint8_t test_cak_16[16] =
 {
     0x00u, 0x11u, 0x22u, 0x33u,
     0x44u, 0x55u, 0x66u, 0x77u,
     0x88u, 0x99u, 0xAAu, 0xBBu,
     0xCCu, 0xDDu, 0xEEu, 0xFFu
+};
+
+static const uint8_t test_cak_32[32] =
+{
+    0x00u, 0x11u, 0x22u, 0x33u,
+    0x44u, 0x55u, 0x66u, 0x77u,
+    0x88u, 0x99u, 0xAAu, 0xBBu,
+    0xCCu, 0xDDu, 0xEEu, 0xFFu,
+
+    0x10u, 0x21u, 0x32u, 0x43u,
+    0x54u, 0x65u, 0x76u, 0x87u,
+    0x98u, 0xA9u, 0xBAu, 0xCBu,
+    0xDCu, 0xEDu, 0xFEu, 0x0Fu
 };
 
 static const uint8_t test_ckn[24] =
@@ -95,7 +108,10 @@ static void macsec_test_static_config(macsec_config_t *cfg,
     memcpy(cfg->local_mac.addr, local_mac, 6u);
     cfg->port_id = 1u;
 
-    memcpy(cfg->static_sak, test_static_sak, sizeof(test_static_sak));
+    memcpy(cfg->static_sak,
+           test_static_sak,
+           sizeof(test_static_sak));
+
     cfg->static_sak_len = sizeof(test_static_sak);
     cfg->static_an = an & 0x03u;
 
@@ -105,10 +121,15 @@ static void macsec_test_static_config(macsec_config_t *cfg,
 
 static void macsec_test_mka_config(macsec_config_t *cfg,
                                    const uint8_t local_mac[6],
+                                   const uint8_t *cak,
+                                   size_t cak_len,
                                    uint8_t priority)
 {
     macsec_assert(cfg != NULL);
     macsec_assert(local_mac != NULL);
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+    macsec_assert(cak_len <= sizeof(cfg->cak));
 
     memset(cfg, 0, sizeof(*cfg));
 
@@ -117,8 +138,8 @@ static void macsec_test_mka_config(macsec_config_t *cfg,
     memcpy(cfg->local_mac.addr, local_mac, 6u);
     cfg->port_id = 1u;
 
-    memcpy(cfg->cak, test_cak, sizeof(test_cak));
-    cfg->cak_len = sizeof(test_cak);
+    memcpy(cfg->cak, cak, cak_len);
+    cfg->cak_len = cak_len;
 
     memcpy(cfg->ckn, test_ckn, sizeof(test_ckn));
     cfg->ckn_len = sizeof(test_ckn);
@@ -130,7 +151,9 @@ static void macsec_test_mka_config(macsec_config_t *cfg,
     cfg->replay_window = 0u;
 }
 
-static int macsec_test_macsec_flow_static_bidirectional(macsec_test_macsec_flow_static_bidirectional_data_t *data, int verbose)
+static int macsec_test_macsec_flow_static_bidirectional(
+    macsec_test_macsec_flow_static_bidirectional_data_t *data,
+    int verbose)
 {
     size_t plain_len = 96u;
     size_t secure_len = 0u;
@@ -194,7 +217,9 @@ static int macsec_test_macsec_flow_static_bidirectional(macsec_test_macsec_flow_
 
     TEST_TRUE(pass_to_stack);
     TEST_TRUE(decrypted_len == plain_len);
-    TEST_TRUE(memcmp(data->plain_a, data->decrypted, plain_len) == 0);
+    TEST_TRUE(memcmp(data->plain_a,
+                     data->decrypted,
+                     plain_len) == 0);
 
     macsec_test_fill_plain_frame(data->plain_b,
                                  plain_len,
@@ -236,7 +261,9 @@ static int macsec_test_macsec_flow_static_bidirectional(macsec_test_macsec_flow_
 
     TEST_TRUE(pass_to_stack);
     TEST_TRUE(decrypted_len == plain_len);
-    TEST_TRUE(memcmp(data->plain_b, data->decrypted, plain_len) == 0);
+    TEST_TRUE(memcmp(data->plain_b,
+                     data->decrypted,
+                     plain_len) == 0);
 
     macsec_clear(&data->a);
     macsec_clear(&data->b);
@@ -244,7 +271,11 @@ static int macsec_test_macsec_flow_static_bidirectional(macsec_test_macsec_flow_
     return 0;
 }
 
-static int macsec_test_macsec_flow_eapol_consumed(macsec_test_macsec_flow_eapol_consumed_data_t *data, int verbose)
+static int macsec_test_macsec_flow_eapol_consumed(
+    macsec_test_macsec_flow_eapol_consumed_data_t *data,
+    const uint8_t *cak,
+    size_t cak_len,
+    int verbose)
 {
     size_t eapol_len = 0u;
     size_t plain_len = 0u;
@@ -255,17 +286,29 @@ static int macsec_test_macsec_flow_eapol_consumed(macsec_test_macsec_flow_eapol_
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MACsec flow EAPOL consumed test\n"));
+        MACSEC_PRINT((
+            "  MACsec flow EAPOL consumed test, %u-byte CAK\n",
+            (unsigned int)cak_len));
     }
 
-    macsec_test_mka_config(&data->cfg, test_mac_a, 255u);
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+
+    macsec_test_mka_config(&data->cfg,
+                           test_mac_a,
+                           cak,
+                           cak_len,
+                           255u);
+
+    TEST_TRUE(data->cfg.cak_len == cak_len);
+    TEST_TRUE(memcmp(data->cfg.cak, cak, cak_len) == 0);
 
     ret = macsec_init(&data->macsec, &data->cfg);
     TEST_OK(ret);
 
     ret = macsec_mka_init(&data->mka_tx,
-                          test_cak,
-                          sizeof(test_cak),
+                          cak,
+                          cak_len,
                           test_ckn,
                           sizeof(test_ckn),
                           test_mac_b,
@@ -313,7 +356,11 @@ static int macsec_test_macsec_flow_eapol_consumed(macsec_test_macsec_flow_eapol_
     return 0;
 }
 
-static int macsec_test_macsec_flow_mka_wait_drops_data_tx(macsec_test_macsec_flow_mka_wait_drops_data_tx_data_t *data, int verbose)
+static int macsec_test_macsec_flow_mka_wait_drops_data_tx(
+    macsec_test_macsec_flow_mka_wait_drops_data_tx_data_t *data,
+    const uint8_t *cak,
+    size_t cak_len,
+    int verbose)
 {
     size_t plain_len = 96u;
     size_t secure_len = 0u;
@@ -322,22 +369,36 @@ static int macsec_test_macsec_flow_mka_wait_drops_data_tx(macsec_test_macsec_flo
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MACsec flow MKA WAIT drops data TX test\n"));
+        MACSEC_PRINT((
+            "  MACsec flow MKA WAIT drops data TX test, "
+            "%u-byte CAK\n",
+            (unsigned int)cak_len));
     }
 
-    macsec_test_mka_config(&data->cfg, test_mac_a, 255u);
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+
+    macsec_test_mka_config(&data->cfg,
+                           test_mac_a,
+                           cak,
+                           cak_len,
+                           255u);
+
+    TEST_TRUE(data->cfg.cak_len == cak_len);
+    TEST_TRUE(memcmp(data->cfg.cak, cak, cak_len) == 0);
 
     ret = macsec_init(&data->ctx, &data->cfg);
     TEST_OK(ret);
 
-    TEST_TRUE(macsec_get_state(&data->ctx) == MACSEC_STATE_WAIT_MKA);
+    TEST_TRUE(macsec_get_state(&data->ctx) ==
+              MACSEC_STATE_WAIT_MKA);
 
     macsec_test_fill_plain_frame(data->plain,
                                  plain_len,
                                  test_mac_b,
                                  test_mac_a,
                                  0x0800u,
-                                 0x77u);
+                                 (cak_len == 16u) ? 0x77u : 0x78u);
 
     ret = macsec_output(&data->ctx,
                         data->plain,
@@ -354,7 +415,9 @@ static int macsec_test_macsec_flow_mka_wait_drops_data_tx(macsec_test_macsec_flo
     return 0;
 }
 
-static int macsec_test_macsec_flow_static_bad_key_rejected(macsec_test_macsec_flow_static_bad_key_rejected_data_t *data, int verbose)
+static int macsec_test_macsec_flow_static_bad_key_rejected(
+    macsec_test_macsec_flow_static_bad_key_rejected_data_t *data,
+    int verbose)
 {
     size_t plain_len = 96u;
     size_t secure_len = 0u;
@@ -366,7 +429,8 @@ static int macsec_test_macsec_flow_static_bad_key_rejected(macsec_test_macsec_fl
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MACsec flow static bad key rejected test\n"));
+        MACSEC_PRINT((
+            "  MACsec flow static bad key rejected test\n"));
     }
 
     macsec_test_static_config(&data->cfg_a, test_mac_a, 0u);
@@ -421,17 +485,45 @@ static int macsec_test_macsec_flow_static_bad_key_rejected(macsec_test_macsec_fl
     return 0;
 }
 
-int macsec_test_macsec_flow(macsec_test_macsec_flow_data_t *data, int verbose)
+int macsec_test_macsec_flow(macsec_test_macsec_flow_data_t *data,
+                            int verbose)
 {
     if (verbose)
     {
         MACSEC_PRINT(("MACsec top-level flow tests\n"));
     }
 
-    TEST_OK(macsec_test_macsec_flow_static_bidirectional(&data->test_macsec_flow_static_bidirectional_data, verbose));
-    TEST_OK(macsec_test_macsec_flow_eapol_consumed(&data->test_macsec_flow_eapol_consumed_data, verbose));
-    TEST_OK(macsec_test_macsec_flow_mka_wait_drops_data_tx(&data->test_macsec_flow_mka_wait_drops_data_tx_data, verbose));
-    TEST_OK(macsec_test_macsec_flow_static_bad_key_rejected(&data->test_macsec_flow_static_bad_key_rejected_data, verbose));
+    TEST_OK(macsec_test_macsec_flow_static_bidirectional(
+        &data->test_macsec_flow_static_bidirectional_data,
+        verbose));
+
+    TEST_OK(macsec_test_macsec_flow_eapol_consumed(
+        &data->test_macsec_flow_eapol_consumed_data,
+        test_cak_16,
+        sizeof(test_cak_16),
+        verbose));
+
+    TEST_OK(macsec_test_macsec_flow_eapol_consumed(
+        &data->test_macsec_flow_eapol_consumed_data,
+        test_cak_32,
+        sizeof(test_cak_32),
+        verbose));
+
+    TEST_OK(macsec_test_macsec_flow_mka_wait_drops_data_tx(
+        &data->test_macsec_flow_mka_wait_drops_data_tx_data,
+        test_cak_16,
+        sizeof(test_cak_16),
+        verbose));
+
+    TEST_OK(macsec_test_macsec_flow_mka_wait_drops_data_tx(
+        &data->test_macsec_flow_mka_wait_drops_data_tx_data,
+        test_cak_32,
+        sizeof(test_cak_32),
+        verbose));
+
+    TEST_OK(macsec_test_macsec_flow_static_bad_key_rejected(
+        &data->test_macsec_flow_static_bad_key_rejected_data,
+        verbose));
 
     return 0;
 }

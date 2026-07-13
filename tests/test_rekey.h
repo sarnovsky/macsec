@@ -6,7 +6,7 @@
  * This file validates Secure Association Key (SAK) replacement, packet
  * number continuity and key transition procedures during MACsec operation.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal SarnovskÃ½
  *
  * SPDX-License-Identifier: MIT
  *
@@ -22,7 +22,6 @@ extern "C" {
 #endif
 
 #include "common.h"
-
 #include "frame_crypto.h"
 
 #if (MACSEC_SELF_TEST != 0)
@@ -69,15 +68,19 @@ typedef struct
 
 typedef union
 {
-    macsec_test_rekey_an_rotation_decrypts_all_data_t rekey_an_rotation_decrypts_all_data;
-    macsec_test_rekey_old_rx_sak_still_accepted_data_t rekey_old_rx_sak_still_accepted_data;
-    macsec_test_rekey_wrong_key_same_an_fails_data_t rekey_wrong_key_same_an_fails_data;
-} macsec_test_rekey_data_t;
+    macsec_test_rekey_an_rotation_decrypts_all_data_t
+        rekey_an_rotation_decrypts_all_data;
 
+    macsec_test_rekey_old_rx_sak_still_accepted_data_t
+        rekey_old_rx_sak_still_accepted_data;
+
+    macsec_test_rekey_wrong_key_same_an_fails_data_t
+        rekey_wrong_key_same_an_fails_data;
+} macsec_test_rekey_data_t;
 
 int macsec_test_rekey(macsec_test_rekey_data_t *data, int verbose);
 
-#endif
+#endif /* MACSEC_SELF_TEST */
 
 #ifdef __cplusplus
 }

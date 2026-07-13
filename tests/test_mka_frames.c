@@ -6,7 +6,7 @@
  * This file verifies generation, parsing and validation of MKA protocol
  * frames and their individual parameter sets.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal SarnovskÃ½
  *
  * SPDX-License-Identifier: MIT
  *
@@ -17,14 +17,29 @@
 #include <tests/test_mka_frames.h>
 #include <tests/unit_tests.h>
 
+#include <string.h>
+
 #if (MACSEC_SELF_TEST != 0)
 
-static const uint8_t s_cak[16] =
+static const uint8_t s_cak_16[16] =
 {
     0x00u, 0x11u, 0x22u, 0x33u,
     0x44u, 0x55u, 0x66u, 0x77u,
     0x88u, 0x99u, 0xAAu, 0xBBu,
     0xCCu, 0xDDu, 0xEEu, 0xFFu
+};
+
+static const uint8_t s_cak_32[32] =
+{
+    0x00u, 0x11u, 0x22u, 0x33u,
+    0x44u, 0x55u, 0x66u, 0x77u,
+    0x88u, 0x99u, 0xAAu, 0xBBu,
+    0xCCu, 0xDDu, 0xEEu, 0xFFu,
+
+    0x10u, 0x21u, 0x32u, 0x43u,
+    0x54u, 0x65u, 0x76u, 0x87u,
+    0x98u, 0xA9u, 0xBAu, 0xCBu,
+    0xDCu, 0xEDu, 0xFEu, 0x0Fu
 };
 
 static const uint8_t s_ckn[24] =
@@ -48,12 +63,19 @@ static const uint8_t s_mac_b[6] =
 };
 
 static int macsec_test_mka_init_ctx(macsec_mka_ctx_t *ctx,
+                                    const uint8_t *cak,
+                                    size_t cak_len,
                                     const uint8_t mac[6],
                                     uint8_t priority)
 {
+    macsec_assert(ctx != NULL);
+    macsec_assert(cak != NULL);
+    macsec_assert(mac != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+
     return macsec_mka_init(ctx,
-                           s_cak,
-                           sizeof(s_cak),
+                           cak,
+                           cak_len,
                            s_ckn,
                            sizeof(s_ckn),
                            mac,
@@ -62,7 +84,9 @@ static int macsec_test_mka_init_ctx(macsec_mka_ctx_t *ctx,
                            2000u);
 }
 
-static int macsec_test_mka_frames_linux_basic_icv(macsec_test_mka_frames_linux_basic_icv_data_t *data, int verbose)
+static int macsec_test_mka_frames_linux_basic_icv(
+    macsec_test_mka_frames_linux_basic_icv_data_t *data,
+    int verbose)
 {
     typedef struct
     {
@@ -87,10 +111,14 @@ static int macsec_test_mka_frames_linux_basic_icv(macsec_test_mka_frames_linux_b
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA frames Linux Basic/ICV test\n"));
+        MACSEC_PRINT(("  MKA frames Linux Basic/ICV test, 16-byte CAK\n"));
     }
 
-    ret = macsec_test_mka_init_ctx(&data->mka, s_mac_a, 100u);
+    ret = macsec_test_mka_init_ctx(&data->mka,
+                                   s_cak_16,
+                                   sizeof(s_cak_16),
+                                   s_mac_a,
+                                   100u);
     TEST_OK(ret);
 
     for (i = 0u; i < MKA_LINUX_BASIC_FRAME_COUNT; i++)
@@ -135,17 +163,30 @@ static int macsec_test_mka_frames_linux_basic_icv(macsec_test_mka_frames_linux_b
     return 0;
 }
 
-static int macsec_test_mka_frames_build_parse_basic(macsec_test_mka_frames_build_parse_basic_data_t *data, int verbose)
+static int macsec_test_mka_frames_build_parse_basic(
+    macsec_test_mka_frames_build_parse_basic_data_t *data,
+    const uint8_t *cak,
+    size_t cak_len,
+    int verbose)
 {
     size_t frame_len;
     int ret;
 
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA frame build/parse Basic test\n"));
+        MACSEC_PRINT((
+            "  MKA frame build/parse Basic test, %u-byte CAK\n",
+            (unsigned int)cak_len));
     }
 
-    ret = macsec_test_mka_init_ctx(&data->mka, s_mac_a, 255u);
+    ret = macsec_test_mka_init_ctx(&data->mka,
+                                   cak,
+                                   cak_len,
+                                   s_mac_a,
+                                   255u);
     TEST_OK(ret);
 
     frame_len = 0u;
@@ -160,7 +201,9 @@ static int macsec_test_mka_frames_build_parse_basic(macsec_test_mka_frames_build
         return ret;
     }
 
-    ret = macsec_mka_parse_basic(data->frame, frame_len, &data->basic);
+    ret = macsec_mka_parse_basic(data->frame,
+                                 frame_len,
+                                 &data->basic);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->mka);
@@ -179,20 +222,37 @@ static int macsec_test_mka_frames_build_parse_basic(macsec_test_mka_frames_build
     return 0;
 }
 
-static int macsec_test_mka_frames_generated_icv_ok(macsec_test_mka_frames_generated_icv_ok_data_t *data, int verbose)
+static int macsec_test_mka_frames_generated_icv_ok(
+    macsec_test_mka_frames_generated_icv_ok_data_t *data,
+    const uint8_t *cak,
+    size_t cak_len,
+    int verbose)
 {
     size_t frame_len;
     int ret;
 
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA generated frame ICV OK test\n"));
+        MACSEC_PRINT((
+            "  MKA generated frame ICV OK test, %u-byte CAK\n",
+            (unsigned int)cak_len));
     }
 
-    ret = macsec_test_mka_init_ctx(&data->tx, s_mac_a, 255u);
+    ret = macsec_test_mka_init_ctx(&data->tx,
+                                   cak,
+                                   cak_len,
+                                   s_mac_a,
+                                   255u);
     TEST_OK(ret);
 
-    ret = macsec_test_mka_init_ctx(&data->rx, s_mac_b, 100u);
+    ret = macsec_test_mka_init_ctx(&data->rx,
+                                   cak,
+                                   cak_len,
+                                   s_mac_b,
+                                   100u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->tx);
@@ -212,7 +272,10 @@ static int macsec_test_mka_frames_generated_icv_ok(macsec_test_mka_frames_genera
         return ret;
     }
 
-    ret = macsec_mka_input(&data->rx, data->frame, frame_len, 1000u);
+    ret = macsec_mka_input(&data->rx,
+                           data->frame,
+                           frame_len,
+                           1000u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->tx);
@@ -231,20 +294,37 @@ static int macsec_test_mka_frames_generated_icv_ok(macsec_test_mka_frames_genera
     return 0;
 }
 
-static int macsec_test_mka_frames_generated_icv_bad(macsec_test_mka_frames_generated_icv_bad_data_t *data, int verbose)
+static int macsec_test_mka_frames_generated_icv_bad(
+    macsec_test_mka_frames_generated_icv_bad_data_t *data,
+    const uint8_t *cak,
+    size_t cak_len,
+    int verbose)
 {
     size_t frame_len;
     int ret;
 
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA generated frame ICV bad test\n"));
+        MACSEC_PRINT((
+            "  MKA generated frame ICV bad test, %u-byte CAK\n",
+            (unsigned int)cak_len));
     }
 
-    ret = macsec_test_mka_init_ctx(&data->tx, s_mac_a, 255u);
+    ret = macsec_test_mka_init_ctx(&data->tx,
+                                   cak,
+                                   cak_len,
+                                   s_mac_a,
+                                   255u);
     TEST_OK(ret);
 
-    ret = macsec_test_mka_init_ctx(&data->rx, s_mac_b, 100u);
+    ret = macsec_test_mka_init_ctx(&data->rx,
+                                   cak,
+                                   cak_len,
+                                   s_mac_b,
+                                   100u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->tx);
@@ -266,13 +346,14 @@ static int macsec_test_mka_frames_generated_icv_bad(macsec_test_mka_frames_gener
 
     data->frame[frame_len - 1u] ^= 0x01u;
 
-    ret = macsec_mka_input(&data->rx, data->frame, frame_len, 1000u);
-    if (ret != MACSEC_ERR_AUTH)
-    {
-        macsec_mka_clear(&data->tx);
-        macsec_mka_clear(&data->rx);
-        return -1;
-    }
+    ret = macsec_mka_input(&data->rx,
+                           data->frame,
+                           frame_len,
+                           1000u);
+
+    TEST_TRUE(ret == MACSEC_ERR_AUTH);
+    TEST_TRUE(!data->rx.last_icv_valid);
+    TEST_TRUE(!data->rx.peer.valid);
 
     macsec_mka_clear(&data->tx);
     macsec_mka_clear(&data->rx);
@@ -280,7 +361,11 @@ static int macsec_test_mka_frames_generated_icv_bad(macsec_test_mka_frames_gener
     return 0;
 }
 
-static int macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_peer_exchange_data_t *data, int verbose)
+static int macsec_test_mka_frames_two_peer_exchange(
+    macsec_test_mka_frames_two_peer_exchange_data_t *data,
+    const uint8_t *cak,
+    size_t cak_len,
+    int verbose)
 {
     static const uint8_t local_mac_a[6] =
     {
@@ -292,35 +377,30 @@ static int macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_p
         0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x02u
     };
 
-    static const char cakText[] =
-        "00112233445566778899aabbccddeeff";
-
-    static const char cknText[] =
-        "00112233445566778899aabbccddeeff"
-        "0011223344556677";
-
-    size_t cak_len = 0u;
-    size_t ckn_len = 0u;
     size_t frame_len = 0u;
-
     int ret;
+
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA two-peer exchange test\n"));
+        MACSEC_PRINT((
+            "  MKA two-peer exchange test, %u-byte CAK\n",
+            (unsigned int)cak_len));
     }
 
-    ret = macsec_hex_to_bin(cakText, data->cak, &cak_len, sizeof(data->cak));
-    TEST_OK(ret);
+    memset(data->cak, 0, sizeof(data->cak));
+    memset(data->ckn, 0, sizeof(data->ckn));
 
-    ret = macsec_hex_to_bin(cknText, data->ckn, &ckn_len, sizeof(data->ckn));
-    TEST_OK(ret);
+    memcpy(data->cak, cak, cak_len);
+    memcpy(data->ckn, s_ckn, sizeof(s_ckn));
 
     ret = macsec_mka_init(&data->a,
                           data->cak,
                           cak_len,
                           data->ckn,
-                          ckn_len,
+                          sizeof(s_ckn),
                           local_mac_a,
                           1u,
                           255u,
@@ -331,7 +411,7 @@ static int macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_p
                           data->cak,
                           cak_len,
                           data->ckn,
-                          ckn_len,
+                          sizeof(s_ckn),
                           local_mac_b,
                           1u,
                           100u,
@@ -343,7 +423,11 @@ static int macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_p
     }
 
     frame_len = 0u;
-    ret = macsec_mka_get_tx_frame(&data->a, data->frame, &frame_len, sizeof(data->frame));
+
+    ret = macsec_mka_get_tx_frame(&data->a,
+                                  data->frame,
+                                  &frame_len,
+                                  sizeof(data->frame));
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->a);
@@ -351,7 +435,10 @@ static int macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_p
         return ret;
     }
 
-    ret = macsec_mka_input(&data->b, data->frame, frame_len, 100u);
+    ret = macsec_mka_input(&data->b,
+                           data->frame,
+                           frame_len,
+                           100u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->a);
@@ -365,7 +452,11 @@ static int macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_p
     TEST_TRUE(data->b.state == MACSEC_MKA_STATE_PEER_FOUND);
 
     frame_len = 0u;
-    ret = macsec_mka_get_tx_frame(&data->b, data->frame, &frame_len, sizeof(data->frame));
+
+    ret = macsec_mka_get_tx_frame(&data->b,
+                                  data->frame,
+                                  &frame_len,
+                                  sizeof(data->frame));
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->a);
@@ -373,7 +464,10 @@ static int macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_p
         return ret;
     }
 
-    ret = macsec_mka_input(&data->a, data->frame, frame_len, 200u);
+    ret = macsec_mka_input(&data->a,
+                           data->frame,
+                           frame_len,
+                           200u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->a);
@@ -387,7 +481,11 @@ static int macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_p
     TEST_TRUE(data->a.state == MACSEC_MKA_STATE_AUTHENTICATED);
 
     frame_len = 0u;
-    ret = macsec_mka_get_tx_frame(&data->a, data->frame, &frame_len, sizeof(data->frame));
+
+    ret = macsec_mka_get_tx_frame(&data->a,
+                                  data->frame,
+                                  &frame_len,
+                                  sizeof(data->frame));
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->a);
@@ -395,7 +493,10 @@ static int macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_p
         return ret;
     }
 
-    ret = macsec_mka_input(&data->b, data->frame, frame_len, 300u);
+    ret = macsec_mka_input(&data->b,
+                           data->frame,
+                           frame_len,
+                           300u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->a);
@@ -414,17 +515,30 @@ static int macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_p
     return 0;
 }
 
-static int macsec_test_mka_frames_tx_pending_timing(macsec_test_mka_frames_tx_pending_timing_data_t *data, int verbose)
+static int macsec_test_mka_frames_tx_pending_timing(
+    macsec_test_mka_frames_tx_pending_timing_data_t *data,
+    const uint8_t *cak,
+    size_t cak_len,
+    int verbose)
 {
     size_t frame_len;
     int ret;
 
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA tx_pending timing test\n"));
+        MACSEC_PRINT((
+            "  MKA tx_pending timing test, %u-byte CAK\n",
+            (unsigned int)cak_len));
     }
 
-    ret = macsec_test_mka_init_ctx(&data->mka, s_mac_a, 255u);
+    ret = macsec_test_mka_init_ctx(&data->mka,
+                                   cak,
+                                   cak_len,
+                                   s_mac_a,
+                                   255u);
     TEST_OK(ret);
 
     frame_len = 0u;
@@ -464,17 +578,10 @@ static int macsec_test_mka_frames_tx_pending_timing(macsec_test_mka_frames_tx_pe
     return 0;
 }
 
-static int macsec_test_mka_frames_distributed_sak_layout(macsec_test_mka_frames_distributed_sak_layout_data_t *data, int verbose)
+static int macsec_test_mka_frames_distributed_sak_layout(
+    macsec_test_mka_frames_distributed_sak_layout_data_t *data,
+    int verbose)
 {
-    /*
-     * This test verifies only the local interpretation of Linux Distributed SAK
-     * body header:
-     *
-     *   body[0..3] = Key Number
-     *   AN = (Key Number - 1) & 0x03
-     *
-     * It protects against the previous bug where AN was decoded from body[0].
-     */
     uint8_t body[4];
     uint32_t key_number;
     uint8_t an;
@@ -578,26 +685,10 @@ static int test_mka_find_param(const uint8_t *frame,
 }
 
 static int test_mka_init_pair(macsec_mka_ctx_t *a,
-                              macsec_mka_ctx_t *b)
+                              macsec_mka_ctx_t *b,
+                              const uint8_t *cak,
+                              size_t cak_len)
 {
-    static const uint8_t cak[16] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu
-    };
-
-    static const uint8_t ckn[24] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu,
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u
-    };
-
     static const uint8_t mac_a[6] =
     {
         0x2Eu, 0x1Fu, 0xB1u, 0xB9u, 0x68u, 0x27u
@@ -608,17 +699,38 @@ static int test_mka_init_pair(macsec_mka_ctx_t *a,
         0xDCu, 0xA6u, 0x32u, 0xD1u, 0x6Fu, 0x96u
     };
 
-    TEST_OK(macsec_mka_init(a, cak, sizeof(cak), ckn, sizeof(ckn),
-                            mac_a, 1u, 10u, 2000u));
+    TEST_TRUE(a != NULL);
+    TEST_TRUE(b != NULL);
+    TEST_TRUE(cak != NULL);
+    TEST_TRUE((cak_len == 16u) || (cak_len == 32u));
 
-    TEST_OK(macsec_mka_init(b, cak, sizeof(cak), ckn, sizeof(ckn),
-                            mac_b, 1u, 100u, 2000u));
+    TEST_OK(macsec_mka_init(a,
+                            cak,
+                            cak_len,
+                            s_ckn,
+                            sizeof(s_ckn),
+                            mac_a,
+                            1u,
+                            10u,
+                            2000u));
+
+    TEST_OK(macsec_mka_init(b,
+                            cak,
+                            cak_len,
+                            s_ckn,
+                            sizeof(s_ckn),
+                            mac_b,
+                            1u,
+                            100u,
+                            2000u));
 
     return 0;
 }
 
 static int test_mka_make_a_key_server_live(macsec_mka_ctx_t *a,
                                            macsec_mka_ctx_t *b,
+                                           const uint8_t *cak,
+                                           size_t cak_len,
                                            uint8_t *frame_a,
                                            uint8_t *frame_b,
                                            size_t frame_max,
@@ -627,64 +739,146 @@ static int test_mka_make_a_key_server_live(macsec_mka_ctx_t *a,
     size_t len_a;
     size_t len_b;
 
-    TEST_OK(test_mka_init_pair(a, b));
+    TEST_TRUE(cak != NULL);
+    TEST_TRUE((cak_len == 16u) || (cak_len == 32u));
+
+    TEST_OK(test_mka_init_pair(a, b, cak, cak_len));
 
     len_a = 0u;
-    TEST_OK(macsec_mka_get_tx_frame(a, frame_a, &len_a, frame_max));
-    TEST_OK(macsec_mka_input(b, frame_a, len_a, 1000u));
+
+    TEST_OK(macsec_mka_get_tx_frame(a,
+                                    frame_a,
+                                    &len_a,
+                                    frame_max));
+
+    TEST_OK(macsec_mka_input(b,
+                             frame_a,
+                             len_a,
+                             1000u));
 
     len_b = 0u;
-    TEST_OK(macsec_mka_get_tx_frame(b, frame_b, &len_b, frame_max));
-    TEST_OK(macsec_mka_input(a, frame_b, len_b, 2000u));
+
+    TEST_OK(macsec_mka_get_tx_frame(b,
+                                    frame_b,
+                                    &len_b,
+                                    frame_max));
+
+    TEST_OK(macsec_mka_input(a,
+                             frame_b,
+                             len_b,
+                             2000u));
 
     TEST_TRUE(a->local_key_server);
     TEST_TRUE(a->peer.valid);
     TEST_TRUE(a->peer.live);
 
     len_a = 0u;
-    TEST_OK(macsec_mka_get_tx_frame(a, frame_a, &len_a, frame_max));
+
+    TEST_OK(macsec_mka_get_tx_frame(a,
+                                    frame_a,
+                                    &len_a,
+                                    frame_max));
 
     *frame_a_len = len_a;
 
     return 0;
 }
 
-int macsec_test_mka_frames_stm32_key_server_distributes_sak(macsec_test_mka_frames_stm32_key_server_distributes_sak_data_t *data, int verbose)
+static int macsec_test_mka_frames_stm32_key_server_distributes_sak(
+    macsec_test_mka_frames_stm32_key_server_distributes_sak_data_t *data,
+    const uint8_t *cak,
+    size_t cak_len,
+    int verbose)
 {
     size_t frame_a_len;
     const uint8_t *param;
     uint16_t body_len;
+    int ret;
+
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA STM32 key-server Distributed SAK test\n"));
+        MACSEC_PRINT((
+            "  MKA STM32 key-server Distributed SAK test, "
+            "%u-byte CAK\n",
+            (unsigned int)cak_len));
     }
 
-    TEST_OK(test_mka_make_a_key_server_live(&data->a,
-                                            &data->b,
-                                            data->frame_a,
-                                            data->frame_b,
-                                            sizeof(data->frame_a),
-                                            &frame_a_len));
+    TEST_OK(test_mka_make_a_key_server_live(
+        &data->a,
+        &data->b,
+        cak,
+        cak_len,
+        data->frame_a,
+        data->frame_b,
+        sizeof(data->frame_a),
+        &frame_a_len));
 
-    TEST_TRUE(frame_a_len == 186u);
+    /*
+     * Current implementation always generates a 16-byte SAK.
+     *
+     * AES Key Wrap of a 16-byte SAK produces 24 bytes,
+     * independently of whether the KEK is 16 or 32 bytes.
+     */
+    TEST_EQ_U32(frame_a_len, 186u);
 
-    TEST_OK(test_mka_find_param(data->frame_a,
-                                frame_a_len,
-                                TEST_MKA_PARAM_DISTRIBUTED_SAK,
-                                &param,
-                                &body_len));
+    TEST_OK(test_mka_find_param(
+        data->frame_a,
+        frame_a_len,
+        TEST_MKA_PARAM_DISTRIBUTED_SAK,
+        &param,
+        &body_len));
 
     TEST_EQ_U32(body_len, 28u);
     TEST_EQ_U32(macsec_rd_be32(&param[4]), 1u);
 
-    TEST_OK(test_mka_find_param(data->frame_a,
-                                frame_a_len,
-                                TEST_MKA_PARAM_SAK_USE,
-                                &param,
-                                &body_len));
+    TEST_OK(test_mka_find_param(
+        data->frame_a,
+        frame_a_len,
+        TEST_MKA_PARAM_SAK_USE,
+        &param,
+        &body_len));
 
     TEST_EQ_U32(body_len, 40u);
+
+    /*
+     * At this point A has generated the SAK and included it in
+     * frame_a, but B has not received this final frame yet.
+     */
+    TEST_TRUE(data->a.latest_sak.valid);
+    TEST_EQ_U32(data->a.latest_sak.sak_len, 16u);
+
+    ret = macsec_mka_input(&data->b,
+                           data->frame_a,
+                           frame_a_len,
+                           3000u);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_mka_clear(&data->a);
+        macsec_mka_clear(&data->b);
+        return ret;
+    }
+
+    /*
+     * B must now have successfully authenticated the frame,
+     * unwrapped the Distributed SAK using KEK-128 or KEK-256
+     * and stored the same 16-byte SAK.
+     */
+    TEST_TRUE(data->b.last_icv_valid);
+    TEST_TRUE(data->b.latest_sak.valid);
+    TEST_EQ_U32(data->b.latest_sak.sak_len, 16u);
+
+    TEST_MEM_EQ(data->a.latest_sak.sak,
+                data->b.latest_sak.sak,
+                16u);
+
+    TEST_EQ_U32(data->a.latest_sak.key_number,
+                data->b.latest_sak.key_number);
+
+    TEST_EQ_U32(data->a.latest_sak.an,
+                data->b.latest_sak.an);
 
     macsec_mka_clear(&data->a);
     macsec_mka_clear(&data->b);
@@ -692,23 +886,35 @@ int macsec_test_mka_frames_stm32_key_server_distributes_sak(macsec_test_mka_fram
     return 0;
 }
 
-int macsec_test_mka_frames_sak_use_key_server_mi(macsec_test_mka_frames_sak_use_key_server_mi_data_t *data, int verbose)
+static int macsec_test_mka_frames_sak_use_key_server_mi(
+    macsec_test_mka_frames_sak_use_key_server_mi_data_t *data,
+    const uint8_t *cak,
+    size_t cak_len,
+    int verbose)
 {
     size_t frame_a_len;
     const uint8_t *param;
     uint16_t body_len;
 
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA SAK Use Key Server MI test\n"));
+        MACSEC_PRINT((
+            "  MKA SAK Use Key Server MI test, %u-byte CAK\n",
+            (unsigned int)cak_len));
     }
 
-    TEST_OK(test_mka_make_a_key_server_live(&data->a,
-                                            &data->b,
-                                            data->frame_a,
-                                            data->frame_b,
-                                            sizeof(data->frame_a),
-                                            &frame_a_len));
+    TEST_OK(test_mka_make_a_key_server_live(
+        &data->a,
+        &data->b,
+        cak,
+        cak_len,
+        data->frame_a,
+        data->frame_b,
+        sizeof(data->frame_a),
+        &frame_a_len));
 
     TEST_OK(test_mka_find_param(data->frame_a,
                                 frame_a_len,
@@ -717,12 +923,6 @@ int macsec_test_mka_frames_sak_use_key_server_mi(macsec_test_mka_frames_sak_use_
                                 &body_len));
 
     TEST_EQ_U32(body_len, 40u);
-
-    /*
-     * SAK Use body starts at param + 4.
-     * First 12 bytes of body are Key Server MI.
-     * Since A is Key Server, it must be A local MI.
-     */
     TEST_MEM_EQ(&param[4], data->a.local_mi, MACSEC_MKA_MI_LEN);
 
     macsec_mka_clear(&data->a);
@@ -731,24 +931,36 @@ int macsec_test_mka_frames_sak_use_key_server_mi(macsec_test_mka_frames_sak_use_
     return 0;
 }
 
-int macsec_test_mka_frames_sak_use_tx_rx_flags(macsec_test_mka_frames_sak_use_tx_rx_flags_data_t *data, int verbose)
+static int macsec_test_mka_frames_sak_use_tx_rx_flags(
+    macsec_test_mka_frames_sak_use_tx_rx_flags_data_t *data,
+    const uint8_t *cak,
+    size_t cak_len,
+    int verbose)
 {
     size_t frame_a_len;
     const uint8_t *param;
     uint16_t body_len;
     uint8_t flags;
 
+    macsec_assert(cak != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA SAK Use Tx/Rx flags test\n"));
+        MACSEC_PRINT((
+            "  MKA SAK Use Tx/Rx flags test, %u-byte CAK\n",
+            (unsigned int)cak_len));
     }
 
-    TEST_OK(test_mka_make_a_key_server_live(&data->a,
-                                            &data->b,
-                                            data->frame_a,
-                                            data->frame_b,
-                                            sizeof(data->frame_a),
-                                            &frame_a_len));
+    TEST_OK(test_mka_make_a_key_server_live(
+        &data->a,
+        &data->b,
+        cak,
+        cak_len,
+        data->frame_a,
+        data->frame_b,
+        sizeof(data->frame_a),
+        &frame_a_len));
 
     TEST_OK(test_mka_find_param(data->frame_a,
                                 frame_a_len,
@@ -758,10 +970,6 @@ int macsec_test_mka_frames_sak_use_tx_rx_flags(macsec_test_mka_frames_sak_use_tx
 
     flags = param[1];
 
-    /*
-     * Before data-plane TX activation:
-     * AN = 0, Latest Key Tx = 0, Latest Key Rx = 1.
-     */
     TEST_EQ_U32((flags >> 6u) & 0x03u, 0u);
     TEST_TRUE((flags & 0x20u) == 0u);
     TEST_TRUE((flags & 0x10u) != 0u);
@@ -769,6 +977,7 @@ int macsec_test_mka_frames_sak_use_tx_rx_flags(macsec_test_mka_frames_sak_use_tx
     macsec_mka_set_latest_key_tx(&data->a, 0u, 1u);
 
     frame_a_len = 0u;
+
     TEST_OK(macsec_mka_get_tx_frame(&data->a,
                                     data->frame_a,
                                     &frame_a_len,
@@ -782,10 +991,6 @@ int macsec_test_mka_frames_sak_use_tx_rx_flags(macsec_test_mka_frames_sak_use_tx
 
     flags = param[1];
 
-    /*
-     * After TX activation:
-     * AN = 0, Latest Key Tx = 1, Latest Key Rx = 1.
-     */
     TEST_EQ_U32((flags >> 6u) & 0x03u, 0u);
     TEST_TRUE((flags & 0x20u) != 0u);
     TEST_TRUE((flags & 0x10u) != 0u);
@@ -796,23 +1001,117 @@ int macsec_test_mka_frames_sak_use_tx_rx_flags(macsec_test_mka_frames_sak_use_tx
     return 0;
 }
 
-int macsec_test_mka_frames(macsec_test_mka_frames_data_t *data, int verbose)
+int macsec_test_mka_frames(macsec_test_mka_frames_data_t *data,
+                           int verbose)
 {
     if (verbose)
     {
         MACSEC_PRINT(("MACsec MKA frame tests\n"));
     }
 
-    TEST_OK(macsec_test_mka_frames_linux_basic_icv(&data->test_mka_frames_linux_basic_icv_data, verbose));
-    TEST_OK(macsec_test_mka_frames_build_parse_basic(&data->test_mka_frames_build_parse_basic_data, verbose));
-    TEST_OK(macsec_test_mka_frames_generated_icv_ok(&data->test_mka_frames_generated_icv_ok_data, verbose));
-    TEST_OK(macsec_test_mka_frames_generated_icv_bad(&data->test_mka_frames_generated_icv_bad_data, verbose));
-    TEST_OK(macsec_test_mka_frames_two_peer_exchange(&data->test_mka_frames_two_peer_exchange_data, verbose));
-    TEST_OK(macsec_test_mka_frames_tx_pending_timing(&data->test_mka_frames_tx_pending_timing_data, verbose));
-    TEST_OK(macsec_test_mka_frames_distributed_sak_layout(&data->test_mka_frames_distributed_sak_layout_data, verbose));
-    TEST_OK(macsec_test_mka_frames_stm32_key_server_distributes_sak(&data->test_mka_frames_stm32_key_server_distributes_sak_data, verbose));
-    TEST_OK(macsec_test_mka_frames_sak_use_key_server_mi(&data->test_mka_frames_sak_use_key_server_mi_data, verbose));
-    TEST_OK(macsec_test_mka_frames_sak_use_tx_rx_flags(&data->test_mka_frames_sak_use_tx_rx_flags_data, verbose));
+    TEST_OK(macsec_test_mka_frames_linux_basic_icv(
+        &data->test_mka_frames_linux_basic_icv_data,
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_build_parse_basic(
+        &data->test_mka_frames_build_parse_basic_data,
+        s_cak_16,
+        sizeof(s_cak_16),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_build_parse_basic(
+        &data->test_mka_frames_build_parse_basic_data,
+        s_cak_32,
+        sizeof(s_cak_32),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_generated_icv_ok(
+        &data->test_mka_frames_generated_icv_ok_data,
+        s_cak_16,
+        sizeof(s_cak_16),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_generated_icv_ok(
+        &data->test_mka_frames_generated_icv_ok_data,
+        s_cak_32,
+        sizeof(s_cak_32),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_generated_icv_bad(
+        &data->test_mka_frames_generated_icv_bad_data,
+        s_cak_16,
+        sizeof(s_cak_16),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_generated_icv_bad(
+        &data->test_mka_frames_generated_icv_bad_data,
+        s_cak_32,
+        sizeof(s_cak_32),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_two_peer_exchange(
+        &data->test_mka_frames_two_peer_exchange_data,
+        s_cak_16,
+        sizeof(s_cak_16),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_two_peer_exchange(
+        &data->test_mka_frames_two_peer_exchange_data,
+        s_cak_32,
+        sizeof(s_cak_32),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_tx_pending_timing(
+        &data->test_mka_frames_tx_pending_timing_data,
+        s_cak_16,
+        sizeof(s_cak_16),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_tx_pending_timing(
+        &data->test_mka_frames_tx_pending_timing_data,
+        s_cak_32,
+        sizeof(s_cak_32),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_distributed_sak_layout(
+        &data->test_mka_frames_distributed_sak_layout_data,
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_stm32_key_server_distributes_sak(
+        &data->test_mka_frames_stm32_key_server_distributes_sak_data,
+        s_cak_16,
+        sizeof(s_cak_16),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_stm32_key_server_distributes_sak(
+        &data->test_mka_frames_stm32_key_server_distributes_sak_data,
+        s_cak_32,
+        sizeof(s_cak_32),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_sak_use_key_server_mi(
+        &data->test_mka_frames_sak_use_key_server_mi_data,
+        s_cak_16,
+        sizeof(s_cak_16),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_sak_use_key_server_mi(
+        &data->test_mka_frames_sak_use_key_server_mi_data,
+        s_cak_32,
+        sizeof(s_cak_32),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_sak_use_tx_rx_flags(
+        &data->test_mka_frames_sak_use_tx_rx_flags_data,
+        s_cak_16,
+        sizeof(s_cak_16),
+        verbose));
+
+    TEST_OK(macsec_test_mka_frames_sak_use_tx_rx_flags(
+        &data->test_mka_frames_sak_use_tx_rx_flags_data,
+        s_cak_32,
+        sizeof(s_cak_32),
+        verbose));
 
     if (verbose)
     {

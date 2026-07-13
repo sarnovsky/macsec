@@ -6,7 +6,7 @@
  * This file validates complete MACsec communication scenarios, including
  * secure frame transmission, reception and protocol state transitions.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal SarnovskÃ½
  *
  * SPDX-License-Identifier: MIT
  *
@@ -77,16 +77,23 @@ typedef struct
 
 typedef union
 {
-    macsec_test_macsec_flow_static_bidirectional_data_t test_macsec_flow_static_bidirectional_data;
-    macsec_test_macsec_flow_eapol_consumed_data_t test_macsec_flow_eapol_consumed_data;
-    macsec_test_macsec_flow_mka_wait_drops_data_tx_data_t test_macsec_flow_mka_wait_drops_data_tx_data;
-    macsec_test_macsec_flow_static_bad_key_rejected_data_t test_macsec_flow_static_bad_key_rejected_data;
+    macsec_test_macsec_flow_static_bidirectional_data_t
+        test_macsec_flow_static_bidirectional_data;
+
+    macsec_test_macsec_flow_eapol_consumed_data_t
+        test_macsec_flow_eapol_consumed_data;
+
+    macsec_test_macsec_flow_mka_wait_drops_data_tx_data_t
+        test_macsec_flow_mka_wait_drops_data_tx_data;
+
+    macsec_test_macsec_flow_static_bad_key_rejected_data_t
+        test_macsec_flow_static_bad_key_rejected_data;
 } macsec_test_macsec_flow_data_t;
 
+int macsec_test_macsec_flow(macsec_test_macsec_flow_data_t *data,
+                            int verbose);
 
-int macsec_test_macsec_flow(macsec_test_macsec_flow_data_t *data, int verbose);
-
-#endif
+#endif /* MACSEC_SELF_TEST */
 
 #ifdef __cplusplus
 }

@@ -6,7 +6,7 @@
  * This file verifies correct handling of malformed, invalid and unexpected
  * MKA messages, ensuring proper error detection and protocol robustness.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal SarnovskÃ½
  *
  * SPDX-License-Identifier: MIT
  *
@@ -22,7 +22,6 @@ extern "C" {
 #endif
 
 #include "common.h"
-
 #include "mka.h"
 
 #if (MACSEC_SELF_TEST != 0)
@@ -48,6 +47,7 @@ typedef struct
 typedef struct
 {
     uint8_t frame[MACSEC_MKA_MAX_FRAME_LEN];
+
     macsec_mka_ctx_t tx;
     macsec_mka_ctx_t rx;
 } macsec_test_mka_negative_bad_icv_data_t;
@@ -55,6 +55,7 @@ typedef struct
 typedef struct
 {
     uint8_t frame[MACSEC_MKA_MAX_FRAME_LEN];
+
     macsec_mka_ctx_t tx;
     macsec_mka_ctx_t rx;
 } macsec_test_mka_negative_wrong_cak_fails_icv_data_t;
@@ -67,18 +68,29 @@ typedef struct
 
 typedef union
 {
-    macsec_test_mka_negative_bad_ethertype_data_t test_mka_negative_bad_ethertype_data;
-    macsec_test_mka_negative_bad_eapol_type_data_t test_mka_negative_bad_eapol_type_data;
-    macsec_test_mka_negative_short_frame_data_t test_mka_negative_short_frame_data_data;
-    macsec_test_mka_negative_bad_icv_data_t test_mka_negative_bad_icv_data_data;
-    macsec_test_mka_negative_wrong_cak_fails_icv_data_t test_mka_negative_wrong_cak_fails_icv_data;
-    macsec_test_mka_negative_reflected_own_frame_ignored_data_t test_mka_negative_reflected_own_frame_ignored_data;
+    macsec_test_mka_negative_bad_ethertype_data_t
+        test_mka_negative_bad_ethertype_data;
+
+    macsec_test_mka_negative_bad_eapol_type_data_t
+        test_mka_negative_bad_eapol_type_data;
+
+    macsec_test_mka_negative_short_frame_data_t
+        test_mka_negative_short_frame_data_data;
+
+    macsec_test_mka_negative_bad_icv_data_t
+        test_mka_negative_bad_icv_data_data;
+
+    macsec_test_mka_negative_wrong_cak_fails_icv_data_t
+        test_mka_negative_wrong_cak_fails_icv_data;
+
+    macsec_test_mka_negative_reflected_own_frame_ignored_data_t
+        test_mka_negative_reflected_own_frame_ignored_data;
 } macsec_test_mka_negative_data_t;
 
+int macsec_test_mka_negative(macsec_test_mka_negative_data_t *data,
+                             int verbose);
 
-int macsec_test_mka_negative(macsec_test_mka_negative_data_t *data, int verbose);
-
-#endif
+#endif /* MACSEC_SELF_TEST */
 
 #ifdef __cplusplus
 }

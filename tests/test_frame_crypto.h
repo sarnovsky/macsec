@@ -6,7 +6,7 @@
  * This file validates Ethernet frame encryption, decryption, authentication
  * and MACsec frame processing using predefined test vectors.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal SarnovskÃ½
  *
  * SPDX-License-Identifier: MIT
  *
@@ -70,14 +70,21 @@ typedef struct
 
 typedef union
 {
-    macsec_test_frame_crypto_selftest_wrapper_data_t test_frame_crypto_selftest_wrapper_data;
-    macsec_test_frame_crypto_encrypt_decrypt_one_data_t test_frame_crypto_encrypt_decrypt_one_data;
-    macsec_test_frame_crypto_bad_icv_data_t test_frame_crypto_bad_icv_data;
-    macsec_test_frame_crypto_replay_reject_data_t test_frame_crypto_replay_reject_data;
+    macsec_test_frame_crypto_selftest_wrapper_data_t
+        test_frame_crypto_selftest_wrapper_data;
+
+    macsec_test_frame_crypto_encrypt_decrypt_one_data_t
+        test_frame_crypto_encrypt_decrypt_one_data;
+
+    macsec_test_frame_crypto_bad_icv_data_t
+        test_frame_crypto_bad_icv_data;
+
+    macsec_test_frame_crypto_replay_reject_data_t
+        test_frame_crypto_replay_reject_data;
 } macsec_test_frame_crypto_data_t;
 
-
-int macsec_test_frame_crypto(macsec_test_frame_crypto_data_t *data, int verbose);
+int macsec_test_frame_crypto(macsec_test_frame_crypto_data_t *data,
+                             int verbose);
 
 #endif /* MACSEC_SELF_TEST */
 
@@ -86,3 +93,4 @@ int macsec_test_frame_crypto(macsec_test_frame_crypto_data_t *data, int verbose)
 #endif
 
 #endif /* TEST_FRAME_CRYPTO_H */
+

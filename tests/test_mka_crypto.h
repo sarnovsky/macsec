@@ -6,7 +6,7 @@
  * This file validates MKA-specific cryptographic operations, including key
  * derivation, integrity calculation and related helper functions.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal SarnovskÃ½
  *
  * SPDX-License-Identifier: MIT
  *
@@ -41,6 +41,7 @@ typedef struct
     uint8_t pdu[96];
     uint8_t mic[MACSEC_MKA_MIC_LEN];
     uint8_t bad_mic[MACSEC_MKA_MIC_LEN];
+
     macsec_mka_crypto_ctx_t ctx;
 } macsec_test_mka_crypto_mic_positive_negative_data_t;
 
@@ -49,21 +50,29 @@ typedef struct
     uint8_t sak[16];
     uint8_t wrapped[40];
     uint8_t unwrapped[32];
+
     macsec_mka_crypto_ctx_t ctx;
 } macsec_test_mka_crypto_wrap_unwrap_sak_data_t;
 
 typedef union
 {
-    macsec_test_mka_crypto_selftest_api_data_t test_mka_crypto_selftest_api_data;
-    macsec_test_mka_crypto_psk_derive_data_t test_mka_crypto_psk_derive_data;
-    macsec_test_mka_crypto_mic_positive_negative_data_t test_mka_crypto_mic_positive_negative_data;
-    macsec_test_mka_crypto_wrap_unwrap_sak_data_t test_mka_crypto_wrap_unwrap_sak_data;
+    macsec_test_mka_crypto_selftest_api_data_t
+        test_mka_crypto_selftest_api_data;
+
+    macsec_test_mka_crypto_psk_derive_data_t
+        test_mka_crypto_psk_derive_data;
+
+    macsec_test_mka_crypto_mic_positive_negative_data_t
+        test_mka_crypto_mic_positive_negative_data;
+
+    macsec_test_mka_crypto_wrap_unwrap_sak_data_t
+        test_mka_crypto_wrap_unwrap_sak_data;
 } macsec_test_mka_crypto_data_t;
 
+int macsec_test_mka_crypto(macsec_test_mka_crypto_data_t *data,
+                           int verbose);
 
-int macsec_test_mka_crypto(macsec_test_mka_crypto_data_t *data, int verbose);
-
-#endif
+#endif /* MACSEC_SELF_TEST */
 
 #ifdef __cplusplus
 }
