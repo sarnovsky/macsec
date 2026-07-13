@@ -13,115 +13,134 @@
  */
 #include "gcm.h"
 
+#include <stdint.h>
 #include <string.h>
 
+#define GCM_GET_BE32(B, I)                                      \
+    ( ((uint32_t)(B)[(I) + 0u] << 24) |                         \
+      ((uint32_t)(B)[(I) + 1u] << 16) |                         \
+      ((uint32_t)(B)[(I) + 2u] <<  8) |                         \
+      ((uint32_t)(B)[(I) + 3u]      ) )
 
-/*
- * 32-bit integer manipulation macros (big endian)
- */
-#ifndef GET_UINT32_BE
-#define GET_UINT32_BE(n,b,i)                            \
-{                                                       \
-    (n) = ( (uint32_t) (b)[(i)    ] << 24 )             \
-        | ( (uint32_t) (b)[(i) + 1] << 16 )             \
-        | ( (uint32_t) (b)[(i) + 2] <<  8 )             \
-        | ( (uint32_t) (b)[(i) + 3]       );            \
-}
-#endif
+#define GCM_PUT_BE32(B, V, I)                                   \
+    do                                                          \
+    {                                                           \
+        (B)[(I) + 0u] = (unsigned char)((uint32_t)(V) >> 24);   \
+        (B)[(I) + 1u] = (unsigned char)((uint32_t)(V) >> 16);   \
+        (B)[(I) + 2u] = (unsigned char)((uint32_t)(V) >>  8);   \
+        (B)[(I) + 3u] = (unsigned char)((uint32_t)(V));         \
+    } while(0)
 
-#ifndef PUT_UINT32_BE
-#define PUT_UINT32_BE(n,b,i)                            \
-{                                                       \
-    (b)[(i)    ] = (unsigned char) ( (n) >> 24 );       \
-    (b)[(i) + 1] = (unsigned char) ( (n) >> 16 );       \
-    (b)[(i) + 2] = (unsigned char) ( (n) >>  8 );       \
-    (b)[(i) + 3] = (unsigned char) ( (n)       );       \
-}
-#endif
+#define GCM_GET_BE64(B, I)                                      \
+    ( ((uint64_t)GCM_GET_BE32((B), (I)) << 32) |                \
+      ((uint64_t)GCM_GET_BE32((B), (I) + 4u)) )
 
-/* Implementation that should never be optimized out by the compiler */
-static void math_zeroize( void *v, size_t n ) {
-    volatile unsigned char *p = v; while( n-- ) *p++ = 0;
-}
+#define GCM_PUT_BE64(B, V, I)                                   \
+    do                                                          \
+    {                                                           \
+        GCM_PUT_BE32((B), (uint32_t)((uint64_t)(V) >> 32), (I));       \
+        GCM_PUT_BE32((B), (uint32_t)((uint64_t)(V)), (I) + 4u);        \
+    } while(0)
 
-/*
- * Initialize a context
- */
-void math_gcm_init( math_gcm_context *ctx )
+#define GCM_LO_NIBBLE(X)   ((uint8_t)((X) & 0x0Fu))
+#define GCM_HI_NIBBLE(X)   ((uint8_t)((X) >> 4))
+
+#define GCM_SHIFT4(ZH, ZL)                                      \
+    do                                                          \
+    {                                                           \
+        uint8_t rem = GCM_LO_NIBBLE(ZL);                        \
+        (ZL) = ((ZH) << 60) | ((ZL) >> 4);                      \
+        (ZH) >>= 4;                                             \
+        (ZH) ^= (uint64_t)gcm_last4[rem] << 48;                 \
+    } while(0)
+
+#define GCM_STANDARD_IV_SIZE    12u
+#define GCM_COUNTER_SIZE         4u
+#define GCM_MIN_TAG_SIZE         4u
+#define GCM_DEFAULT_TAG_SIZE    GCM_BLOCK_SIZE
+
+static const uint16_t gcm_last4[GCM_NIBBLE_TABLE_SIZE] =
 {
-    memset( ctx, 0, sizeof( math_gcm_context ) );
+    0x0000u, 0x1C20u, 0x3840u, 0x2460u,
+    0x7080u, 0x6CA0u, 0x48C0u, 0x54E0u,
+    0xE100u, 0xFD20u, 0xD940u, 0xC560u,
+    0x9180u, 0x8DA0u, 0xA9C0u, 0xB5E0u
+};
+
+static void math_zeroize(void *v, size_t n)
+{
+    volatile unsigned char *p = (volatile unsigned char *)v;
+
+    while(n-- != 0u)
+        *p++ = 0u;
+}
+
+void math_gcm_init(math_gcm_context *ctx)
+{
+    if(ctx == NULL)
+        return;
+
+    memset(ctx, 0, sizeof(*ctx));
 }
 
 static int gcm_aes_encrypt_block(math_gcm_context *ctx,
-                                 const unsigned char input[16],
-                                 unsigned char output[16])
+                                 const unsigned char input[GCM_BLOCK_SIZE],
+                                 unsigned char output[GCM_BLOCK_SIZE])
 {
     return math_aes_crypt_ecb(&ctx->aes_ctx,
-                                 MATH_AES_ENCRYPT,
-                                 input,
-                                 output);
+                              MATH_AES_ENCRYPT,
+                              input,
+                              output);
 }
 
-/*
- * Precompute small multiples of H, that is set
- *      HH[i] || HL[i] = H times i,
- * where i is seen as a field element as in [MGV], ie high-order bits
- * correspond to low powers of P. The result is stored in the same way, that
- * is the high-order bit of HH corresponds to P^0 and the low-order bit of HL
- * corresponds to P^127.
- */
-static int gcm_gen_table( math_gcm_context *ctx )
+static void gcm_mult(math_gcm_context *ctx,
+                     const unsigned char x[GCM_BLOCK_SIZE],
+                     unsigned char output[GCM_BLOCK_SIZE])
 {
-    int ret, i, j;
-    uint64_t hi, lo;
-    uint64_t vl, vh;
-    unsigned char h[16];
+    int i;
+    uint8_t lo;
+    uint8_t hi;
+    uint64_t zh;
+    uint64_t zl;
 
-    memset(h, 0, 16);
+    lo = GCM_LO_NIBBLE(x[GCM_BLOCK_SIZE - 1u]);
+    zh = ctx->HH[lo];
+    zl = ctx->HL[lo];
 
-    if ((ret = gcm_aes_encrypt_block(ctx, h, h)) != 0)
-        return ret;
-
-    /* pack h as two 64-bits ints, big-endian */
-    GET_UINT32_BE( hi, h,  0  );
-    GET_UINT32_BE( lo, h,  4  );
-    vh = (uint64_t) hi << 32 | lo;
-
-    GET_UINT32_BE( hi, h,  8  );
-    GET_UINT32_BE( lo, h,  12 );
-    vl = (uint64_t) hi << 32 | lo;
-
-    /* 8 = 1000 corresponds to 1 in GF(2^128) */
-    ctx->HL[8] = vl;
-    ctx->HH[8] = vh;
-
-    /* 0 corresponds to 0 in GF(2^128) */
-    ctx->HH[0] = 0;
-    ctx->HL[0] = 0;
-
-    for( i = 4; i > 0; i >>= 1 )
+    for(i = (int)GCM_BLOCK_SIZE - 1; i >= 0; i--)
     {
-        uint32_t T = ( vl & 1 ) * 0xe1000000U;
-        vl  = ( vh << 63 ) | ( vl >> 1 );
-        vh  = ( vh >> 1 ) ^ ( (uint64_t) T << 32);
+        lo = GCM_LO_NIBBLE(x[i]);
+        hi = GCM_HI_NIBBLE(x[i]);
 
-        ctx->HL[i] = vl;
-        ctx->HH[i] = vh;
-    }
-
-    for( i = 2; i <= 8; i *= 2 )
-    {
-        uint64_t *HiL = ctx->HL + i, *HiH = ctx->HH + i;
-        vh = *HiH;
-        vl = *HiL;
-        for( j = 1; j < i; j++ )
+        if(i != (int)GCM_BLOCK_SIZE - 1)
         {
-            HiH[j] = vh ^ ctx->HH[j];
-            HiL[j] = vl ^ ctx->HL[j];
+            GCM_SHIFT4(zh, zl);
+            zh ^= ctx->HH[lo];
+            zl ^= ctx->HL[lo];
         }
+
+        GCM_SHIFT4(zh, zl);
+        zh ^= ctx->HH[hi];
+        zl ^= ctx->HL[hi];
     }
 
-    return( 0 );
+    GCM_PUT_BE64(output, zh, 0u);
+    GCM_PUT_BE64(output, zl, 8u);
+}
+
+static void gcm_increment_counter(unsigned char counter[GCM_BLOCK_SIZE])
+{
+    size_t i;
+
+    for(i = GCM_BLOCK_SIZE;
+        i > GCM_BLOCK_SIZE - GCM_COUNTER_SIZE;
+        i--)
+    {
+        counter[i - 1u]++;
+
+        if(counter[i - 1u] != 0u)
+            break;
+    }
 }
 
 int math_gcm_setkey(math_gcm_context *ctx,
@@ -129,330 +148,372 @@ int math_gcm_setkey(math_gcm_context *ctx,
                     unsigned int keybits)
 {
     int ret;
+    int i;
+    int j;
+    uint64_t vl;
+    uint64_t vh;
+    unsigned char h[GCM_BLOCK_SIZE];
 
-    if (ctx == NULL || key == NULL)
-        return -1;
+    if(ctx == NULL || key == NULL)
+        return MATH_ERR_GCM_BAD_INPUT;
 
-    if (keybits != 128u && keybits != 192u && keybits != 256u)
-        return -2;
+    if(keybits != 128u && keybits != 192u && keybits != 256u)
+        return MATH_ERR_GCM_BAD_INPUT;
 
     math_aes_free(&ctx->aes_ctx);
     math_aes_init(&ctx->aes_ctx);
 
     ret = math_aes_setkey_enc(&ctx->aes_ctx, key, keybits);
-    if (ret != 0)
+    if(ret != 0)
         return ret;
 
-    ret = gcm_gen_table(ctx);
-    if (ret != 0)
-        return ret;
+    memset(h, 0, sizeof(h));
 
+    ret = gcm_aes_encrypt_block(ctx, h, h);
+    if(ret != 0)
+    {
+        math_zeroize(h, sizeof(h));
+        return ret;
+    }
+
+    vh = GCM_GET_BE64(h, 0u);
+    vl = GCM_GET_BE64(h, 8u);
+
+    ctx->HL[8] = vl;
+    ctx->HH[8] = vh;
+    ctx->HH[0] = 0u;
+    ctx->HL[0] = 0u;
+
+    for(i = 4; i > 0; i >>= 1)
+    {
+        uint32_t reduction = (uint32_t)(vl & 1u) * 0xE1000000u;
+
+        vl = (vh << 63) | (vl >> 1);
+        vh = (vh >> 1) ^ ((uint64_t)reduction << 32);
+
+        ctx->HL[i] = vl;
+        ctx->HH[i] = vh;
+    }
+
+    for(i = 2; i <= 8; i *= 2)
+    {
+        uint64_t *table_l = ctx->HL + i;
+        uint64_t *table_h = ctx->HH + i;
+
+        vh = *table_h;
+        vl = *table_l;
+
+        for(j = 1; j < i; j++)
+        {
+            table_h[j] = vh ^ ctx->HH[j];
+            table_l[j] = vl ^ ctx->HL[j];
+        }
+    }
+
+    math_zeroize(h, sizeof(h));
     return 0;
 }
 
-/*
- * Shoup's method for multiplication use this table with
- *      last4[x] = x times P^128
- * where x and last4[x] are seen as elements of GF(2^128) as in [MGV]
- */
-static const uint64_t last4[16] =
-{
-    0x0000, 0x1c20, 0x3840, 0x2460,
-    0x7080, 0x6ca0, 0x48c0, 0x54e0,
-    0xe100, 0xfd20, 0xd940, 0xc560,
-    0x9180, 0x8da0, 0xa9c0, 0xb5e0
-};
-
-/*
- * Sets output to x times H using the precomputed tables.
- * x and output are seen as elements of GF(2^128) as in [MGV].
- */
-static void gcm_mult( math_gcm_context *ctx, const unsigned char x[16],
-                      unsigned char output[16] )
-{
-    int i = 0;
-    unsigned char lo, hi, rem;
-    uint64_t zh, zl;
-
-    lo = x[15] & 0xf;
-
-    zh = ctx->HH[lo];
-    zl = ctx->HL[lo];
-
-    for( i = 15; i >= 0; i-- )
-    {
-        lo = x[i] & 0xf;
-        hi = x[i] >> 4;
-
-        if( i != 15 )
-        {
-            rem = (unsigned char) zl & 0xf;
-            zl = ( zh << 60 ) | ( zl >> 4 );
-            zh = ( zh >> 4 );
-            zh ^= (uint64_t) last4[rem] << 48;
-            zh ^= ctx->HH[lo];
-            zl ^= ctx->HL[lo];
-
-        }
-
-        rem = (unsigned char) zl & 0xf;
-        zl = ( zh << 60 ) | ( zl >> 4 );
-        zh = ( zh >> 4 );
-        zh ^= (uint64_t) last4[rem] << 48;
-        zh ^= ctx->HH[hi];
-        zl ^= ctx->HL[hi];
-    }
-
-    PUT_UINT32_BE( zh >> 32, output, 0 );
-    PUT_UINT32_BE( zh, output, 4 );
-    PUT_UINT32_BE( zl >> 32, output, 8 );
-    PUT_UINT32_BE( zl, output, 12 );
-}
-
-static int gcm_starts( math_gcm_context *ctx,
-                int mode,
-                const unsigned char *iv,
-                size_t iv_len,
-                const unsigned char *add,
-                size_t add_len )
+static int gcm_starts(math_gcm_context *ctx,
+                      int mode,
+                      const unsigned char *iv,
+                      size_t iv_len,
+                      const unsigned char *add,
+                      size_t add_len)
 {
     int ret;
-    unsigned char work_buf[16];
+    unsigned char tmp[GCM_BLOCK_SIZE];
     size_t i;
+    size_t use_len;
     const unsigned char *p;
-    size_t use_len = 0;
 
-    /* IV and AD are limited to 2^64 bits, so 2^61 bytes */
-    /* IV is not allowed to be zero length */
-    if( iv_len == 0 ||
-      ( (uint64_t) iv_len  ) >> 61 != 0 ||
-      ( (uint64_t) add_len ) >> 61 != 0 )
+    if(ctx == NULL || iv == NULL)
+        return MATH_ERR_GCM_BAD_INPUT;
+
+    if(mode != MATH_GCM_ENCRYPT && mode != MATH_GCM_DECRYPT)
+        return MATH_ERR_GCM_BAD_INPUT;
+
+    if(add_len != 0u && add == NULL)
+        return MATH_ERR_GCM_BAD_INPUT;
+
+    if(iv_len == 0u ||
+       (((uint64_t)iv_len) >> 61) != 0u ||
+       (((uint64_t)add_len) >> 61) != 0u)
     {
-        return( MATH_ERR_GCM_BAD_INPUT );
+        return MATH_ERR_GCM_BAD_INPUT;
     }
 
-    memset( ctx->y, 0x00, sizeof(ctx->y) );
-    memset( ctx->buf, 0x00, sizeof(ctx->buf) );
+    memset(ctx->y, 0, sizeof(ctx->y));
+    memset(ctx->buf, 0, sizeof(ctx->buf));
 
     ctx->mode = mode;
-    ctx->len = 0;
-    ctx->add_len = 0;
+    ctx->len = 0u;
+    ctx->add_len = add_len;
 
-    if( iv_len == 12 )
+    if(iv_len == GCM_STANDARD_IV_SIZE)
     {
-        memcpy( ctx->y, iv, iv_len );
-        ctx->y[15] = 1;
+        memcpy(ctx->y, iv, iv_len);
+        ctx->y[GCM_BLOCK_SIZE - 1u] = 1u;
     }
     else
     {
-        memset( work_buf, 0x00, 16 );
-        PUT_UINT32_BE( iv_len * 8, work_buf, 12 );
+        size_t remaining = iv_len;
+
+        memset(tmp, 0, sizeof(tmp));
+        GCM_PUT_BE64(tmp, (uint64_t)iv_len * 8u, 8u);
 
         p = iv;
-        while( iv_len > 0 )
+        while(remaining > 0u)
         {
-            use_len = ( iv_len < 16 ) ? iv_len : 16;
+            use_len = (remaining < GCM_BLOCK_SIZE) ?
+                      remaining : GCM_BLOCK_SIZE;
 
-            for( i = 0; i < use_len; i++ )
+            for(i = 0u; i < use_len; i++)
                 ctx->y[i] ^= p[i];
 
-            gcm_mult( ctx, ctx->y, ctx->y );
-
-            iv_len -= use_len;
+            gcm_mult(ctx, ctx->y, ctx->y);
+            remaining -= use_len;
             p += use_len;
         }
 
-        for( i = 0; i < 16; i++ )
-            ctx->y[i] ^= work_buf[i];
+        for(i = 0u; i < GCM_BLOCK_SIZE; i++)
+            ctx->y[i] ^= tmp[i];
 
-        gcm_mult( ctx, ctx->y, ctx->y );
+        gcm_mult(ctx, ctx->y, ctx->y);
+        math_zeroize(tmp, sizeof(tmp));
     }
 
-    if ((ret = gcm_aes_encrypt_block(ctx, ctx->y, ctx->base_ectr)) != 0)
-    {
+    ret = gcm_aes_encrypt_block(ctx, ctx->y, ctx->base_ectr);
+    if(ret != 0)
         return ret;
-    }
 
-    ctx->add_len = add_len;
     p = add;
-    while( add_len > 0 )
+    while(add_len > 0u)
     {
-        use_len = ( add_len < 16 ) ? add_len : 16;
+        use_len = (add_len < GCM_BLOCK_SIZE) ?
+                  add_len : GCM_BLOCK_SIZE;
 
-        for( i = 0; i < use_len; i++ )
+        for(i = 0u; i < use_len; i++)
             ctx->buf[i] ^= p[i];
 
-        gcm_mult( ctx, ctx->buf, ctx->buf );
+        if(use_len == GCM_BLOCK_SIZE)
+            gcm_mult(ctx, ctx->buf, ctx->buf);
 
         add_len -= use_len;
         p += use_len;
     }
 
-    return( 0 );
+    if((ctx->add_len % GCM_BLOCK_SIZE) != 0u)
+        gcm_mult(ctx, ctx->buf, ctx->buf);
+
+    return 0;
 }
 
-static int gcm_update( math_gcm_context *ctx,
-                size_t length,
-                const unsigned char *input,
-                unsigned char *output )
+/*
+ * One-shot payload processing. This function is intentionally internal and
+ * is called exactly once by math_gcm_crypt_and_tag().
+ */
+static int gcm_update(math_gcm_context *ctx,
+                      size_t length,
+                      const unsigned char *input,
+                      unsigned char *output)
 {
     int ret;
-    unsigned char ectr[16];
+    unsigned char ectr[GCM_BLOCK_SIZE];
     size_t i;
+    size_t use_len;
     const unsigned char *p;
-    unsigned char *out_p = output;
-    size_t use_len = 0;
+    unsigned char *out_p;
 
-    if( output > input && (size_t) ( output - input ) < length )
-        return( MATH_ERR_GCM_BAD_INPUT );
+    if(ctx == NULL)
+        return MATH_ERR_GCM_BAD_INPUT;
 
-    /* Total length is restricted to 2^39 - 256 bits, ie 2^36 - 2^5 bytes
-     * Also check for possible overflow */
-    if( ctx->len + length < ctx->len ||
-        (uint64_t) ctx->len + length > 0xFFFFFFFE0ull )
+    if(length != 0u && (input == NULL || output == NULL))
+        return MATH_ERR_GCM_BAD_INPUT;
+
+    if(length != 0u)
     {
-        return( MATH_ERR_GCM_BAD_INPUT );
+        uintptr_t input_addr = (uintptr_t)input;
+        uintptr_t output_addr = (uintptr_t)output;
+
+        if(output_addr > input_addr &&
+           output_addr - input_addr < length)
+        {
+            return MATH_ERR_GCM_BAD_INPUT;
+        }
     }
 
-    ctx->len += length;
+    if(ctx->len + length < ctx->len ||
+       ctx->len + (uint64_t)length > 0xFFFFFFFE0ull)
+    {
+        return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     p = input;
-    while( length > 0 )
+    out_p = output;
+
+    while(length > 0u)
     {
-        use_len = ( length < 16 ) ? length : 16;
+        use_len = (length < GCM_BLOCK_SIZE) ?
+                  length : GCM_BLOCK_SIZE;
 
-        for( i = 16; i > 12; i-- )
-            if( ++ctx->y[i - 1] != 0 )
-                break;
+        gcm_increment_counter(ctx->y);
 
-        if ((ret = gcm_aes_encrypt_block(ctx, ctx->y, ectr)) != 0)
+        ret = gcm_aes_encrypt_block(ctx, ctx->y, ectr);
+        if(ret != 0)
         {
+            math_zeroize(ectr, sizeof(ectr));
             return ret;
         }
 
-        for( i = 0; i < use_len; i++ )
+        for(i = 0u; i < use_len; i++)
         {
-            if( ctx->mode == MATH_GCM_DECRYPT )
+            if(ctx->mode == MATH_GCM_DECRYPT)
                 ctx->buf[i] ^= p[i];
-            out_p[i] = ectr[i] ^ p[i];
-            if( ctx->mode == MATH_GCM_ENCRYPT )
+
+            out_p[i] = (unsigned char)(ectr[i] ^ p[i]);
+
+            if(ctx->mode == MATH_GCM_ENCRYPT)
                 ctx->buf[i] ^= out_p[i];
         }
 
-        gcm_mult( ctx, ctx->buf, ctx->buf );
+        if(use_len == GCM_BLOCK_SIZE)
+            gcm_mult(ctx, ctx->buf, ctx->buf);
 
+        ctx->len += use_len;
         length -= use_len;
         p += use_len;
         out_p += use_len;
     }
 
-    return( 0 );
+    math_zeroize(ectr, sizeof(ectr));
+    return 0;
 }
 
-static int gcm_finish( math_gcm_context *ctx,
-                unsigned char *tag,
-                size_t tag_len )
+static int gcm_finish(math_gcm_context *ctx,
+                      unsigned char *tag,
+                      size_t tag_len)
 {
-    unsigned char work_buf[16];
+    unsigned char tmp[GCM_BLOCK_SIZE];
     size_t i;
-    uint64_t orig_len = ctx->len * 8;
-    uint64_t orig_add_len = ctx->add_len * 8;
+    uint64_t data_bits;
+    uint64_t add_bits;
 
-    if( tag_len > 16 || tag_len < 4 )
-        return( MATH_ERR_GCM_BAD_INPUT );
+    if(ctx == NULL || tag == NULL)
+        return MATH_ERR_GCM_BAD_INPUT;
 
-    memcpy( tag, ctx->base_ectr, tag_len );
+    if(tag_len > GCM_BLOCK_SIZE || tag_len < GCM_MIN_TAG_SIZE)
+        return MATH_ERR_GCM_BAD_INPUT;
 
-    if( orig_len || orig_add_len )
-    {
-        memset( work_buf, 0x00, 16 );
+    data_bits = ctx->len * 8u;
+    add_bits = ctx->add_len * 8u;
 
-        PUT_UINT32_BE( ( orig_add_len >> 32 ), work_buf, 0  );
-        PUT_UINT32_BE( ( orig_add_len       ), work_buf, 4  );
-        PUT_UINT32_BE( ( orig_len     >> 32 ), work_buf, 8  );
-        PUT_UINT32_BE( ( orig_len           ), work_buf, 12 );
+    if((ctx->len % GCM_BLOCK_SIZE) != 0u)
+        gcm_mult(ctx, ctx->buf, ctx->buf);
 
-        for( i = 0; i < 16; i++ )
-            ctx->buf[i] ^= work_buf[i];
+    memcpy(tag, ctx->base_ectr, tag_len);
 
-        gcm_mult( ctx, ctx->buf, ctx->buf );
+    memset(tmp, 0, sizeof(tmp));
+    GCM_PUT_BE64(tmp, add_bits, 0u);
+    GCM_PUT_BE64(tmp, data_bits, 8u);
 
-        for( i = 0; i < tag_len; i++ )
-            tag[i] ^= ctx->buf[i];
-    }
+    for(i = 0u; i < GCM_BLOCK_SIZE; i++)
+        ctx->buf[i] ^= tmp[i];
 
-    return( 0 );
+    gcm_mult(ctx, ctx->buf, ctx->buf);
+
+    for(i = 0u; i < tag_len; i++)
+        tag[i] ^= ctx->buf[i];
+
+    math_zeroize(tmp, sizeof(tmp));
+    return 0;
 }
 
-int math_gcm_crypt_and_tag( math_gcm_context *ctx,
-                       int mode,
-                       size_t length,
-                       const unsigned char *iv,
-                       size_t iv_len,
-                       const unsigned char *add,
-                       size_t add_len,
-                       const unsigned char *input,
-                       unsigned char *output,
-                       size_t tag_len,
-                       unsigned char *tag )
+int math_gcm_crypt_and_tag(math_gcm_context *ctx,
+                           int mode,
+                           size_t length,
+                           const unsigned char *iv,
+                           size_t iv_len,
+                           const unsigned char *add,
+                           size_t add_len,
+                           const unsigned char *input,
+                           unsigned char *output,
+                           size_t tag_len,
+                           unsigned char *tag)
 {
     int ret;
 
-    if( ( ret = gcm_starts( ctx, mode, iv, iv_len, add, add_len ) ) != 0 )
-        return( ret );
+    ret = gcm_starts(ctx, mode, iv, iv_len, add, add_len);
+    if(ret != 0)
+        return ret;
 
-    if( ( ret = gcm_update( ctx, length, input, output ) ) != 0 )
-        return( ret );
+    ret = gcm_update(ctx, length, input, output);
+    if(ret != 0)
+        return ret;
 
-    if( ( ret = gcm_finish( ctx, tag, tag_len ) ) != 0 )
-        return( ret );
-
-    return( 0 );
+    return gcm_finish(ctx, tag, tag_len);
 }
 
-int math_gcm_auth_decrypt( math_gcm_context *ctx,
-                      size_t length,
-                      const unsigned char *iv,
-                      size_t iv_len,
-                      const unsigned char *add,
-                      size_t add_len,
-                      const unsigned char *tag,
-                      size_t tag_len,
-                      const unsigned char *input,
-                      unsigned char *output )
+int math_gcm_auth_decrypt(math_gcm_context *ctx,
+                          size_t length,
+                          const unsigned char *iv,
+                          size_t iv_len,
+                          const unsigned char *add,
+                          size_t add_len,
+                          const unsigned char *tag,
+                          size_t tag_len,
+                          const unsigned char *input,
+                          unsigned char *output)
 {
     int ret;
-    unsigned char check_tag[16];
-    size_t i;
     int diff;
+    size_t i;
+    unsigned char check_tag[GCM_BLOCK_SIZE];
 
-    if( ( ret = math_gcm_crypt_and_tag( ctx, MATH_GCM_DECRYPT, length,
-                                   iv, iv_len, add, add_len,
-                                   input, output, tag_len, check_tag ) ) != 0 )
+    if(ctx == NULL || tag == NULL)
+        return MATH_ERR_GCM_BAD_INPUT;
+
+    ret = math_gcm_crypt_and_tag(ctx,
+                                 MATH_GCM_DECRYPT,
+                                 length,
+                                 iv,
+                                 iv_len,
+                                 add,
+                                 add_len,
+                                 input,
+                                 output,
+                                 tag_len,
+                                 check_tag);
+    if(ret != 0)
     {
-        return( ret );
+        math_zeroize(check_tag, sizeof(check_tag));
+        return ret;
     }
 
-    /* Check tag in "constant-time" */
-    for( diff = 0, i = 0; i < tag_len; i++ )
-        diff |= tag[i] ^ check_tag[i];
+    diff = 0;
+    for(i = 0u; i < tag_len; i++)
+        diff |= (int)(tag[i] ^ check_tag[i]);
 
-    if( diff != 0 )
+    math_zeroize(check_tag, sizeof(check_tag));
+
+    if(diff != 0)
     {
-        math_zeroize( output, length );
-        return( -1 );
+        if(output != NULL)
+            math_zeroize(output, length);
+
+        return MATH_ERR_GCM_AUTH_FAILED;
     }
 
-    return( 0 );
+    return 0;
 }
 
 void math_gcm_free(math_gcm_context *ctx)
 {
-    if (ctx == NULL)
+    if(ctx == NULL)
         return;
 
     math_aes_free(&ctx->aes_ctx);
-    math_zeroize(ctx, sizeof(math_gcm_context));
+    math_zeroize(ctx, sizeof(*ctx));
 }
 
 #if defined(MATH_SELF_TEST)
@@ -643,7 +704,7 @@ static const unsigned char ct[MAX_TESTS * 3][64] =
       0x44, 0xae, 0x7e, 0x3f },
 };
 
-static const unsigned char tag[MAX_TESTS * 3][16] =
+static const unsigned char tag[MAX_TESTS * 3][GCM_BLOCK_SIZE] =
 {
     { 0x58, 0xe2, 0xfc, 0xce, 0xfa, 0x7e, 0x30, 0x61,
       0x36, 0x7f, 0x1d, 0x57, 0xa4, 0xe7, 0x45, 0x5a },
@@ -683,216 +744,119 @@ static const unsigned char tag[MAX_TESTS * 3][16] =
       0xc8, 0xb5, 0xd4, 0xcf, 0x5a, 0xe9, 0xf1, 0x9a },
 };
 
-int math_gcm_self_test( int verbose )
+#define GCM_BUF_SIZE 256u
+
+int math_gcm_self_test(int verbose)
 {
     math_gcm_context ctx;
-    unsigned char buf[64];
-    unsigned char tag_buf[16];
-    int i, j, ret;
+    unsigned char buf[GCM_BUF_SIZE];
+    unsigned char tag_buf[GCM_BLOCK_SIZE];
+    int i;
+    int key_size;
+    int ret;
+    int vector_index;
+    int array_index = 0;
 
-    math_gcm_init( &ctx );
-
-    for( j = 0; j < 3; j++ )
+    for(key_size = 128;
+        key_size <= 256;
+        key_size += 64, array_index++)
     {
-        int key_len = 128 + 64 * j;
-
-        for( i = 0; i < MAX_TESTS; i++ )
+        for(i = 0; i < MAX_TESTS; i++)
         {
-            if( verbose != 0 )
-                macsec_printf( "  AES-GCM-%3d #%d (%s): ",
-                                 key_len, i, "enc" );
+            vector_index = array_index * MAX_TESTS + i;
 
-            math_gcm_setkey( &ctx, key[key_index[i]], key_len );
-
-            ret = math_gcm_crypt_and_tag( &ctx, MATH_GCM_ENCRYPT,
-                                     pt_len[i],
-                                     iv[iv_index[i]], iv_len[i],
-                                     additional[add_index[i]], add_len[i],
-                                     pt[pt_index[i]], buf, 16, tag_buf );
-
-            if( ret != 0 ||
-                memcmp( buf, ct[j * 6 + i], pt_len[i] ) != 0 ||
-                memcmp( tag_buf, tag[j * 6 + i], 16 ) != 0 )
+            if(pt_len[i] > GCM_BUF_SIZE)
             {
-                if( verbose != 0 )
-                    macsec_printf( "failed\n" );
+                if(verbose != 0)
+                    macsec_printf("failed: test vector plaintext too long\n");
 
-                return( 1 );
+                return 1;
             }
 
-            math_gcm_free( &ctx );
+            if(verbose != 0)
+                macsec_printf("  AES-GCM-%3d #%d (enc): ", key_size, i);
 
-            if( verbose != 0 )
-                macsec_printf( "passed\n" );
+            math_gcm_init(&ctx);
 
-            if( verbose != 0 )
-                macsec_printf( "  AES-GCM-%3d #%d (%s): ",
-                                 key_len, i, "dec" );
-
-            math_gcm_setkey( &ctx, key[key_index[i]], key_len );
-
-            ret = math_gcm_crypt_and_tag( &ctx, MATH_GCM_DECRYPT,
-                                     pt_len[i],
-                                     iv[iv_index[i]], iv_len[i],
-                                     additional[add_index[i]], add_len[i],
-                                     ct[j * 6 + i], buf, 16, tag_buf );
-
-            if( ret != 0 ||
-                memcmp( buf, pt[pt_index[i]], pt_len[i] ) != 0 ||
-                memcmp( tag_buf, tag[j * 6 + i], 16 ) != 0 )
+            ret = math_gcm_setkey(&ctx,
+                                  key[key_index[i]],
+                                  (unsigned int)key_size);
+            if(ret == 0)
             {
-                if( verbose != 0 )
-                    macsec_printf( "failed\n" );
-
-                return( 1 );
+                ret = math_gcm_crypt_and_tag(&ctx,
+                                             MATH_GCM_ENCRYPT,
+                                             pt_len[i],
+                                             iv[iv_index[i]],
+                                             iv_len[i],
+                                             additional[add_index[i]],
+                                             add_len[i],
+                                             pt[pt_index[i]],
+                                             buf,
+                                             GCM_DEFAULT_TAG_SIZE,
+                                             tag_buf);
             }
 
-            math_gcm_free( &ctx );
-
-            if( verbose != 0 )
-                macsec_printf( "passed\n" );
-
-            if( verbose != 0 )
-                macsec_printf( "  AES-GCM-%3d #%d split (%s): ",
-                                 key_len, i, "enc" );
-
-            math_gcm_setkey( &ctx, key[key_index[i]], key_len );
-
-            ret = gcm_starts( &ctx, MATH_GCM_ENCRYPT,
-                              iv[iv_index[i]], iv_len[i],
-                              additional[add_index[i]], add_len[i] );
-            if( ret != 0 )
+            if(ret != 0 ||
+               memcmp(buf, ct[vector_index], pt_len[i]) != 0 ||
+               memcmp(tag_buf,
+                      tag[vector_index],
+                      GCM_DEFAULT_TAG_SIZE) != 0)
             {
-                if( verbose != 0 )
-                    macsec_printf( "failed\n" );
+                if(verbose != 0)
+                    macsec_printf("failed\n");
 
-                return( 1 );
+                math_gcm_free(&ctx);
+                return 1;
             }
 
-            if( pt_len[i] > 32 )
+            math_gcm_free(&ctx);
+
+            if(verbose != 0)
+                macsec_printf("passed\n");
+
+            if(verbose != 0)
+                macsec_printf("  AES-GCM-%3d #%d (dec): ", key_size, i);
+
+            math_gcm_init(&ctx);
+
+            ret = math_gcm_setkey(&ctx,
+                                  key[key_index[i]],
+                                  (unsigned int)key_size);
+            if(ret == 0)
             {
-                size_t rest_len = pt_len[i] - 32;
-                ret = gcm_update( &ctx, 32, pt[pt_index[i]], buf );
-                if( ret != 0 )
-                {
-                    if( verbose != 0 )
-                        macsec_printf( "failed\n" );
-
-                    return( 1 );
-                }
-
-                ret = gcm_update( &ctx, rest_len, pt[pt_index[i]] + 32,
-                                  buf + 32 );
-                if( ret != 0 )
-                {
-                    if( verbose != 0 )
-                        macsec_printf( "failed\n" );
-
-                    return( 1 );
-                }
-            }
-            else
-            {
-                ret = gcm_update( &ctx, pt_len[i], pt[pt_index[i]], buf );
-                if( ret != 0 )
-                {
-                    if( verbose != 0 )
-                        macsec_printf( "failed\n" );
-
-                    return( 1 );
-                }
+                ret = math_gcm_auth_decrypt(&ctx,
+                                            pt_len[i],
+                                            iv[iv_index[i]],
+                                            iv_len[i],
+                                            additional[add_index[i]],
+                                            add_len[i],
+                                            tag[vector_index],
+                                            GCM_DEFAULT_TAG_SIZE,
+                                            ct[vector_index],
+                                            buf);
             }
 
-            ret = gcm_finish( &ctx, tag_buf, 16 );
-            if( ret != 0 ||
-                memcmp( buf, ct[j * 6 + i], pt_len[i] ) != 0 ||
-                memcmp( tag_buf, tag[j * 6 + i], 16 ) != 0 )
+            if(ret != 0 ||
+               memcmp(buf, pt[pt_index[i]], pt_len[i]) != 0)
             {
-                if( verbose != 0 )
-                    macsec_printf( "failed\n" );
+                if(verbose != 0)
+                    macsec_printf("failed\n");
 
-                return( 1 );
+                math_gcm_free(&ctx);
+                return 1;
             }
 
-            math_gcm_free( &ctx );
+            math_gcm_free(&ctx);
 
-            if( verbose != 0 )
-                macsec_printf( "passed\n" );
-
-            if( verbose != 0 )
-                macsec_printf( "  AES-GCM-%3d #%d split (%s): ",
-                                 key_len, i, "dec" );
-
-            math_gcm_setkey( &ctx, key[key_index[i]], key_len );
-
-            ret = gcm_starts( &ctx, MATH_GCM_DECRYPT,
-                              iv[iv_index[i]], iv_len[i],
-                              additional[add_index[i]], add_len[i] );
-            if( ret != 0 )
-            {
-                if( verbose != 0 )
-                    macsec_printf( "failed\n" );
-
-                return( 1 );
-            }
-
-            if( pt_len[i] > 32 )
-            {
-                size_t rest_len = pt_len[i] - 32;
-                ret = gcm_update( &ctx, 32, ct[j * 6 + i], buf );
-                if( ret != 0 )
-                {
-                    if( verbose != 0 )
-                        macsec_printf( "failed\n" );
-
-                    return( 1 );
-                }
-
-                ret = gcm_update( &ctx, rest_len, ct[j * 6 + i] + 32,
-                                  buf + 32 );
-                if( ret != 0 )
-                {
-                    if( verbose != 0 )
-                        macsec_printf( "failed\n" );
-
-                    return( 1 );
-                }
-            }
-            else
-            {
-                ret = gcm_update( &ctx, pt_len[i], ct[j * 6 + i], buf );
-                if( ret != 0 )
-                {
-                    if( verbose != 0 )
-                        macsec_printf( "failed\n" );
-
-                    return( 1 );
-                }
-            }
-
-            ret = gcm_finish( &ctx, tag_buf, 16 );
-            if( ret != 0 ||
-                memcmp( buf, pt[pt_index[i]], pt_len[i] ) != 0 ||
-                memcmp( tag_buf, tag[j * 6 + i], 16 ) != 0 )
-            {
-                if( verbose != 0 )
-                    macsec_printf( "failed\n" );
-
-                return( 1 );
-            }
-
-            math_gcm_free( &ctx );
-
-            if( verbose != 0 )
-                macsec_printf( "passed\n" );
-
+            if(verbose != 0)
+                macsec_printf("passed\n");
         }
     }
 
-    if( verbose != 0 )
-        macsec_printf( "\n" );
+    if(verbose != 0)
+        macsec_printf("\n");
 
-    return( 0 );
+    return 0;
 }
 
 #endif /* MATH_SELF_TEST */
