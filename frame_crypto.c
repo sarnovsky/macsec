@@ -320,6 +320,12 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx,
     macsec_assert(plain_eth != NULL);
     macsec_assert(plain_eth_len != NULL);
 
+    /*
+     * No plaintext is valid until the complete frame has been
+     * successfully authenticated and decrypted.
+     */
+    *plain_eth_len = 0u;
+
     macsec_check(macsec_frame_is_macsec(secure_eth, secure_eth_len), MACSEC_ERR_PARAM);
     macsec_check(secure_eth_len >= (MACSEC_FRAME_AAD_LEN + MACSEC_FRAME_ICV_LEN),
                  MACSEC_ERR_BUFFER);
@@ -407,7 +413,19 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx,
                       ret,
                       an,
                       (unsigned long)pn));
-        return MACSEC_ERR_CRYPTO;
+
+        /*
+         * The GCM backend reports authentication failure using its
+         * own error code. Do not expose that backend-specific value
+         * through the public frame API.
+         *
+         * A wrong SAK, modified ciphertext or invalid ICV are all
+         * reported as MACSEC_ERR_AUTH.
+         */
+        macsec_zeroize(plain_eth, 12u + ciphertext_len);
+        *plain_eth_len = 0u;
+
+        return MACSEC_ERR_AUTH;
     }
 
     if (ctx->replay_protect)

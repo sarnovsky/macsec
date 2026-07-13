@@ -158,9 +158,11 @@ static int macsec_mka_kdf(macsec_mka_crypto_ctx_t *ctx,
 
 static int macsec_mka_derive_one(macsec_mka_crypto_ctx_t *ctx,
                                  const char *label,
-                                 uint8_t out[16])
+                                 uint8_t *out,
+                                 size_t out_len)
 {
     uint8_t keyid[16];
+    uint16_t out_bits;
     int ret;
 
     macsec_assert(ctx != NULL);
@@ -168,18 +170,30 @@ static int macsec_mka_derive_one(macsec_mka_crypto_ctx_t *ctx,
     macsec_assert(out != NULL);
     macsec_check(ctx->psk.valid, MACSEC_ERR_STATE);
 
+    macsec_check((out_len == 16u) || (out_len == 32u),
+                 MACSEC_ERR_PARAM);
+
     memset(keyid, 0, sizeof(keyid));
 
     memcpy(keyid,
            ctx->psk.ckn,
-           (ctx->psk.ckn_len < sizeof(keyid)) ? ctx->psk.ckn_len : sizeof(keyid));
+           (ctx->psk.ckn_len < sizeof(keyid)) ?
+               ctx->psk.ckn_len :
+               sizeof(keyid));
 
-    MACSEC_MEDIUM(("MKA derive one: label='%s' cak_len=%u ckn_len=%u\n",
-                   label,
-                   ctx->psk.cak_len,
-                   ctx->psk.ckn_len));
+    out_bits = (uint16_t)(out_len * 8u);
 
-    MACSEC_INFO_HEX(("MKA derive KeyID", keyid, 16));
+    MACSEC_MEDIUM((
+        "MKA derive one: label='%s' cak_len=%u "
+        "ckn_len=%u out_len=%lu\n",
+        label,
+        ctx->psk.cak_len,
+        ctx->psk.ckn_len,
+        (unsigned long)out_len));
+
+    MACSEC_INFO_HEX(("MKA derive KeyID",
+                     keyid,
+                     sizeof(keyid)));
 
     ret = macsec_mka_kdf(ctx,
                          ctx->psk.cak,
@@ -187,14 +201,18 @@ static int macsec_mka_derive_one(macsec_mka_crypto_ctx_t *ctx,
                          label,
                          keyid,
                          sizeof(keyid),
-                         128u,
+                         out_bits,
                          out,
-                         16u);
+                         out_len);
 
     if (ret == MACSEC_ERR_OK)
     {
-        MACSEC_MEDIUM_HEX(("MKA derived key", out, 16));
+        MACSEC_MEDIUM_HEX(("MKA derived key",
+                           out,
+                           (int)out_len));
     }
+
+    macsec_zeroize(keyid, sizeof(keyid));
 
     return ret;
 }
@@ -203,7 +221,8 @@ static int macsec_mka_derive_one(macsec_mka_crypto_ctx_t *ctx,
  * RFC 3394 AES Key Wrap.
  */
 static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx,
-                                  const uint8_t kek[16],
+                                  const uint8_t *kek,
+                                  size_t kek_len,
                                   const uint8_t *plain,
                                   size_t plain_len,
                                   uint8_t *wrapped,
@@ -225,6 +244,8 @@ static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx,
     macsec_assert(wrapped != NULL);
     macsec_assert(wrapped_len != NULL);
 
+    macsec_check((kek_len == 16u) || (kek_len == 32u),
+                 MACSEC_ERR_PARAM);
     macsec_check((plain_len >= 16u) && ((plain_len % 8u) == 0u),
                  MACSEC_ERR_PARAM);
     macsec_check((plain_len + 8u) <= wrapped_max_len, MACSEC_ERR_BUFFER);
@@ -241,7 +262,7 @@ static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx,
         ctx->aes_initialized = MACSEC_TRUE;
     }
 
-    ret = math_aes_setkey_enc(&ctx->aes_ctx, kek, 128u);
+    ret = math_aes_setkey_enc(&ctx->aes_ctx, kek, (unsigned int)(kek_len * 8u));
     if (ret != 0)
     {
         MACSEC_ERROR(("MKA AES-KW setkey enc failed ret=%d\n", ret));
@@ -308,7 +329,8 @@ static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx,
 }
 
 static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx,
-                                    const uint8_t kek[16],
+                                    const uint8_t *kek,
+                                    size_t kek_len,
                                     const uint8_t *wrapped,
                                     size_t wrapped_len,
                                     uint8_t *plain,
@@ -331,7 +353,11 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx,
     macsec_assert(plain != NULL);
     macsec_assert(plain_len != NULL);
 
-    macsec_check((wrapped_len >= 24u) && ((wrapped_len % 8u) == 0u),
+    macsec_check((kek_len == 16u) || (kek_len == 32u),
+                 MACSEC_ERR_PARAM);
+
+    macsec_check((wrapped_len >= 24u) &&
+                 ((wrapped_len % 8u) == 0u),
                  MACSEC_ERR_PARAM);
 
     n = (wrapped_len / 8u) - 1u;
@@ -350,7 +376,7 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx,
         ctx->aes_initialized = MACSEC_TRUE;
     }
 
-    ret = math_aes_setkey_dec(&ctx->aes_ctx, kek, 128u);
+    ret = math_aes_setkey_dec(&ctx->aes_ctx, kek, (unsigned int)(kek_len * 8u));
     if (ret != 0)
     {
         MACSEC_ERROR(("MKA AES-KW setkey dec failed ret=%d\n", ret));
@@ -504,35 +530,50 @@ int macsec_mka_crypto_set_psk(macsec_mka_crypto_ctx_t *ctx,
 
 int macsec_mka_crypto_derive_ick_kek(macsec_mka_crypto_ctx_t *ctx)
 {
+    size_t derived_len;
     int ret;
 
     macsec_assert(ctx != NULL);
     macsec_check(ctx->psk.valid, MACSEC_ERR_STATE);
 
-    MACSEC_MEDIUM(("MKA derive ICK/KEK start\n"));
+    derived_len = ctx->psk.cak_len;
 
-    ret = macsec_mka_derive_one(ctx, "IEEE8021 ICK", ctx->keys.ick);
+    macsec_check((derived_len == 16u) || (derived_len == 32u),
+                 MACSEC_ERR_PARAM);
 
+    memset(&ctx->keys, 0, sizeof(ctx->keys));
+
+    ret = macsec_mka_derive_one(ctx,
+                                "IEEE8021 ICK",
+                                ctx->keys.ick,
+                                derived_len);
     if (ret != MACSEC_ERR_OK)
     {
-        MACSEC_ERROR(("MKA derive ICK failed ret=%d\n", ret));
         return ret;
     }
 
-    ret = macsec_mka_derive_one(ctx, "IEEE8021 KEK", ctx->keys.kek);
+    ctx->keys.ick_len = (uint8_t)derived_len;
 
+    ret = macsec_mka_derive_one(ctx,
+                                "IEEE8021 KEK",
+                                ctx->keys.kek,
+                                derived_len);
     if (ret != MACSEC_ERR_OK)
     {
-        MACSEC_ERROR(("MKA derive KEK failed ret=%d\n", ret));
         macsec_zeroize(&ctx->keys, sizeof(ctx->keys));
         return ret;
     }
 
+    ctx->keys.kek_len = (uint8_t)derived_len;
     ctx->keys.valid = MACSEC_TRUE;
 
-    MACSEC_MEDIUM(("MKA derive ICK/KEK done\n"));
-    MACSEC_MEDIUM_HEX(("MKA ICK", ctx->keys.ick, MACSEC_MKA_ICK_LEN));
-    MACSEC_MEDIUM_HEX(("MKA KEK", ctx->keys.kek, MACSEC_MKA_KEK_LEN));
+    MACSEC_MEDIUM_HEX(("MKA ICK",
+                       ctx->keys.ick,
+                       ctx->keys.ick_len));
+
+    MACSEC_MEDIUM_HEX(("MKA KEK",
+                       ctx->keys.kek,
+                       ctx->keys.kek_len));
 
     return MACSEC_ERR_OK;
 }
@@ -551,7 +592,7 @@ int macsec_mka_crypto_calc_mic(macsec_mka_crypto_ctx_t *ctx,
 
     return macsec_mka_cmac(ctx,
                            ctx->keys.ick,
-                           MACSEC_MKA_ICK_LEN,
+                           ctx->keys.ick_len,
                            pdu,
                            pdu_len,
                            mic);
@@ -616,6 +657,7 @@ int macsec_mka_crypto_wrap_sak(macsec_mka_crypto_ctx_t *ctx,
 
     return macsec_mka_aes_kw_wrap(ctx,
                                   ctx->keys.kek,
+                                  ctx->keys.kek_len,
                                   sak,
                                   sak_len,
                                   wrapped_sak,
@@ -645,6 +687,7 @@ int macsec_mka_crypto_unwrap_sak(macsec_mka_crypto_ctx_t *ctx,
 
     ret = macsec_mka_aes_kw_unwrap(ctx,
                                    ctx->keys.kek,
+                                   ctx->keys.kek_len,
                                    wrapped_sak,
                                    wrapped_sak_len,
                                    sak,

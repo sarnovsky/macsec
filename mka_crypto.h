@@ -29,8 +29,8 @@ extern "C" {
 #define MACSEC_MKA_CAK_MAX_LEN       32u
 #define MACSEC_MKA_CKN_MAX_LEN       32u
 
-#define MACSEC_MKA_ICK_LEN           16u
-#define MACSEC_MKA_KEK_LEN           16u
+#define MACSEC_MKA_ICK_MAX_LEN       32u
+#define MACSEC_MKA_KEK_MAX_LEN       32u
 #define MACSEC_MKA_MIC_LEN           16u
 
 #define MACSEC_MKA_SAK_MAX_LEN       32u
@@ -51,8 +51,11 @@ typedef struct
 
 typedef struct
 {
-    uint8_t ick[MACSEC_MKA_ICK_LEN];
-    uint8_t kek[MACSEC_MKA_KEK_LEN];
+    uint8_t ick[MACSEC_MKA_ICK_MAX_LEN];
+    uint8_t ick_len;
+
+    uint8_t kek[MACSEC_MKA_KEK_MAX_LEN];
+    uint8_t kek_len;
 
     macsec_bool_t valid;
 } macsec_mka_keys_t;
