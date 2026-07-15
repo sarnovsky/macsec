@@ -83,7 +83,7 @@ int linux_raw_open(linux_raw_socket_t *raw, const char *ifname)
 
     fd = socket(AF_PACKET,
                 SOCK_RAW | SOCK_CLOEXEC,
-                htons((uint16_t)ETH_P_MACSEC));
+                htons(ETH_P_ALL));
     if (fd < 0)
     {
         return -1;
@@ -120,7 +120,7 @@ int linux_raw_open(linux_raw_socket_t *raw, const char *ifname)
 
     memset(&address, 0, sizeof(address));
     address.sll_family = AF_PACKET;
-    address.sll_protocol = htons((uint16_t)ETH_P_MACSEC);
+    address.sll_protocol = htons(ETH_P_ALL);
     address.sll_ifindex = raw->ifindex;
 
     if (bind(fd, (const struct sockaddr *)&address, sizeof(address)) < 0)
@@ -152,13 +152,26 @@ void linux_raw_close(linux_raw_socket_t *raw)
     raw->fd = -1;
 }
 
+static uint16_t linux_raw_get_ethertype(const uint8_t *frame,
+                                        size_t frame_len)
+{
+    if ((frame == NULL) || (frame_len < 14u))
+    {
+        return 0u;
+    }
+
+    return ((uint16_t)frame[12] << 8) |
+            (uint16_t)frame[13];
+}
+
 int linux_raw_receive(linux_raw_socket_t *raw,
                       uint8_t *frame,
                       size_t frame_capacity)
 {
     struct sockaddr_ll source;
-    socklen_t source_len = sizeof(source);
+    socklen_t source_len;
     ssize_t ret;
+    uint16_t ether_type;
 
     if ((raw == NULL) ||
         (raw->fd < 0) ||
@@ -172,6 +185,7 @@ int linux_raw_receive(linux_raw_socket_t *raw,
     for (;;)
     {
         memset(&source, 0, sizeof(source));
+        source_len = sizeof(source);
 
         ret = recvfrom(raw->fd,
                        frame,
@@ -180,13 +194,13 @@ int linux_raw_receive(linux_raw_socket_t *raw,
                        (struct sockaddr *)&source,
                        &source_len);
 
-        if ((ret < 0) && (errno == EINTR))
-        {
-            continue;
-        }
-
         if (ret < 0)
         {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+
             return -1;
         }
 
@@ -201,6 +215,14 @@ int linux_raw_receive(linux_raw_socket_t *raw,
             return -1;
         }
 
+        ether_type = linux_raw_get_ethertype(frame, (size_t)ret);
+
+        if ((ether_type != 0x88E5u) &&
+            (ether_type != 0x888Eu))
+        {
+            continue;
+        }
+
         return (int)ret;
     }
 }
@@ -211,6 +233,7 @@ int linux_raw_send(linux_raw_socket_t *raw,
 {
     struct sockaddr_ll destination;
     ssize_t ret;
+    uint16_t ether_type;
 
     if ((raw == NULL) ||
         (raw->fd < 0) ||
@@ -223,7 +246,9 @@ int linux_raw_send(linux_raw_socket_t *raw,
 
     memset(&destination, 0, sizeof(destination));
     destination.sll_family = AF_PACKET;
-    destination.sll_protocol = htons((uint16_t)ETH_P_MACSEC);
+    ether_type = ((uint16_t)frame[12] << 8) |
+                  (uint16_t)frame[13];
+    destination.sll_protocol = htons(ether_type);
     destination.sll_ifindex = raw->ifindex;
     destination.sll_halen = ETH_ALEN;
     memcpy(destination.sll_addr, frame, ETH_ALEN);
