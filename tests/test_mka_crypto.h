@@ -17,7 +17,7 @@
 #ifndef TESTS_TEST_MKA_CRYPTO_H
 #define TESTS_TEST_MKA_CRYPTO_H
 
-#include "common.h"
+#include "macsec_common.h"
 #include "mka_crypto.h"
 
 #ifdef __cplusplus

@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#include "common.h"
+#include "macsec_common.h"
 #include "mka.h"
 
 #if (MACSEC_SELF_TEST != 0)

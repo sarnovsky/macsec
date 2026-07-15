@@ -17,7 +17,7 @@
 #ifndef MACSEC_MACSEC_H_
 #define MACSEC_MACSEC_H_
 
-#include "common.h"
+#include "macsec_common.h"
 #include "frame_crypto.h"
 #include "mka.h"
 

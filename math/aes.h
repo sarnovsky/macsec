@@ -14,7 +14,7 @@
 #ifndef MATH_AES_H
 #define MATH_AES_H
 
-#include "common.h"
+#include "macsec_common.h"
 
 #if (MACSEC_SELF_TEST != 0) && !defined(MATH_SELF_TEST)
 #define MATH_SELF_TEST

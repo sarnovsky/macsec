@@ -17,7 +17,7 @@
 #ifndef TESTS_TEST_MKA_FRAMES_H
 #define TESTS_TEST_MKA_FRAMES_H
 
-#include "common.h"
+#include "macsec_common.h"
 #include "mka.h"
 
 #ifdef __cplusplus

@@ -17,7 +17,7 @@
 #ifndef MACSEC_UNIT_TESTS_H
 #define MACSEC_UNIT_TESTS_H
 
-#include "common.h"
+#include "macsec_common.h"
 
 #include <tests/test_common.h>
 #include <tests/test_math_selftest.h>

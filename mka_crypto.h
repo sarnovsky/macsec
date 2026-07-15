@@ -18,7 +18,7 @@
 #ifndef MACSEC_MKA_CRYPTO_H
 #define MACSEC_MKA_CRYPTO_H
 
-#include "common.h"
+#include "macsec_common.h"
 #include "math/aes.h"
 #include "math/cmac.h"
 

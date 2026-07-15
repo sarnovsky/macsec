@@ -17,7 +17,7 @@
 #ifndef MACSEC_FRAME_CRYPTO_H
 #define MACSEC_FRAME_CRYPTO_H
 
-#include "common.h"
+#include "macsec_common.h"
 #include "math/gcm.h"
 
 #ifdef __cplusplus

@@ -142,7 +142,7 @@ LOCAL_SOURCES := main.c
 LOCAL_SOURCES += port.c
 LOCAL_SOURCES += runtime.c
 
-MINIMAL_SOURCES := $(PROJECT_ROOT)/common.c
+MINIMAL_SOURCES := $(PROJECT_ROOT)/macsec_common.c
 MINIMAL_SOURCES += $(PROJECT_ROOT)/frame_crypto.c
 MINIMAL_SOURCES += $(PROJECT_ROOT)/math/aes.c
 MINIMAL_SOURCES += $(PROJECT_ROOT)/math/gcm.c

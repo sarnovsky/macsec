@@ -14,7 +14,7 @@
 #ifndef MATH_CMAC_H
 #define MATH_CMAC_H
 
-#include "common.h"
+#include "macsec_common.h"
 
 #if (MACSEC_SELF_TEST != 0)
 #define MATH_SELF_TEST

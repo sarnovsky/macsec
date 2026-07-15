@@ -17,7 +17,7 @@
 #ifndef TESTS_TEST_MATH_SELFTEST_H
 #define TESTS_TEST_MATH_SELFTEST_H
 
-#include "common.h"
+#include "macsec_common.h"
 #include "math/aes.h"
 #include "math/gcm.h"
 #include "math/cmac.h"

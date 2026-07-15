@@ -17,7 +17,7 @@
 #ifndef MACSEC_MKA_H
 #define MACSEC_MKA_H
 
-#include "common.h"
+#include "macsec_common.h"
 #include "mka_crypto.h"
 /* macsec_random */
 #include "port/port.h"

@@ -17,7 +17,7 @@
 #ifndef MACSEC_TEST_COMMON_H
 #define MACSEC_TEST_COMMON_H
 
-#include "common.h"
+#include "macsec_common.h"
 
 #ifdef __cplusplus
 extern "C" {

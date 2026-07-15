@@ -21,7 +21,7 @@
 extern "C" {
 #endif
 
-#include "common.h"
+#include "macsec_common.h"
 
 #include "frame_crypto.h"
 

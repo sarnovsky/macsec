@@ -22,7 +22,7 @@
 extern "C" {
 #endif
 
-#include "common.h"
+#include "macsec_common.h"
 
 /* Panic */
 void macsec_sysPanic(void);

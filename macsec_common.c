@@ -15,7 +15,7 @@
  * See LICENSE file in the project root for full license text.
  */
  
-#include "common.h"
+#include "macsec_common.h"
 
 /* =========================================================================
  * Helpers

@@ -17,7 +17,7 @@
 #define MEMUSAGE_PROFILE MEMUSAGE_PROFILE_FULL
 #endif
 
-#include <macsec/common.h>
+#include <macsec/macsec_common.h>
 #include <macsec/frame_crypto.h>
 
 #if (MEMUSAGE_PROFILE != MEMUSAGE_PROFILE_MINIMAL)
