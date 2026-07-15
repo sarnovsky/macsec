@@ -901,44 +901,34 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
     ctx->peer.valid = MACSEC_TRUE;
 
     /*
-     * Only an entry in the Live Peer List confirms that the peer
-     * considers this participant live.
+     * A valid, authenticated peer becomes live after it includes our
+     * participant MI in either its Potential or Live Peer List.
      *
-     * An entry in the Potential Peer List means that the peer knows us,
-     * but the MKA relationship is not yet fully live.
+     * Requiring the Live Peer List exclusively would deadlock two newly
+     * initialized participants: both would keep listing each other only
+     * as potential peers and neither side could become live first.
      */
-    if (local_seen_by_peer &&
-        (peer_list_type == MACSEC_MKA_PARAM_LIVE_PEER_LIST))
+    if (local_seen_by_peer)
     {
         ctx->peer.seen_in_peer_list = MACSEC_TRUE;
         ctx->peer.live = MACSEC_TRUE;
         ctx->state = MACSEC_MKA_STATE_AUTHENTICATED;
 
         MACSEC_MEDIUM((
-            "MKA peer is LIVE: peer_mn=%lu listed_mn=%lu\n",
+            "MKA peer is LIVE: list_type=%u peer_mn=%lu listed_mn=%lu\n",
+            peer_list_type,
             (unsigned long)ctx->peer.mn,
             (unsigned long)listed_mn));
     }
     else
     {
-        ctx->peer.seen_in_peer_list =
-            local_seen_by_peer ?
-            MACSEC_TRUE :
-            MACSEC_FALSE;
-
+        ctx->peer.seen_in_peer_list = MACSEC_FALSE;
         ctx->peer.live = MACSEC_FALSE;
         ctx->state = MACSEC_MKA_STATE_PEER_FOUND;
 
-        if (local_seen_by_peer &&
-            (peer_list_type ==
-             MACSEC_MKA_PARAM_POTENTIAL_PEER_LIST))
-        {
-            MACSEC_MEDIUM((
-                "MKA peer lists local participant as POTENTIAL: "
-                "peer_mn=%lu listed_mn=%lu\n",
-                (unsigned long)ctx->peer.mn,
-                (unsigned long)listed_mn));
-        }
+        MACSEC_MEDIUM((
+            "MKA peer found but local MI is not listed: peer_mn=%lu\n",
+            (unsigned long)ctx->peer.mn));
     }
 
     peer_became_live =
