@@ -70,7 +70,8 @@ typedef struct
 {
     uint64_t tap_rx;
     uint64_t raw_tx;
-    uint64_t raw_rx;
+    uint64_t mka_rx;
+    uint64_t macsec_rx;
     uint64_t tap_tx;
     uint64_t encrypt_errors;
     uint64_t decrypt_errors;
@@ -644,7 +645,14 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec,
     ether_type = ((uint16_t)input[12] << 8) |
                   (uint16_t)input[13];
 
-    stats->raw_rx++;
+    if (ether_type == 0x888Eu)
+    {
+        stats->mka_rx++;
+    }
+    else if (ether_type == 0x88E5u)
+    {
+        stats->macsec_rx++;
+    }
 
     if (ether_type == 0x888Eu)
     {
@@ -687,9 +695,9 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec,
 
     stats->tap_tx++;
 
-    printf("RX MACsec secure=%d plain=%zu\n",
+    /* printf("RX MACsec secure=%d plain=%zu\n",
            input_len,
-           plain_len);
+           plain_len); */
 
     return 0;
 }
@@ -697,12 +705,13 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec,
 static void linux_tap_print_stats(const linux_tap_stats_t *stats)
 {
     printf("\nStatistics:\n");
-    printf("  TAP -> stack : %lu\n", (unsigned long)stats->tap_rx);
-    printf("  encrypted TX : %lu\n", (unsigned long)stats->raw_tx);
-    printf("  encrypted RX : %lu\n", (unsigned long)stats->raw_rx);
-    printf("  stack -> TAP : %lu\n", (unsigned long)stats->tap_tx);
-    printf("  encrypt errors: %lu\n", (unsigned long)stats->encrypt_errors);
-    printf("  decrypt errors: %lu\n", (unsigned long)stats->decrypt_errors);
+    printf("  TAP -> stack       : %lu\n", (unsigned long)stats->tap_rx);
+    printf("  MACsec TX          : %lu\n", (unsigned long)stats->raw_tx);
+    printf("  MKA RX             : %lu\n", (unsigned long)stats->mka_rx);
+    printf("  MACsec RX          : %lu\n", (unsigned long)stats->macsec_rx);
+    printf("  stack -> TAP       : %lu\n", (unsigned long)stats->tap_tx);
+    printf("  encrypt errors     : %lu\n", (unsigned long)stats->encrypt_errors);
+    printf("  decrypt/input errors: %lu\n",(unsigned long)stats->decrypt_errors);
 }
 
 static uint32_t linux_tap_get_time_ms(void)
