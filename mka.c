@@ -314,7 +314,8 @@ macsec_mka_state_t macsec_mka_get_state(const macsec_mka_ctx_t *ctx)
 static macsec_bool_t macsec_mka_frame_contains_peer_entry(const uint8_t *frame,
                                                  size_t frame_len,
                                                  const uint8_t mi[MACSEC_MKA_MI_LEN],
-                                                 uint32_t *mn_out)
+                                                 uint32_t *mn_out,
+                                                 uint8_t *list_type_out)
 {
     uint16_t eapol_len;
     size_t pos;
@@ -327,7 +328,20 @@ static macsec_bool_t macsec_mka_frame_contains_peer_entry(const uint8_t *frame,
         return MACSEC_FALSE;
     }
 
+    if (list_type_out != NULL)
+    {
+        *list_type_out = 0u;
+    }
+
     eapol_len = macsec_rd_be16(&frame[16]);
+    if (eapol_len < MACSEC_MKA_ICV_LEN)
+    {
+        MACSEC_ERROR((
+            "MKA peer-list scan invalid EAPOL length=%u\n",
+            eapol_len));
+    
+        return MACSEC_FALSE;
+    }
     end = 14u + 4u + eapol_len - MACSEC_MKA_ICV_LEN;
 
     if (end > frame_len)
@@ -350,11 +364,13 @@ static macsec_bool_t macsec_mka_frame_contains_peer_entry(const uint8_t *frame,
         if (pos == 18u)
         {
             body_len = (uint16_t)(((uint16_t)(frame[pos + 2u] & 0x0Fu) << 8u) |
-                                  frame[pos + 3u]);
+                       (uint16_t)frame[pos + 3u]);
 
-            MACSEC_INFO(("MKA parameter set: Basic body_len=%u pos=%lu\n",
-                         body_len,
-                         (unsigned long)pos));
+            if ((pos + 4u + body_len) > end)
+            {
+                MACSEC_ERROR(("MKA Basic parameter overflow: body_len=%u end=%lu\n", body_len, (unsigned long)end));
+                return MACSEC_FALSE;
+            }
 
             pos += 4u + body_len;
             continue;
@@ -402,6 +418,11 @@ static macsec_bool_t macsec_mka_frame_contains_peer_entry(const uint8_t *frame,
                         *mn_out = listed_mn;
                     }
 
+                    if (list_type_out != NULL)
+                    {
+                        *list_type_out = type;
+                    }
+
                     MACSEC_MEDIUM(("MKA local MI found in peer list: type=%u listed_mn=%lu\n",
                                    type,
                                    (unsigned long)listed_mn));
@@ -428,7 +449,6 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx,
     uint16_t eapol_len;
     size_t pos;
     size_t end;
-    uint32_t key_number;
 
     macsec_assert(ctx != NULL);
     macsec_assert(frame != NULL);
@@ -439,6 +459,12 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx,
     }
 
     eapol_len = macsec_rd_be16(&frame[16]);
+
+    if (eapol_len < MACSEC_MKA_ICV_LEN)
+    {
+        return MACSEC_ERR_BUFFER;
+    }
+
     end = 14u + 4u + eapol_len - MACSEC_MKA_ICV_LEN;
 
     if (end > frame_len)
@@ -457,15 +483,27 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx,
 
         if (pos == 18u)
         {
-            body_len = (uint16_t)(((uint16_t)(frame[pos + 2u] & 0x0Fu) << 8u) |
-                                  frame[pos + 3u]);
+            /*
+             * Skip Basic Parameter Set.
+             */
+            body_len =
+                (uint16_t)(((uint16_t)(frame[pos + 2u] & 0x0Fu) << 8u) |
+                           (uint16_t)frame[pos + 3u]);
+
+            if ((pos + 4u + body_len) > end)
+            {
+                return MACSEC_ERR_BUFFER;
+            }
+
             pos += 4u + body_len;
             continue;
         }
 
         type = frame[pos];
-        body_len = (uint16_t)(((uint16_t)(frame[pos + 2u] & 0x0Fu) << 8u) |
-                              frame[pos + 3u]);
+
+        body_len =
+            (uint16_t)(((uint16_t)(frame[pos + 2u] & 0x0Fu) << 8u) |
+                       (uint16_t)frame[pos + 3u]);
 
         body_pos = pos + 4u;
         body_end = body_pos + body_len;
@@ -477,44 +515,41 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx,
 
         if (type == MACSEC_MKA_PARAM_DISTRIBUTED_SAK)
         {
+            uint8_t unwrapped_sak[32];
             uint8_t an;
             const uint8_t *wrapped_sak;
             size_t wrapped_sak_len;
             size_t sak_len;
+            uint32_t key_number;
+            macsec_bool_t same_sak;
             int ret;
 
             /*
-             * Linux log:
-             * Distributed SAK Body Length = 28
-             * AES Key Wrap of SAK = 24 B
+             * Supported Distributed SAK body:
              *
-             * Minimal supported layout here:
-             *   byte 0      : flags / AN / confidentiality offset
-             *   bytes 4..27 : wrapped SAK
+             *   bytes 0..3 : Key Number
+             *   bytes 4..  : AES-KW wrapped SAK
              *
-             * For this debug implementation we only need AN + wrapped SAK.
+             * A wrapped 128-bit SAK occupies 24 bytes.
+             * A wrapped 256-bit SAK occupies 40 bytes.
              */
-            if (body_len < 28u)
+            if (body_len < (4u + 24u))
             {
                 return MACSEC_ERR_BUFFER;
             }
 
-            MACSEC_ERROR_HEX(("MKA Distributed SAK body first 4",
-                              &frame[body_pos],
-                              4));
-
-            MACSEC_ERROR(("MKA Distributed SAK header: b0=0x%02X b1=0x%02X b2=0x%02X b3=0x%02X an_old=%u\n",
-                          frame[body_pos + 0u],
-                          frame[body_pos + 1u],
-                          frame[body_pos + 2u],
-                          frame[body_pos + 3u],
-                          (unsigned)((frame[body_pos] >> 6u) & 0x03u)));
-
             key_number = macsec_rd_be32(&frame[body_pos]);
 
+            /*
+             * In the current stack, AN rotates together with Key Number:
+             *
+             *   Key Number 1 -> AN 0
+             *   Key Number 2 -> AN 1
+             *   ...
+             */
             if (key_number == 0u)
             {
-            	an = 0u;
+                an = 0u;
             }
             else
             {
@@ -524,44 +559,126 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx,
             wrapped_sak = &frame[body_pos + 4u];
             wrapped_sak_len = body_len - 4u;
 
-            if (wrapped_sak_len > 40u)
+            if ((wrapped_sak_len != 24u) &&
+                (wrapped_sak_len != 40u))
             {
+                MACSEC_ERROR((
+                    "MKA Distributed SAK invalid wrapped length=%lu\n",
+                    (unsigned long)wrapped_sak_len));
+
                 return MACSEC_ERR_BUFFER;
             }
 
-            memset(&ctx->latest_sak, 0, sizeof(ctx->latest_sak));
+            MACSEC_INFO((
+                "MKA Distributed SAK: key_number=%lu an=%u "
+                "wrapped_len=%lu\n",
+                (unsigned long)key_number,
+                an,
+                (unsigned long)wrapped_sak_len));
 
+            memset(unwrapped_sak, 0, sizeof(unwrapped_sak));
             sak_len = 0u;
 
             ret = macsec_mka_crypto_unwrap_sak(&ctx->crypto,
                                                wrapped_sak,
                                                wrapped_sak_len,
-                                               ctx->latest_sak.sak,
+                                               unwrapped_sak,
                                                &sak_len,
-                                               sizeof(ctx->latest_sak.sak));
-
+                                               sizeof(unwrapped_sak));
             if (ret != MACSEC_ERR_OK)
             {
-                MACSEC_ERROR(("MKA Distributed SAK unwrap failed ret=%d body_len=%u wrapped_len=%lu\n",
-                              ret,
-                              body_len,
-                              (unsigned long)wrapped_sak_len));
-                MACSEC_ERROR_HEX(("MKA wrapped SAK", wrapped_sak, (int)wrapped_sak_len));
+                MACSEC_ERROR((
+                    "MKA Distributed SAK unwrap failed ret=%d "
+                    "body_len=%u wrapped_len=%lu\n",
+                    ret,
+                    body_len,
+                    (unsigned long)wrapped_sak_len));
+
+                MACSEC_ERROR_HEX((
+                    "MKA wrapped SAK",
+                    wrapped_sak,
+                    (int)wrapped_sak_len));
+
+                macsec_zeroize(unwrapped_sak,
+                               sizeof(unwrapped_sak));
+
                 return ret;
             }
+
+            if ((sak_len != 16u) && (sak_len != 32u))
+            {
+                MACSEC_ERROR((
+                    "MKA Distributed SAK invalid unwrapped length=%lu\n",
+                    (unsigned long)sak_len));
+
+                macsec_zeroize(unwrapped_sak,
+                               sizeof(unwrapped_sak));
+
+                return MACSEC_ERR_BUFFER;
+            }
+
+            /*
+             * The Key Server may repeat the same Distributed SAK in
+             * subsequent periodic MKPDUs. Do not report it as a new key
+             * and do not overwrite the currently installed candidate.
+             */
+            same_sak =
+                ctx->latest_sak.valid &&
+                (ctx->latest_sak.key_number == key_number) &&
+                (ctx->latest_sak.an == an) &&
+                (ctx->latest_sak.sak_len == sak_len) &&
+                (memcmp(ctx->latest_sak.sak,
+                        unwrapped_sak,
+                        sak_len) == 0);
+
+            if (same_sak)
+            {
+                MACSEC_INFO((
+                    "MKA Distributed SAK already known: "
+                    "key_number=%lu an=%u\n",
+                    (unsigned long)key_number,
+                    an));
+
+                macsec_zeroize(unwrapped_sak,
+                               sizeof(unwrapped_sak));
+
+                return MACSEC_ERR_NOT_READY;
+            }
+
+            memset(&ctx->latest_sak, 0, sizeof(ctx->latest_sak));
+
+            memcpy(ctx->latest_sak.sak,
+                   unwrapped_sak,
+                   sak_len);
 
             ctx->latest_sak.sak_len = sak_len;
             ctx->latest_sak.an = an;
             ctx->latest_sak.key_number = key_number;
             ctx->latest_sak.valid = MACSEC_TRUE;
-            ctx->latest_key_rx = MACSEC_TRUE;
 
-            MACSEC_MEDIUM(("MKA Distributed SAK installed candidate: an=%u sak_len=%lu\n",
-                           ctx->latest_sak.an,
-                           (unsigned long)ctx->latest_sak.sak_len));
-            MACSEC_MEDIUM_HEX(("MKA unwrapped SAK",
-                               ctx->latest_sak.sak,
-                               (int)ctx->latest_sak.sak_len));
+            /*
+             * A newly received Distributed SAK is known on RX first.
+             * TX becomes active after the top-level MACsec layer installs
+             * and acknowledges it.
+             */
+            ctx->latest_key_rx = MACSEC_TRUE;
+            ctx->latest_key_tx = MACSEC_FALSE;
+            ctx->latest_lowest_pn = 1u;
+
+            MACSEC_MEDIUM((
+                "MKA Distributed SAK new candidate: "
+                "key_number=%lu an=%u sak_len=%lu\n",
+                (unsigned long)ctx->latest_sak.key_number,
+                ctx->latest_sak.an,
+                (unsigned long)ctx->latest_sak.sak_len));
+
+            MACSEC_MEDIUM_HEX((
+                "MKA unwrapped SAK",
+                ctx->latest_sak.sak,
+                (int)ctx->latest_sak.sak_len));
+
+            macsec_zeroize(unwrapped_sak,
+                           sizeof(unwrapped_sak));
 
             return MACSEC_ERR_OK;
         }
@@ -579,35 +696,62 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
 {
     int ret;
     macsec_mka_basic_t basic;
-    macsec_bool_t peer_changed;
+
+    macsec_bool_t peer_identity_changed;
+    macsec_bool_t peer_became_live;
+    macsec_bool_t peer_became_not_live;
+    macsec_bool_t key_server_changed;
+    macsec_bool_t new_sak_received;
+
+    macsec_bool_t previous_peer_live;
+    macsec_bool_t previous_local_key_server;
+
     macsec_bool_t local_seen_by_peer;
     uint32_t listed_mn;
+    uint8_t peer_list_type;
 
     macsec_assert(ctx != NULL);
     macsec_assert(frame != NULL);
 
-    MACSEC_INFO(("MKA RX frame len=%lu now=%lu\n",
-                 (unsigned long)frame_len,
-                 (unsigned long)now_ms));
+    MACSEC_INFO((
+        "MKA RX frame len=%lu now=%lu\n",
+        (unsigned long)frame_len,
+        (unsigned long)now_ms));
 
     if (!macsec_mka_is_eapol_mka(frame, frame_len))
     {
-        MACSEC_ERROR(("MKA RX unsupported/non-MKA frame len=%lu\n",
-                      (unsigned long)frame_len));
+        MACSEC_ERROR((
+            "MKA RX unsupported/non-MKA frame len=%lu\n",
+            (unsigned long)frame_len));
+
         return MACSEC_ERR_PARAM;
     }
 
-    ret = macsec_mka_parse_basic(frame, frame_len, &basic);
+    ret = macsec_mka_parse_basic(frame,
+                                 frame_len,
+                                 &basic);
     if (ret != MACSEC_ERR_OK)
     {
-        MACSEC_ERROR(("MKA RX parse Basic failed ret=%d\n", ret));
+        MACSEC_ERROR((
+            "MKA RX parse Basic failed ret=%d\n",
+            ret));
+
         ctx->state = MACSEC_MKA_STATE_ERROR;
         return ret;
     }
 
-    if ((memcmp(basic.src_mac, ctx->local_mac, 6u) == 0) ||
-        (memcmp(basic.sci, ctx->local_sci, MACSEC_MKA_SCI_LEN) == 0) ||
-        (memcmp(basic.actor_mi, ctx->local_mi, MACSEC_MKA_MI_LEN) == 0))
+    /*
+     * Ignore frames originating from this participant.
+     */
+    if ((memcmp(basic.src_mac,
+                ctx->local_mac,
+                6u) == 0) ||
+        (memcmp(basic.sci,
+                ctx->local_sci,
+                MACSEC_MKA_SCI_LEN) == 0) ||
+        (memcmp(basic.actor_mi,
+                ctx->local_mi,
+                MACSEC_MKA_MI_LEN) == 0))
     {
         MACSEC_INFO(("MKA RX ignored own frame\n"));
         return MACSEC_ERR_OK;
@@ -617,13 +761,26 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
     ctx->last_rx_ms = now_ms;
     ctx->last_icv_valid = MACSEC_FALSE;
 
+    /*
+     * The complete MKPDU must be authenticated before any peer state
+     * or distributed key is accepted.
+     */
     if (ctx->verify_icv)
     {
-        ret = macsec_mka_verify_icv(ctx, frame, frame_len, &basic);
+        ret = macsec_mka_verify_icv(ctx,
+                                    frame,
+                                    frame_len,
+                                    &basic);
         if (ret != MACSEC_ERR_OK)
         {
-            MACSEC_ERROR(("MKA RX ICV failed ret=%d\n", ret));
-            MACSEC_ERROR_HEX(("MKA RX expected ICV", basic.icv, MACSEC_MKA_ICV_LEN));
+            MACSEC_ERROR((
+                "MKA RX ICV failed ret=%d\n",
+                ret));
+
+            MACSEC_ERROR_HEX((
+                "MKA RX received ICV",
+                basic.icv,
+                MACSEC_MKA_ICV_LEN));
 
             ctx->state = MACSEC_MKA_STATE_ERROR;
             return ret;
@@ -631,86 +788,212 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
 
         ctx->last_icv_valid = MACSEC_TRUE;
 
-
         MACSEC_INFO(("MKA RX ICV OK\n"));
     }
 
     /*
-     * Parse optional parameter sets after Basic Parameter Set.
-     * In particular, this looks for Distributed SAK.
-     *
-     * Important:
-     * - with verify_icv enabled, this runs only after ICV passed
-     * - with verify_icv disabled, this still works for debug
+     * Preserve previous protocol state so that immediate MKPDU
+     * transmission is requested only on real state transitions.
      */
-    ret = macsec_mka_parse_distributed_sak(ctx, frame, frame_len);
-    if ((ret != MACSEC_ERR_OK) && (ret != MACSEC_ERR_NOT_READY))
+    previous_peer_live = ctx->peer.live;
+    previous_local_key_server = ctx->local_key_server;
+
+    /*
+     * Message Number normally increases in every MKPDU. It must not be
+     * treated as a change of peer identity.
+     */
+    peer_identity_changed =
+        (!ctx->peer.valid) ||
+        (memcmp(ctx->peer.mi,
+                basic.actor_mi,
+                MACSEC_MKA_MI_LEN) != 0) ||
+        (memcmp(ctx->peer.sci,
+                basic.sci,
+                MACSEC_MKA_SCI_LEN) != 0) ||
+        (memcmp(ctx->peer.mac,
+                basic.src_mac,
+                6u) != 0);
+
+    /*
+     * Parse a Distributed SAK only after successful ICV verification.
+     *
+     * MACSEC_ERR_OK:
+     *   A genuinely new SAK was received.
+     *
+     * MACSEC_ERR_NOT_READY:
+     *   No Distributed SAK was present, or the received SAK was already
+     *   known.
+     */
+    ret = macsec_mka_parse_distributed_sak(ctx,
+                                           frame,
+                                           frame_len);
+
+    if ((ret != MACSEC_ERR_OK) &&
+        (ret != MACSEC_ERR_NOT_READY))
     {
-        MACSEC_ERROR(("MKA RX Distributed SAK parse failed ret=%d\n", ret));
+        MACSEC_ERROR((
+            "MKA RX Distributed SAK parse failed ret=%d\n",
+            ret));
+
         ctx->state = MACSEC_MKA_STATE_ERROR;
         return ret;
     }
 
+    new_sak_received =
+        (ret == MACSEC_ERR_OK) ?
+        MACSEC_TRUE :
+        MACSEC_FALSE;
+
+    /*
+     * Determine whether the peer lists our local participant and whether
+     * it lists us as a live or only potential peer.
+     */
     listed_mn = 0u;
-    local_seen_by_peer = macsec_mka_frame_contains_peer_entry(frame,
-                                                              frame_len,
-                                                              ctx->local_mi,
-                                                              &listed_mn);
+    peer_list_type = 0u;
 
-    peer_changed = (!ctx->peer.valid) ||
-                   (memcmp(ctx->peer.mi, basic.actor_mi, MACSEC_MKA_MI_LEN) != 0) ||
-                   (basic.actor_mn != ctx->peer.mn);
+    local_seen_by_peer =
+        macsec_mka_frame_contains_peer_entry(frame,
+                                             frame_len,
+                                             ctx->local_mi,
+                                             &listed_mn,
+                                             &peer_list_type);
 
-    MACSEC_MEDIUM(("MKA peer update: peer_changed=%u local_seen_by_peer=%u peer_mn=%lu\n",
-                   peer_changed ? 1u : 0u,
-                   local_seen_by_peer ? 1u : 0u,
-                   (unsigned long)basic.actor_mn));
+    MACSEC_MEDIUM((
+        "MKA peer update: identity_changed=%u "
+        "local_seen_by_peer=%u list_type=%u "
+        "peer_mn=%lu new_sak=%u\n",
+        peer_identity_changed ? 1u : 0u,
+        local_seen_by_peer ? 1u : 0u,
+        peer_list_type,
+        (unsigned long)basic.actor_mn,
+        new_sak_received ? 1u : 0u));
 
-    memcpy(ctx->peer.mac, basic.src_mac, 6u);
-    memcpy(ctx->peer.sci, basic.sci, MACSEC_MKA_SCI_LEN);
-    memcpy(ctx->peer.mi, basic.actor_mi, MACSEC_MKA_MI_LEN);
+    /*
+     * Update current peer identity and advertised capabilities.
+     */
+    memcpy(ctx->peer.mac,
+           basic.src_mac,
+           6u);
+
+    memcpy(ctx->peer.sci,
+           basic.sci,
+           MACSEC_MKA_SCI_LEN);
+
+    memcpy(ctx->peer.mi,
+           basic.actor_mi,
+           MACSEC_MKA_MI_LEN);
 
     ctx->peer.mn = basic.actor_mn;
-    ctx->peer.key_server_priority = basic.key_server_priority;
-    ctx->peer.key_server = basic.key_server;
-    ctx->peer.macsec_desired = basic.macsec_desired;
-    ctx->peer.macsec_capability = basic.macsec_capability;
+
+    ctx->peer.key_server_priority =
+        basic.key_server_priority;
+
+    ctx->peer.key_server =
+        basic.key_server;
+
+    ctx->peer.macsec_desired =
+        basic.macsec_desired;
+
+    ctx->peer.macsec_capability =
+        basic.macsec_capability;
+
     ctx->peer.last_seen_ms = now_ms;
     ctx->peer.valid = MACSEC_TRUE;
 
-    if (local_seen_by_peer)
+    /*
+     * Only an entry in the Live Peer List confirms that the peer
+     * considers this participant live.
+     *
+     * An entry in the Potential Peer List means that the peer knows us,
+     * but the MKA relationship is not yet fully live.
+     */
+    if (local_seen_by_peer &&
+        (peer_list_type == MACSEC_MKA_PARAM_LIVE_PEER_LIST))
     {
         ctx->peer.seen_in_peer_list = MACSEC_TRUE;
         ctx->peer.live = MACSEC_TRUE;
         ctx->state = MACSEC_MKA_STATE_AUTHENTICATED;
-        ctx->tx_pending = MACSEC_TRUE;
 
-        MACSEC_MEDIUM(("MKA peer is LIVE: peer_mn=%lu listed_mn=%lu\n",
-                       (unsigned long)ctx->peer.mn,
-                       (unsigned long)listed_mn));
+        MACSEC_MEDIUM((
+            "MKA peer is LIVE: peer_mn=%lu listed_mn=%lu\n",
+            (unsigned long)ctx->peer.mn,
+            (unsigned long)listed_mn));
     }
     else
     {
+        ctx->peer.seen_in_peer_list =
+            local_seen_by_peer ?
+            MACSEC_TRUE :
+            MACSEC_FALSE;
+
+        ctx->peer.live = MACSEC_FALSE;
         ctx->state = MACSEC_MKA_STATE_PEER_FOUND;
+
+        if (local_seen_by_peer &&
+            (peer_list_type ==
+             MACSEC_MKA_PARAM_POTENTIAL_PEER_LIST))
+        {
+            MACSEC_MEDIUM((
+                "MKA peer lists local participant as POTENTIAL: "
+                "peer_mn=%lu listed_mn=%lu\n",
+                (unsigned long)ctx->peer.mn,
+                (unsigned long)listed_mn));
+        }
     }
 
-    ctx->local_key_server = macsec_mka_local_wins_key_server(ctx);
+    peer_became_live =
+        (!previous_peer_live && ctx->peer.live) ?
+        MACSEC_TRUE :
+        MACSEC_FALSE;
 
-    MACSEC_MEDIUM(("MKA key server election: local_priority=%u peer_priority=%u local_key_server=%u\n",
-                   ctx->key_server_priority,
-                   ctx->peer.key_server_priority,
-                   ctx->local_key_server ? 1u : 0u));
+    peer_became_not_live =
+        (previous_peer_live && !ctx->peer.live) ?
+        MACSEC_TRUE :
+        MACSEC_FALSE;
 
-    if (peer_changed)
+    /*
+     * Re-run the Key Server election using the current peer data.
+     */
+    ctx->local_key_server =
+        macsec_mka_local_wins_key_server(ctx);
+
+    key_server_changed =
+        (previous_local_key_server != ctx->local_key_server) ?
+        MACSEC_TRUE :
+        MACSEC_FALSE;
+
+    MACSEC_MEDIUM((
+        "MKA key server election: "
+        "local_priority=%u peer_priority=%u "
+        "local_key_server=%u changed=%u\n",
+        ctx->key_server_priority,
+        ctx->peer.key_server_priority,
+        ctx->local_key_server ? 1u : 0u,
+        key_server_changed ? 1u : 0u));
+
+    /*
+     * Request an immediate MKPDU only after a meaningful protocol change.
+     *
+     * A normal increment of actor_mn does not require an immediate reply.
+     */
+    if (peer_identity_changed ||
+        peer_became_live ||
+        peer_became_not_live ||
+        key_server_changed ||
+        new_sak_received)
     {
         ctx->tx_pending = MACSEC_TRUE;
     }
 
-    MACSEC_INFO(("MKA RX done: state=%u peer_valid=%u peer_live=%u tx_pending=%u\n",
-                 ctx->state,
-                 ctx->peer.valid ? 1u : 0u,
-                 ctx->peer.live ? 1u : 0u,
-                 ctx->tx_pending ? 1u : 0u));
+    MACSEC_INFO((
+        "MKA RX done: state=%u peer_valid=%u peer_live=%u "
+        "peer_list_type=%u tx_pending=%u new_sak=%u\n",
+        ctx->state,
+        ctx->peer.valid ? 1u : 0u,
+        ctx->peer.live ? 1u : 0u,
+        peer_list_type,
+        ctx->tx_pending ? 1u : 0u,
+        new_sak_received ? 1u : 0u));
 
     return MACSEC_ERR_OK;
 }
@@ -973,12 +1256,28 @@ int macsec_mka_get_tx_frame(macsec_mka_ctx_t *ctx,
 
         include_distributed_sak = MACSEC_TRUE;
 
-        /*
-         * 4 B parameter header
-         * 4 B key number
-         * 24 B AES-KW wrapped 128-bit SAK
-         */
-        distributed_sak_param_len = 4u + 4u + 24u;
+        if (ctx->latest_sak.sak_len == 16u)
+        {
+            /*
+             * 4 B parameter header
+             * 4 B key number
+             * 24 B AES-KW wrapped 128-bit SAK
+             */
+            distributed_sak_param_len = 4u + 4u + 24u;
+        }
+        else if (ctx->latest_sak.sak_len == 32u)
+        {
+            /*
+             * 4 B parameter header
+             * 4 B key number
+             * 40 B AES-KW wrapped 256-bit SAK
+             */
+            distributed_sak_param_len = 4u + 4u + 40u;
+        }
+        else
+        {
+            return MACSEC_ERR_STATE;
+        }
     }
 
     sak_use_param_len = 0u;
@@ -1224,6 +1523,9 @@ void macsec_mka_set_latest_key_tx(macsec_mka_ctx_t *ctx,
                                   uint8_t an,
                                   uint32_t lowest_pn)
 {
+    uint32_t normalized_lowest_pn;
+    macsec_bool_t state_changed;
+
     macsec_assert(ctx != NULL);
 
     if (!ctx->latest_sak.valid)
@@ -1236,8 +1538,20 @@ void macsec_mka_set_latest_key_tx(macsec_mka_ctx_t *ctx,
         return;
     }
 
+    normalized_lowest_pn =
+        (lowest_pn != 0u) ? lowest_pn : 1u;
+
+    state_changed =
+        (!ctx->latest_key_tx) ||
+        (!ctx->latest_key_rx) ||
+        (ctx->latest_lowest_pn != normalized_lowest_pn);
+
     ctx->latest_key_tx = MACSEC_TRUE;
     ctx->latest_key_rx = MACSEC_TRUE;
-    ctx->latest_lowest_pn = (lowest_pn != 0u) ? lowest_pn : 1u;
-    ctx->tx_pending = MACSEC_TRUE;
+    ctx->latest_lowest_pn = normalized_lowest_pn;
+
+    if (state_changed)
+    {
+        ctx->tx_pending = MACSEC_TRUE;
+    }
 }
