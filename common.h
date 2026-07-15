@@ -32,7 +32,55 @@ typedef uint8_t macsec_bool_t;
  * Configuration
  * ========================================================================= */
 
-#define MACSEC_SELF_TEST              1
+/* =========================================================================
+ * Configuration
+ * ========================================================================= */
+
+/*
+ * AES lookup-table configuration.
+ *
+ * These presence macros may be defined by the integrating project or build
+ * system:
+ *
+ *   MATH_AES_ROM_TABLES
+ *       Store AES lookup tables as constant read-only tables.
+ *       If undefined, tables are generated into RAM at runtime.
+ *
+ *   MATH_AES_FEWER_TABLES
+ *       Store only one forward and one reverse lookup table. The remaining
+ *       tables are derived using rotations.
+ *
+ * Supported combinations:
+ *
+ *   none
+ *       Runtime-generated full tables.
+ *
+ *   MATH_AES_FEWER_TABLES
+ *       Runtime-generated reduced tables.
+ *
+ *   MATH_AES_ROM_TABLES
+ *       Full constant ROM tables.
+ *
+ *   MATH_AES_ROM_TABLES + MATH_AES_FEWER_TABLES
+ *       Reduced constant ROM tables.
+ *
+ * No default is selected here. The build system decides which macros are
+ * defined.
+ */
+
+
+/*
+ * Enable self-test code.
+ *
+ * May be overridden from the compiler command line:
+ *
+ *   -DMACSEC_SELF_TEST=0
+ *   -DMACSEC_SELF_TEST=1
+ */
+#ifndef MACSEC_SELF_TEST
+#define MACSEC_SELF_TEST 1
+#endif
+
 
 /*
  * Debug level:
@@ -41,8 +89,15 @@ typedef uint8_t macsec_bool_t;
  *   1 = errors only
  *   2 = medium / important protocol events
  *   3 = info / detailed packet-level debug
+ *
+ * May be overridden from the compiler command line:
+ *
+ *   -DMACSEC_DEBUG_LEVEL=0
+ *   -DMACSEC_DEBUG_LEVEL=3
  */
-#define MACSEC_DEBUG_LEVEL            1
+#ifndef MACSEC_DEBUG_LEVEL
+#define MACSEC_DEBUG_LEVEL 1
+#endif
 
 #define MACSEC_DEBUG_LEVEL_ERROR      1u
 #define MACSEC_DEBUG_LEVEL_MEDIUM     2u

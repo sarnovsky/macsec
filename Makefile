@@ -18,7 +18,8 @@ INCLUDES := \
 	-Imath \
 	-Iport \
 	-Itests \
-	-Iexamples/linux_tap
+	-Iexamples/linux_tap \
+	-Iexamples/xprintf
 
 LDFLAGS :=
 
@@ -39,7 +40,8 @@ LIB_SRCS := \
 # Linux platform port
 
 LINUX_PORT_SRCS := \
-	port/linux/port.c
+	port/embedded/port.c \
+	examples/xprintf/xprintf.c
 
 
 # Unit-test sources

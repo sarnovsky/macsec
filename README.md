@@ -1,82 +1,195 @@
 # Lightweight MACsec Stack
 
+Lightweight experimental implementation of IEEE 802.1AE (MACsec) and IEEE 802.1X
+MACsec Key Agreement (MKA) written in C for embedded systems.
 
+The project focuses on portability, readability and low resource usage while
+remaining independent of any operating system or network stack. It is intended
+primarily for embedded development, experimentation and educational purposes.
 
-Lightweight experimental MACsec-related stack written in C for embedded systems.
+---
 
-
-
-The project contains helper code for MACsec frame encryption/decryption and related
-
-test code. It is intended mainly for learning, prototyping and embedded experiments.
-
-
-
-## Status
-
-
+# Status
 
 Experimental / proof of concept.
 
+The implementation has **not** been independently security audited and should
+not be used in production or safety/security-critical systems without
+additional review and validation.
 
+---
 
-This project has not been security audited and should not be used in production
+# Features
 
-or safety/security-critical systems without independent review.
+## MACsec
 
+- IEEE 802.1AE frame protection
+- AES-GCM authenticated encryption
+- SecTAG generation and parsing
+- ICV generation and verification
+- SCI support
+- Packet Number (PN) handling
+- Replay protection
+- Static Secure Association Keys (SAK)
+- 128-bit and 256-bit SAK support
 
+## MKA
 
-## Features
+- IEEE 802.1X MACsec Key Agreement (MKA)
+- Pre-Shared Key (PSK) mode
+- CAK lengths:
+  - 128-bit (16-byte)
+  - 256-bit (32-byte)
+- CKN lengths up to 32 bytes
+- ICK / KEK derivation
+- Distributed SAK generation
+- Key Server election
+- Rekey support
+- MKA frame encoding and decoding
+- MIC generation and verification (AES-CMAC)
 
+## Cryptography
 
+- Embedded AES implementation
+- AES-GCM
+- AES-CMAC
+- Runtime or ROM lookup tables
+- Reduced lookup-table configuration for lower Flash usage
 
-- MACsec frame encryption/decryption helpers
+## Testing
 
-- AES-GCM based frame protection using mbedTLS
+- Unit tests
+- Integration tests
+- Negative tests
+- Rekey tests
+- Cryptographic self-tests
+- Linux interoperability testing with wpa_supplicant
 
-- SecTAG / ICV handling
+---
 
-- Basic unit-test support
+# Design goals
 
-- Embedded-oriented C code
+- Small Flash footprint
+- Small RAM footprint
+- Portable ANSI C implementation
+- No operating system required
+- Easy integration into existing Ethernet drivers
+- Readable implementation suitable for learning
 
+---
 
-
-## Requirements
-
-
+# Requirements
 
 - C compiler
+- Standard C library
+- `<stdint.h>`
+- `<stddef.h>`
 
-- mbedTLS
+No operating system is required.
 
-- Standard integer types from `<stdint.h>`
+The library is self-contained and does not depend on lwIP, FreeRTOS or any
+particular Ethernet controller.
 
-- Project-specific platform glue for logging / memory / integration
+---
 
-
-
-## Directory structure
+# Directory structure
 
 ```text
+macsec/
+    common.[ch]
+    frame_crypto.[ch]
+    macsec.[ch]
+    mka.[ch]
+    mka_crypto.[ch]
 
-include/macsec/    Public headers
+math/
+    aes.[ch]
+    gcm.[ch]
+    cmac.[ch]
 
-src/               Source files
+tests/
+    Unit tests
+    Integration tests
+    Negative tests
+    Rekey tests
 
-tests/             Tests and self-tests
+examples/
+    Linux TAP example
+    STM32 memory footprint measurement
+    Platform examples
 
-examples/          Example integration code
-
+port/
+    Linux platform
+    Embedded platform
 ```
 
-## Memory footprint
+---
 
-Measured on STM32F411 using arm-none-eabi-gcc, Cortex-M4, Thumb mode.
+# Memory footprint
 
-| Configuration | Optimization | Debug prints | mbedTLS self-tests | FLASH | Static RAM | MACsec context | MACsec heap |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| Minimal frame crypto only | -Os | off | off | TBD | TBD | sizeof(macsec_ctx_t) | MACSEC_HEAP_SIZE |
-| Full MACsec + MKA | -Os | off | off | TBD | TBD | sizeof(macsec_ctx_t) | MACSEC_HEAP_SIZE |
-| Full MACsec + MKA + debug | -Og | on | off | TBD | TBD | sizeof(macsec_ctx_t) | MACSEC_HEAP_SIZE |
-| Full tests | -Og | on | on | TBD | TBD | sizeof(macsec_ctx_t) | MACSEC_HEAP_SIZE |
+The repository contains a dedicated STM32 memory-footprint measurement project
+located in:
+
+```text
+examples/mem_usage_stm32
+```
+
+Measurements are performed automatically using:
+
+- STM32F411
+- Cortex-M4
+- Thumb instruction set
+- arm-none-eabi-gcc
+
+Several build configurations are evaluated automatically, including:
+
+- compiler optimization (`-O0`, `-O2`, `-Os`)
+- debug levels
+- self-test support
+- AES lookup-table implementations
+
+Typical production (`PROFILE=full`, `SELF_TEST=0`, `DEBUG_LEVEL=0`, `-Os`)
+results are:
+
+| AES mode | FLASH | RAM |
+|-----------|------:|----:|
+| runtime_fewer | **13.85 KiB** | 8.80 KiB |
+| rom_fewer | 15.93 KiB | **4.26 KiB** |
+
+This demonstrates the configurable Flash/RAM trade-off available for embedded
+systems.
+
+---
+
+# Examples
+
+The repository contains example integrations for:
+
+- Linux userspace (TAP interface)
+- STM32 memory-footprint measurement
+
+The examples are intended as reference implementations and starting points for
+porting the stack to other embedded platforms.
+
+---
+
+# Current capabilities
+
+Current development includes:
+
+- MACsec frame encryption/decryption
+- MKA over PSK
+- 16-byte and 32-byte CAK support
+- Automatic key derivation (ICK / KEK)
+- Rekey support
+- Linux interoperability testing
+- Extensive automated test suite
+
+Further work will continue toward improving interoperability, documentation and
+embedded platform support.
+
+---
+
+# License
+
+MIT License.

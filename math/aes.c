@@ -204,7 +204,7 @@ static const unsigned char FORWARD_S_BOX[256] =
 static const uint32_t FORWARD_TABLES_0[256] = { FORWARD_TABLES };
 #undef V
 
-#if !defined(MBEDTLS_AES_FEWER_TABLES)
+#if !defined(MATH_AES_FEWER_TABLES)
 #define V(a,b,c,d) AES_TABLE_WORD(b,c,d,a)
 static const uint32_t FORWARD_TABLES_1[256] = { FORWARD_TABLES };
 #undef V
@@ -216,7 +216,7 @@ static const uint32_t FORWARD_TABLES_2[256] = { FORWARD_TABLES };
 #define V(a,b,c,d) AES_TABLE_WORD(d,a,b,c)
 static const uint32_t FORWARD_TABLES_3[256] = { FORWARD_TABLES };
 #undef V
-#endif /* !MBEDTLS_AES_FEWER_TABLES */
+#endif /* !MATH_AES_FEWER_TABLES */
 
 /*
  * Reverse S-box
@@ -331,7 +331,7 @@ static const unsigned char REVERSE_S_BOX[256] =
 static const uint32_t REVERSE_TABLES_0[256] = { REVERSE_TABLES };
 #undef V
 
-#if !defined(MBEDTLS_AES_FEWER_TABLES)
+#if !defined(MATH_AES_FEWER_TABLES)
 #define V(a,b,c,d) 0x##b##c##d##a
 static const uint32_t REVERSE_TABLES_1[256] = { REVERSE_TABLES };
 #undef V
@@ -343,7 +343,7 @@ static const uint32_t REVERSE_TABLES_2[256] = { REVERSE_TABLES };
 #define V(a,b,c,d) 0x##d##a##b##c
 static const uint32_t REVERSE_TABLES_3[256] = { REVERSE_TABLES };
 #undef V
-#endif /* !MBEDTLS_AES_FEWER_TABLES */
+#endif /* !MATH_AES_FEWER_TABLES */
 
 #undef REVERSE_TABLES
 
@@ -360,24 +360,26 @@ static const uint32_t RCON[10] =
 #else /* MATH_AES_ROM_TABLES */
 
 /*
- * Forward S-box & tables
+ * Runtime-generated shared AES lookup tables.
+ * Generated once during the first key expansion.
  */
 static unsigned char FORWARD_S_BOX[256];
 static uint32_t FORWARD_TABLES_0[256];
 
-#if !defined(MBEDTLS_AES_FEWER_TABLES)
+#if !defined(MATH_AES_FEWER_TABLES)
 static uint32_t FORWARD_TABLES_1[256];
 static uint32_t FORWARD_TABLES_2[256];
 static uint32_t FORWARD_TABLES_3[256];
 #endif
 
 /*
- * Reverse S-box & tables
+ * Runtime-generated shared inverse lookup tables.
+ * Generated once during the first key expansion.
  */
 static unsigned char REVERSE_S_BOX[256];
 static uint32_t REVERSE_TABLES_0[256];
 
-#if !defined(MBEDTLS_AES_FEWER_TABLES)
+#if !defined(MATH_AES_FEWER_TABLES)
 static uint32_t REVERSE_TABLES_1[256];
 static uint32_t REVERSE_TABLES_2[256];
 static uint32_t REVERSE_TABLES_3[256];
@@ -394,8 +396,14 @@ static uint32_t RCON[10];
 #define XTIME(x) ( ( x << 1 ) ^ ( ( x & 0x80 ) ? 0x1B : 0x00 ) )
 #define MUL(x,y) ( ( x && y ) ? pow[(log[x]+log[y]) % 255] : 0 )
 
-static int aes_init_done = 0;
+static macsec_bool_t aes_init_done = MACSEC_FALSE;
 
+/*
+ * Temporary lookup tables used only during runtime AES table generation.
+ *
+ * They remain allocated after initialization to avoid a ~2 kB increase
+ * of the temporary stack requirement on embedded targets.
+ */
 static int pow[256];
 static int log[256];
 
@@ -454,7 +462,7 @@ static void aes_gen_tables( void )
 
         FORWARD_TABLES_0[i] = AES_U32(y, x, x, z);
 
-#if !defined(MBEDTLS_AES_FEWER_TABLES)
+#if !defined(MATH_AES_FEWER_TABLES)
         FORWARD_TABLES_1[i] = AES_ROTL8( FORWARD_TABLES_0[i] );
         FORWARD_TABLES_2[i] = AES_ROTL8( FORWARD_TABLES_1[i] );
         FORWARD_TABLES_3[i] = AES_ROTL8( FORWARD_TABLES_2[i] );
@@ -464,7 +472,7 @@ static void aes_gen_tables( void )
 
         REVERSE_TABLES_0[i] = AES_INV_MIXCOL_WORD(x);
 
-#if !defined(MBEDTLS_AES_FEWER_TABLES)
+#if !defined(MATH_AES_FEWER_TABLES)
         REVERSE_TABLES_1[i] = AES_ROTL8( REVERSE_TABLES_0[i] );
         REVERSE_TABLES_2[i] = AES_ROTL8( REVERSE_TABLES_1[i] );
         REVERSE_TABLES_3[i] = AES_ROTL8( REVERSE_TABLES_2[i] );
@@ -475,13 +483,13 @@ static void aes_gen_tables( void )
 #endif /* MATH_AES_ROM_TABLES */
 
 /*
- * With MBEDTLS_AES_FEWER_TABLES enabled, only table 0 is stored.
+ * With MATH_AES_FEWER_TABLES enabled, only table 0 is stored.
  * Tables 1..3 are obtained by rotating the selected 32-bit table word.
  */
 #define AES_FORWARD_TABLE_0(i)  ( FORWARD_TABLES_0[(i)] )
 #define AES_REVERSE_TABLE_0(i)  ( REVERSE_TABLES_0[(i)] )
 
-#if defined(MBEDTLS_AES_FEWER_TABLES)
+#if defined(MATH_AES_FEWER_TABLES)
 #define AES_FORWARD_TABLE_1(i)  AES_ROTL8( FORWARD_TABLES_0[(i)] )
 #define AES_FORWARD_TABLE_2(i)  AES_ROTL16( FORWARD_TABLES_0[(i)] )
 #define AES_FORWARD_TABLE_3(i)  AES_ROTL24( FORWARD_TABLES_0[(i)] )
@@ -522,10 +530,10 @@ int math_aes_setkey_enc( math_aes_context *ctx, const unsigned char *key,
     uint32_t *RK;
 
 #if !defined(MATH_AES_ROM_TABLES)
-    if( aes_init_done == 0 )
+    if( aes_init_done == MACSEC_FALSE )
     {
         aes_gen_tables();
-        aes_init_done = 1;
+        aes_init_done = MACSEC_TRUE;
 
     }
 #endif

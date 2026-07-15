@@ -16,12 +16,9 @@
 
 #include "common.h"
 
-#if (MACSEC_SELF_TEST != 0)
+#if (MACSEC_SELF_TEST != 0) && !defined(MATH_SELF_TEST)
 #define MATH_SELF_TEST
 #endif
-
-#define MATH_AES_ROM_TABLES
-// #define MBEDTLS_AES_FEWER_TABLES
 
 #define MATH_AES_ENCRYPT     1
 #define MATH_AES_DECRYPT     0
