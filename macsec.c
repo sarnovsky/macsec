@@ -184,7 +184,8 @@ static int macsec_install_mka_sak_if_ready(macsec_ctx_t *ctx)
 {
     const macsec_mka_sak_t *mka_sak;
     uint8_t real_an;
-    macsec_bool_t same_pending_sak;
+    macsec_bool_t rx_active;
+    macsec_bool_t tx_active;
     int ret;
 
     macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
@@ -208,13 +209,21 @@ static int macsec_install_mka_sak_if_ready(macsec_ctx_t *ctx)
 
     real_an = mka_sak->an & 0x03u;
 
-    /*
-     * If the same key is already active for TX, the SAK is fully applied.
-     */
-    if (macsec_tx_sak_is_active(ctx,
+    rx_active =
+        macsec_sak_equal(&ctx->frame_crypto.rx_sak[real_an],
+                         mka_sak->sak,
+                         mka_sak->sak_len);
+
+    tx_active =
+        macsec_tx_sak_is_active(ctx,
                                 mka_sak->sak,
                                 mka_sak->sak_len,
-                                real_an))
+                                real_an);
+
+    /*
+     * The same SAK is already fully installed.
+     */
+    if (rx_active && tx_active)
     {
         ctx->pending_tx_sak_valid = MACSEC_FALSE;
         ctx->state = MACSEC_STATE_SECURED;
@@ -222,29 +231,12 @@ static int macsec_install_mka_sak_if_ready(macsec_ctx_t *ctx)
         return MACSEC_ERR_NOT_READY;
     }
 
-    same_pending_sak =
-        ctx->pending_tx_sak_valid &&
-        (ctx->pending_tx_an == real_an) &&
-        (ctx->pending_tx_sak_len == mka_sak->sak_len) &&
-        (memcmp(ctx->pending_tx_sak,
-                mka_sak->sak,
-                mka_sak->sak_len) == 0);
-
     /*
-     * The RX key may already be installed and the same TX key may already
-     * be pending. In that case there is no new work.
-     */
-    if (same_pending_sak &&
-        macsec_sak_equal(&ctx->frame_crypto.rx_sak[real_an],
-                         mka_sak->sak,
-                         mka_sak->sak_len))
-    {
-        ctx->state = MACSEC_STATE_SECURED;
-        return MACSEC_ERR_NOT_READY;
-    }
-
-    /*
-     * Install the new RX SAK immediately.
+     * Install the received SAK for both RX and TX.
+     *
+     * The Distributed SAK was carried in an authenticated MKPDU and
+     * successfully unwrapped with the KEK, so it can be activated
+     * immediately.
      */
     ret = macsec_install_rx_sak(ctx,
                                 mka_sak->sak,
@@ -260,26 +252,30 @@ static int macsec_install_mka_sak_if_ready(macsec_ctx_t *ctx)
         return ret;
     }
 
-    /*
-     * Prepare TX activation for a non-Key-Server. The Key Server is
-     * activated explicitly after building its Distributed SAK MKPDU.
-     */
-    memset(ctx->pending_tx_sak,
-           0,
-           sizeof(ctx->pending_tx_sak));
+    ret = macsec_install_tx_sak(ctx,
+                                mka_sak->sak,
+                                mka_sak->sak_len,
+                                real_an);
+    if (ret != MACSEC_ERR_OK)
+    {
+        MACSEC_ERROR((
+            "MACsec install TX SAK from MKA failed ret=%d an=%u\n",
+            ret,
+            real_an));
 
-    memcpy(ctx->pending_tx_sak,
-           mka_sak->sak,
-           mka_sak->sak_len);
+        return ret;
+    }
 
-    ctx->pending_tx_sak_len = mka_sak->sak_len;
-    ctx->pending_tx_an = real_an;
-    ctx->pending_tx_sak_valid = MACSEC_TRUE;
-
+    ctx->pending_tx_sak_valid = MACSEC_FALSE;
     ctx->state = MACSEC_STATE_SECURED;
 
+    macsec_mka_set_latest_key_tx(&ctx->mka,
+                                 real_an,
+                                 1u);
+
     MACSEC_MEDIUM((
-        "MACsec pending TX SAK prepared: an=%u sak_len=%lu\n",
+        "MACsec MKA SAK active for RX and TX: "
+        "an=%u sak_len=%lu\n",
         real_an,
         (unsigned long)mka_sak->sak_len));
 
@@ -644,33 +640,6 @@ int macsec_input(macsec_ctx_t *ctx,
             return ret;
         }
 
-        if (ctx->pending_tx_sak_valid && (rx_len >= 18u))
-        {
-            uint8_t rx_an;
-
-            rx_an = rx_frame[14u] & 0x03u;
-
-            if (rx_an == ctx->pending_tx_an)
-            {
-                ret = macsec_install_tx_sak(ctx,
-                                            ctx->pending_tx_sak,
-                                            ctx->pending_tx_sak_len,
-                                            ctx->pending_tx_an);
-                if (ret != MACSEC_ERR_OK)
-                {
-                    *pass_to_stack = MACSEC_FALSE;
-                    ctx->state = MACSEC_STATE_ERROR;
-                    return ret;
-                }
-
-                ctx->pending_tx_sak_valid = MACSEC_FALSE;
-
-                MACSEC_MEDIUM(("MACsec TX SAK switched after RX AN=%u\n", rx_an));
-
-                macsec_mka_set_latest_key_tx(&ctx->mka, rx_an, 1u);
-            }
-        }
-
         *pass_to_stack = MACSEC_TRUE;
 
         MACSEC_INFO(("MACsec decrypt OK plain_len=%lu\n",
@@ -831,10 +800,6 @@ int macsec_get_control_frame(macsec_ctx_t *ctx,
     {
         int sak_ret;
 
-        /*
-         * For a non-Key-Server this installs the RX SAK and prepares
-         * the TX SAK for activation after receiving protected traffic.
-         */
         sak_ret = macsec_install_mka_sak_if_ready(ctx);
 
         if ((sak_ret != MACSEC_ERR_OK) &&
@@ -842,26 +807,6 @@ int macsec_get_control_frame(macsec_ctx_t *ctx,
         {
             ctx->state = MACSEC_STATE_ERROR;
             return sak_ret;
-        }
-
-        /*
-         * A local Key Server has just built the MKPDU containing its
-         * Distributed SAK. It may therefore activate the key locally.
-         *
-         * The caller will send tx_frame immediately after this function
-         * returns.
-         */
-        if (ctx->mka.local_key_server &&
-            ctx->mka.peer.live)
-        {
-            sak_ret = macsec_activate_key_server_sak(ctx);
-
-            if ((sak_ret != MACSEC_ERR_OK) &&
-                (sak_ret != MACSEC_ERR_NOT_READY))
-            {
-                ctx->state = MACSEC_STATE_ERROR;
-                return sak_ret;
-            }
         }
 
         MACSEC_INFO((
