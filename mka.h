@@ -230,19 +230,11 @@ typedef uint32_t macsec_mka_event_flags_t;
 /******************************************************************************
  * MKA transmit reasons
  *
- * These flags describe why an MKPDU must be transmitted. Unlike the legacy
- * tx_pending flag, individual reasons can be retained or cleared separately.
+ * These flags describe why an MKPDU must be transmitted.
+ * Individual reasons can be retained or cleared separately.
  *****************************************************************************/
 
 typedef uint32_t macsec_mka_tx_reason_flags_t;
-
-/*
- * Temporary compatibility alias.
- *
- * Remove after all existing code has migrated to
- * macsec_mka_tx_reason_flags_t.
- */
-typedef macsec_mka_tx_reason_flags_t macsec_mka_tx_reason_t;
 
 #define MACSEC_MKA_TX_REASON_NONE               0x00000000u
 #define MACSEC_MKA_TX_REASON_INITIAL            0x00000001u
@@ -457,22 +449,8 @@ typedef struct
     uint32_t last_tx_ms;
     uint32_t last_tick_ms;
 
-    /*
-     * New event and TX-reason fields.
-     *
-     * These fields are introduced in phase 1 and will replace the legacy
-     * tx_pending flag in later migration phases.
-     */
     macsec_mka_event_flags_t pending_events;
     macsec_mka_tx_reason_flags_t tx_reasons;
-
-    /*
-     * Legacy TX scheduling field.
-     *
-     * Remove after macsec_mka_get_tx_frame() is replaced by the
-     * build/notify TX lifecycle.
-     */
-    macsec_bool_t tx_pending;
 
     /*
      * Legacy SAK Use fields.

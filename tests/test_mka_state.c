@@ -247,7 +247,6 @@ static int macsec_test_mka_state_events_preserve_tx(
     int verbose)
 {
     macsec_mka_tx_reason_flags_t reasons_before;
-    macsec_bool_t tx_pending_before;
 
     macsec_assert(data != NULL);
 
@@ -265,14 +264,8 @@ static int macsec_test_mka_state_events_preserve_tx(
         MACSEC_MKA_TX_REASON_INITIAL |
         MACSEC_MKA_TX_REASON_PERIODIC;
 
-    data->mka.tx_pending =
-        MACSEC_TRUE;
-
     reasons_before =
         data->mka.tx_reasons;
-
-    tx_pending_before =
-        data->mka.tx_pending;
 
     (void)macsec_mka_take_events(&data->mka);
 
@@ -283,9 +276,6 @@ static int macsec_test_mka_state_events_preserve_tx(
     TEST_EQ_U32(
         data->mka.tx_reasons,
         reasons_before);
-
-    TEST_TRUE(
-        data->mka.tx_pending == tx_pending_before);
 
     return 0;
 }
@@ -1003,9 +993,6 @@ static int macsec_test_mka_state_sak_install_rx_then_tx(
     TEST_TRUE(
         (data->mka.tx_reasons &
          MACSEC_MKA_TX_REASON_SAK_USE) != 0u);
-
-    TEST_TRUE(
-        data->mka.tx_pending == MACSEC_TRUE);
 
     events = macsec_mka_take_events(&data->mka);
 

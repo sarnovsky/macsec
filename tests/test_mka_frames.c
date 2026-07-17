@@ -603,7 +603,6 @@ static int macsec_test_mka_frames_tx_pending_timing(
         return ret;
     }
 
-    TEST_TRUE(!data->mka.tx_pending);
     TEST_TRUE(data->mka.tx_reasons == MACSEC_MKA_TX_REASON_NONE);
 
     /*
@@ -616,7 +615,6 @@ static int macsec_test_mka_frames_tx_pending_timing(
         return ret;
     }
 
-    TEST_TRUE(!data->mka.tx_pending);
     TEST_TRUE(data->mka.tx_reasons == MACSEC_MKA_TX_REASON_NONE);
 
     /*
@@ -629,7 +627,6 @@ static int macsec_test_mka_frames_tx_pending_timing(
         return ret;
     }
 
-    TEST_TRUE(data->mka.tx_pending);
     TEST_TRUE((data->mka.tx_reasons &
                MACSEC_MKA_TX_REASON_PERIODIC) != 0u);
 

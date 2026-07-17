@@ -631,11 +631,11 @@ int macsec_input(macsec_ctx_t *ctx,
             return ret;
         }
 
-        MACSEC_INFO(("MACsec MKA input OK: peer=%u live=%u local_ks=%u tx_pending=%u\n",
+        MACSEC_INFO(("MACsec MKA input OK: peer=%u live=%u local_ks=%u tx_reasons=0x%08lx\n",
                      ctx->mka.peer.valid ? 1u : 0u,
                      ctx->mka.peer.live ? 1u : 0u,
                      ctx->mka.local_key_server ? 1u : 0u,
-                     ctx->mka.tx_pending ? 1u : 0u));
+                     ctx->mka.tx_reasons));
 
         ret = macsec_service_mka(ctx);
         if (ret != MACSEC_ERR_OK)

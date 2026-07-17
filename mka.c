@@ -361,11 +361,6 @@ static void macsec_mka_schedule_tx(
 
     ctx->tx_reasons |= reasons;
 
-    /*
-     * Temporary synchronization for legacy code.
-     */
-    ctx->tx_pending = MACSEC_TRUE;
-
     MACSEC_INFO((
         "MKA TX scheduled: requested=0x%08lX "
         "pending=0x%08lX\n",
@@ -713,11 +708,10 @@ int macsec_mka_init(macsec_mka_ctx_t *ctx,
 
     MACSEC_MEDIUM((
         "MKA init done: state=%u "
-        "events=0x%08lX tx_reasons=0x%08lX tx_pending=%u\n",
+        "events=0x%08lX tx_reasons=0x%08lX\n",
         (unsigned)ctx->state,
         (unsigned long)ctx->pending_events,
-        (unsigned long)ctx->tx_reasons,
-        ctx->tx_pending ? 1u : 0u));
+        (unsigned long)ctx->tx_reasons));
 
     return MACSEC_ERR_OK;
 }
@@ -1858,14 +1852,13 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
     MACSEC_INFO((
         "MKA RX done: state=%u peer_valid=%u peer_live=%u "
         "peer_list_type=%u events=0x%08lX "
-        "tx_reasons=0x%08lX tx_pending=%u new_sak=%u\n",
+        "tx_reasons=0x%08lX new_sak=%u\n",
         (unsigned)ctx->state,
         ctx->peer.valid ? 1u : 0u,
         ctx->peer.live ? 1u : 0u,
         peer_list_type,
         (unsigned long)ctx->pending_events,
         (unsigned long)ctx->tx_reasons,
-        ctx->tx_pending ? 1u : 0u,
         (distributed_sak_ret == MACSEC_ERR_OK) ? 1u : 0u));
 
     return MACSEC_ERR_OK;
@@ -2213,12 +2206,9 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx,
 
     /*
      * TX is scheduled whenever at least one reason is pending.
-     *
-     * tx_pending is retained only as a migration compatibility field.
      */
     if (ctx->tx_reasons == MACSEC_MKA_TX_REASON_NONE)
     {
-        ctx->tx_pending = MACSEC_FALSE;
         return MACSEC_ERR_NOT_READY;
     }
 
@@ -2506,7 +2496,6 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx,
      *   ctx->local_mn
      *   ctx->last_tx_ms
      *   ctx->tx_reasons
-     *   ctx->tx_pending
      *   ctx->latest_sak.lifecycle_state
      */
 
@@ -2650,11 +2639,6 @@ int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx,
      */
     ctx->tx_reasons &= ~meta->reasons;
 
-    ctx->tx_pending =
-        (ctx->tx_reasons != MACSEC_MKA_TX_REASON_NONE) ?
-        MACSEC_TRUE :
-        MACSEC_FALSE;
-
     MACSEC_MEDIUM((
         "MKA TX success: "
         "mn=%lu next_mn=%lu now=%lu "
@@ -2690,11 +2674,6 @@ void macsec_mka_notify_tx_failure(macsec_mka_ctx_t *ctx,
      * scheduler while the frame was awaiting transmission.
      */
     ctx->tx_reasons |= meta->reasons;
-
-    ctx->tx_pending =
-        (ctx->tx_reasons != MACSEC_MKA_TX_REASON_NONE) ?
-        MACSEC_TRUE :
-        MACSEC_FALSE;
 
     MACSEC_MEDIUM((
         "MKA TX failure: "
