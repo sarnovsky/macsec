@@ -69,10 +69,7 @@ static void math_zeroize(void *v, size_t n)
 
 void math_gcm_init(math_gcm_context *ctx)
 {
-    if (ctx == NULL)
-    {
-        return;
-    }
+    macsec_assert(ctx != NULL);
 
     memset(ctx, 0, sizeof(*ctx));
 }
@@ -141,10 +138,8 @@ int math_gcm_setkey(math_gcm_context *ctx, const unsigned char *key, unsigned in
     uint64_t vh;
     unsigned char h[GCM_BLOCK_SIZE];
 
-    if (ctx == NULL || key == NULL)
-    {
-        return MATH_ERR_GCM_BAD_INPUT;
-    }
+    macsec_assert(ctx != NULL);
+    macsec_assert(key != NULL);
 
     if (keybits != 128u && keybits != 192u && keybits != 256u)
     {
@@ -216,10 +211,8 @@ static int gcm_starts(math_gcm_context *ctx, int mode, const unsigned char *iv, 
     size_t use_len;
     const unsigned char *p;
 
-    if (ctx == NULL || iv == NULL)
-    {
-        return MATH_ERR_GCM_BAD_INPUT;
-    }
+    macsec_assert(ctx != NULL);
+    macsec_assert(iv != NULL);
 
     if (mode != MATH_GCM_ENCRYPT && mode != MATH_GCM_DECRYPT)
     {
@@ -326,10 +319,7 @@ static int gcm_update(math_gcm_context *ctx, size_t length, const unsigned char 
     const unsigned char *p;
     unsigned char *out_p;
 
-    if (ctx == NULL)
-    {
-        return MATH_ERR_GCM_BAD_INPUT;
-    }
+    macsec_assert(ctx != NULL);
 
     if (length != 0u && (input == NULL || output == NULL))
     {
@@ -405,10 +395,8 @@ static int gcm_finish(math_gcm_context *ctx, unsigned char *tag, size_t tag_len)
     uint64_t data_bits;
     uint64_t add_bits;
 
-    if (ctx == NULL || tag == NULL)
-    {
-        return MATH_ERR_GCM_BAD_INPUT;
-    }
+    macsec_assert(ctx != NULL);
+    macsec_assert(tag != NULL);
 
     if (tag_len > GCM_BLOCK_SIZE || tag_len < GCM_MIN_TAG_SIZE)
     {
@@ -477,10 +465,8 @@ int math_gcm_auth_decrypt(math_gcm_context *ctx, size_t length, const unsigned c
     size_t i;
     unsigned char check_tag[GCM_BLOCK_SIZE];
 
-    if (ctx == NULL || tag == NULL)
-    {
-        return MATH_ERR_GCM_BAD_INPUT;
-    }
+    macsec_assert(ctx != NULL);
+    macsec_assert(tag != NULL);
 
     ret = math_gcm_crypt_and_tag(ctx, MATH_GCM_DECRYPT, length, iv, iv_len, add, add_len, input,
                                  output, tag_len, check_tag);
@@ -513,10 +499,7 @@ int math_gcm_auth_decrypt(math_gcm_context *ctx, size_t length, const unsigned c
 
 void math_gcm_free(math_gcm_context *ctx)
 {
-    if (ctx == NULL)
-    {
-        return;
-    }
+    macsec_assert(ctx != NULL);
 
     math_aes_free(&ctx->aes_ctx);
     math_zeroize(ctx, sizeof(*ctx));

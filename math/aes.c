@@ -458,10 +458,7 @@ void math_aes_init(math_aes_context *ctx) { memset(ctx, 0, sizeof(math_aes_conte
 
 void math_aes_free(math_aes_context *ctx)
 {
-    if (ctx == NULL)
-    {
-        return;
-    }
+    macsec_assert(ctx != NULL);
 
     math_zeroize(ctx, sizeof(math_aes_context));
 }

@@ -440,10 +440,9 @@ static int linux_tap_init_macsec(macsec_ctx_t *ctx, const uint8_t local_mac[6],
 {
     macsec_config_t cfg;
 
-    if ((ctx == NULL) || (local_mac == NULL) || (config == NULL))
-    {
-        return -1;
-    }
+    macsec_assert(ctx != NULL);
+    macsec_assert(local_mac != NULL);
+    macsec_assert(config != NULL);
 
     memset(&cfg, 0, sizeof(cfg));
 

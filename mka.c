@@ -580,10 +580,7 @@ int macsec_mka_init(macsec_mka_ctx_t *ctx, const uint8_t *cak, size_t cak_len, c
 
 void macsec_mka_clear(macsec_mka_ctx_t *ctx)
 {
-    if (ctx == NULL)
-    {
-        return;
-    }
+    macsec_assert(ctx != NULL);
 
     MACSEC_MEDIUM(("MKA clear\n"));
 
@@ -593,10 +590,7 @@ void macsec_mka_clear(macsec_mka_ctx_t *ctx)
 
 macsec_mka_state_t macsec_mka_get_state(const macsec_mka_ctx_t *ctx)
 {
-    if (ctx == NULL)
-    {
-        return MACSEC_MKA_STATE_ERROR;
-    }
+    macsec_assert(ctx != NULL);
 
     return ctx->state;
 }
@@ -2103,10 +2097,8 @@ int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta
 
 void macsec_mka_notify_tx_failure(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta_t *meta)
 {
-    if ((ctx == NULL) || (meta == NULL))
-    {
-        return;
-    }
+    macsec_assert(ctx != NULL);
+    macsec_assert(meta != NULL);
 
     /*
      * A failed transmission must not commit:

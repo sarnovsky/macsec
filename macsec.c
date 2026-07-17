@@ -455,10 +455,7 @@ int macsec_init(macsec_ctx_t *ctx, const macsec_config_t *cfg)
 
 void macsec_clear(macsec_ctx_t *ctx)
 {
-    if (ctx == NULL)
-    {
-        return;
-    }
+    macsec_assert(ctx != NULL);
 
     MACSEC_MEDIUM(("MACsec clear\n"));
 
@@ -470,10 +467,7 @@ void macsec_clear(macsec_ctx_t *ctx)
 
 macsec_state_t macsec_get_state(const macsec_ctx_t *ctx)
 {
-    if (ctx == NULL)
-    {
-        return MACSEC_STATE_ERROR;
-    }
+    macsec_assert(ctx != NULL);
 
     return ctx->state;
 }

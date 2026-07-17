@@ -78,10 +78,7 @@ static void cmac_generate_subkeys(math_cmac_context_t *ctx, unsigned char k1[16]
 
 void math_cmac_init(math_cmac_context_t *ctx)
 {
-    if (ctx == NULL)
-    {
-        return;
-    }
+    macsec_assert(ctx != NULL);
 
     memset(ctx, 0, sizeof(*ctx));
     math_aes_init(&ctx->aes_ctx);
@@ -89,10 +86,7 @@ void math_cmac_init(math_cmac_context_t *ctx)
 
 void math_cmac_free(math_cmac_context_t *ctx)
 {
-    if (ctx == NULL)
-    {
-        return;
-    }
+    macsec_assert(ctx != NULL);
 
     math_aes_free(&ctx->aes_ctx);
     cmac_zeroize(ctx, sizeof(*ctx));
@@ -102,10 +96,8 @@ static int cmac_starts(math_cmac_context_t *ctx, const unsigned char *key, size_
 {
     int ret;
 
-    if (ctx == NULL || key == NULL)
-    {
-        return -1;
-    }
+    macsec_assert(ctx != NULL);
+    macsec_assert(key != NULL);
 
     if (keybits != 128u && keybits != 192u && keybits != 256u)
     {
@@ -131,10 +123,8 @@ static int cmac_update(math_cmac_context_t *ctx, const unsigned char *input, siz
     size_t use_len;
     int ret;
 
-    if (ctx == NULL || (input == NULL && ilen != 0u))
-    {
-        return -1;
-    }
+    macsec_assert(ctx != NULL);
+    macsec_assert(input != NULL);
 
     if (ilen == 0u)
     {
@@ -213,10 +203,8 @@ static int cmac_finish(math_cmac_context_t *ctx, unsigned char output[16])
     unsigned char temp[16];
     int ret;
 
-    if (ctx == NULL || output == NULL)
-    {
-        return -1;
-    }
+    macsec_assert(ctx != NULL);
+    macsec_assert(output != NULL);
 
     cmac_generate_subkeys(ctx, k1, k2);
 
@@ -286,11 +274,13 @@ static int cmac_run_vector_suite(math_cmac_context_t *ctx, const cmac_test_suite
     size_t i;
     int ret;
 
-    if ((ctx == NULL) || (suite == NULL) || (suite->key == NULL) || (suite->expected == NULL) ||
-        (msg == NULL) || (msg_len == NULL) || (out == NULL))
-    {
-        return 1;
-    }
+    macsec_assert(ctx != NULL);
+    macsec_assert(suite != NULL);
+    macsec_assert(suite->key != NULL);
+    macsec_assert(suite->expected != NULL);
+    macsec_assert(msg != NULL);
+    macsec_assert(msg_len != NULL);
+    macsec_assert(out != NULL);
 
     if (verbose != 0)
     {
@@ -530,10 +520,7 @@ int math_cmac_self_test(math_cmac_context_t *ctx, int verbose)
     /*
      * Invalid-argument tests.
      */
-    if ((cmac_starts(NULL, key_128, 128u) == 0) || (cmac_starts(ctx, NULL, 128u) == 0) ||
-        (cmac_starts(ctx, key_128, 129u) == 0) || (cmac_update(NULL, msg, 1u) == 0) ||
-        (cmac_update(ctx, NULL, 1u) == 0) || (cmac_finish(NULL, out) == 0) ||
-        (cmac_finish(ctx, NULL) == 0) || (math_cmac_aes(NULL, key_128, 128u, msg, 1u, out) == 0))
+    if (cmac_starts(ctx, key_128, 129u) == 0)
     {
         goto fail;
     }
