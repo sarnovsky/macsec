@@ -127,6 +127,7 @@ TEST_SRCS := \
 	tests/test_mka_frames.c \
 	tests/test_mka_negative.c \
 	tests/test_mka_state.c \
+	tests/test_mka_tx.c \
 	tests/test_rekey.c \
 	tests/unit_tests.c
 

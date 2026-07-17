@@ -29,6 +29,7 @@
 #include <tests/test_rekey.h>
 #include <tests/test_macsec_flow.h>
 #include <tests/test_mka_state.h>
+#include <tests/test_mka_tx.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -85,6 +86,7 @@ typedef union {
     macsec_test_rekey_data_t test_rekey_data;
     macsec_test_macsec_flow_data_t test_macsec_flow_data;
     macsec_test_mka_state_data_t test_mka_state_data;
+    macsec_test_mka_tx_data_t test_mka_tx_data;
 } macsec_test_data_t;
 
 int macsec_test_all(macsec_test_data_t *data, int verbose);
