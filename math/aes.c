@@ -16,8 +16,11 @@
 static void math_zeroize(void *v, size_t n)
 {
     volatile unsigned char *p = (volatile unsigned char *) v;
+
     while (n-- != 0u)
+    {
         *p++ = 0;
+    }
 }
 
 #define AES_U32(B0, B1, B2, B3)                                                                    \
@@ -456,7 +459,9 @@ void math_aes_init(math_aes_context *ctx) { memset(ctx, 0, sizeof(math_aes_conte
 void math_aes_free(math_aes_context *ctx)
 {
     if (ctx == NULL)
+    {
         return;
+    }
 
     math_zeroize(ctx, sizeof(math_aes_context));
 }
@@ -562,7 +567,9 @@ int math_aes_setkey_dec(math_aes_context *ctx, const unsigned char *key, unsigne
 
     /* Also checks keybits */
     if ((ret = math_aes_setkey_enc(&cty, key, keybits)) != 0)
+    {
         goto exit;
+    }
 
     ctx->number_of_rounds = cty.number_of_rounds;
 
@@ -710,7 +717,9 @@ int math_aes_crypt_ecb(math_aes_context *ctx, int mode, const unsigned char inpu
                        unsigned char output[16])
 {
     if (mode == MATH_AES_ENCRYPT)
+    {
         return (math_internal_aes_encrypt(ctx, input, output));
+    }
 
     return (math_internal_aes_decrypt(ctx, input, output));
 }
@@ -748,16 +757,22 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
     for (key_size = 128, array_index = 0; key_size <= 256; key_size += 64, array_index++)
     {
         if (verbose != 0)
+        {
             macsec_printf("  AES-ECB-%3d (dec): ", key_size);
+        }
 
         memcpy(buf, aes_test_ecb_enc[array_index], 16);
 
         ret = math_aes_setkey_dec(ctx, key, key_size);
         if (ret != 0)
+        {
             goto exit;
+        }
 
         for (j = 0; j < 10000; j++)
+        {
             (void) math_aes_crypt_ecb(ctx, MATH_AES_DECRYPT, buf, buf);
+        }
 
         if (memcmp(buf, aes_test_ecb_dec[array_index], 16) != 0)
         {
@@ -766,19 +781,27 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
         }
 
         if (verbose != 0)
+        {
             macsec_printf("passed\n");
+        }
 
         if (verbose != 0)
+        {
             macsec_printf("  AES-ECB-%3d (enc): ", key_size);
+        }
 
         memcpy(buf, aes_test_ecb_dec[array_index], 16);
 
         ret = math_aes_setkey_enc(ctx, key, key_size);
         if (ret != 0)
+        {
             goto exit;
+        }
 
         for (j = 0; j < 10000; j++)
+        {
             (void) math_aes_crypt_ecb(ctx, MATH_AES_ENCRYPT, buf, buf);
+        }
 
         if (memcmp(buf, aes_test_ecb_enc[array_index], 16) != 0)
         {
@@ -787,17 +810,23 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
         }
 
         if (verbose != 0)
+        {
             macsec_printf("passed\n");
+        }
     }
 
     if (verbose != 0)
+    {
         macsec_printf("\n");
+    }
 
     ret = 0;
 
 exit:
     if (ret != 0 && verbose != 0)
+    {
         macsec_printf("failed\n");
+    }
 
     math_aes_free(ctx);
     return (ret);

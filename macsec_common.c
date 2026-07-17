@@ -124,13 +124,19 @@ void macsec_printHex(const char *label, const uint8_t *buf, int len)
 static int macsec_hex_value(char c)
 {
     if ((c >= '0') && (c <= '9'))
+    {
         return c - '0';
+    }
 
     if ((c >= 'a') && (c <= 'f'))
+    {
         return c - 'a' + 10;
+    }
 
     if ((c >= 'A') && (c <= 'F'))
+    {
         return c - 'A' + 10;
+    }
 
     return -1;
 }
@@ -151,7 +157,9 @@ int macsec_hex_to_bin(const char *hex, uint8_t *out, size_t *out_len, size_t out
         c = *hex++;
 
         if ((c == ' ') || (c == '\n') || (c == '\r') || (c == '\t') || (c == ':'))
+        {
             continue;
+        }
 
         lo = macsec_hex_value(c);
         macsec_check(lo >= 0, MACSEC_ERR_PARAM);

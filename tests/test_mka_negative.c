@@ -244,8 +244,7 @@ static int macsec_test_mka_negative_reflected_own_frame_ignored(
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA negative reflected own frame ignored test, "
-                      "%u-byte CAK\n",
+        MACSEC_PRINT(("  MKA negative reflected own frame ignored test, %u-byte CAK\n",
                       (unsigned int) cak_len));
     }
 
@@ -288,9 +287,8 @@ static int macsec_test_mka_negative_wrong_cak_fails_icv(
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA negative wrong CAK fails ICV test, "
-                      "%u-byte CAK\n",
-                      (unsigned int) cak_len));
+        MACSEC_PRINT(
+            ("  MKA negative wrong CAK fails ICV test, %u-byte CAK\n", (unsigned int) cak_len));
     }
 
     ret = macsec_test_mka_negative_init(&data->tx, tx_cak, cak_len, test_mac_a, 255u);

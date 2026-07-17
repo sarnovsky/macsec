@@ -21,7 +21,9 @@ static void cmac_zeroize(void *v, size_t n)
     volatile unsigned char *p = (volatile unsigned char *) v;
 
     while (n-- != 0u)
+    {
         *p++ = 0u;
+    }
 }
 
 static void cmac_xor_block(unsigned char out[16], const unsigned char a[16],
@@ -30,7 +32,9 @@ static void cmac_xor_block(unsigned char out[16], const unsigned char a[16],
     size_t i;
 
     for (i = 0u; i < 16u; i++)
+    {
         out[i] = (unsigned char) (a[i] ^ b[i]);
+    }
 }
 
 static void cmac_left_shift_one_bit(unsigned char out[16], const unsigned char in[16])
@@ -58,11 +62,15 @@ static void cmac_generate_subkeys(math_cmac_context_t *ctx, unsigned char k1[16]
 
     cmac_left_shift_one_bit(k1, l);
     if ((l[0] & 0x80u) != 0u)
+    {
         k1[15] ^= CMAC_RB;
+    }
 
     cmac_left_shift_one_bit(k2, k1);
     if ((k1[0] & 0x80u) != 0u)
+    {
         k2[15] ^= CMAC_RB;
+    }
 
     cmac_zeroize(zero, sizeof(zero));
     cmac_zeroize(l, sizeof(l));
@@ -71,7 +79,9 @@ static void cmac_generate_subkeys(math_cmac_context_t *ctx, unsigned char k1[16]
 void math_cmac_init(math_cmac_context_t *ctx)
 {
     if (ctx == NULL)
+    {
         return;
+    }
 
     memset(ctx, 0, sizeof(*ctx));
     math_aes_init(&ctx->aes_ctx);
@@ -80,7 +90,9 @@ void math_cmac_init(math_cmac_context_t *ctx)
 void math_cmac_free(math_cmac_context_t *ctx)
 {
     if (ctx == NULL)
+    {
         return;
+    }
 
     math_aes_free(&ctx->aes_ctx);
     cmac_zeroize(ctx, sizeof(*ctx));
@@ -91,10 +103,14 @@ static int cmac_starts(math_cmac_context_t *ctx, const unsigned char *key, size_
     int ret;
 
     if (ctx == NULL || key == NULL)
+    {
         return -1;
+    }
 
     if (keybits != 128u && keybits != 192u && keybits != 256u)
+    {
         return -1;
+    }
 
     memset(ctx->state, 0, sizeof(ctx->state));
     memset(ctx->unprocessed_block, 0, sizeof(ctx->unprocessed_block));
@@ -102,7 +118,9 @@ static int cmac_starts(math_cmac_context_t *ctx, const unsigned char *key, size_
 
     ret = math_aes_setkey_enc(&ctx->aes_ctx, key, (unsigned int) keybits);
     if (ret != 0)
+    {
         return ret;
+    }
 
     return 0;
 }
@@ -114,16 +132,22 @@ static int cmac_update(math_cmac_context_t *ctx, const unsigned char *input, siz
     int ret;
 
     if (ctx == NULL || (input == NULL && ilen != 0u))
+    {
         return -1;
+    }
 
     if (ilen == 0u)
+    {
         return 0;
+    }
 
     if (ctx->unprocessed_len > 0u)
     {
         use_len = CMAC_BLOCK_SIZE - ctx->unprocessed_len;
         if (use_len > ilen)
+        {
             use_len = ilen;
+        }
 
         memcpy(ctx->unprocessed_block + ctx->unprocessed_len, input, use_len);
 
@@ -132,11 +156,15 @@ static int cmac_update(math_cmac_context_t *ctx, const unsigned char *input, siz
         ilen -= use_len;
 
         if (ctx->unprocessed_len < CMAC_BLOCK_SIZE)
+        {
             return 0;
+        }
 
         /* Keep a complete final block unprocessed until finish(). */
         if (ilen == 0u)
+        {
             return 0;
+        }
 
         cmac_xor_block(temp, ctx->state, ctx->unprocessed_block);
 
@@ -186,7 +214,9 @@ static int cmac_finish(math_cmac_context_t *ctx, unsigned char output[16])
     int ret;
 
     if (ctx == NULL || output == NULL)
+    {
         return -1;
+    }
 
     cmac_generate_subkeys(ctx, k1, k2);
 
@@ -226,11 +256,15 @@ int math_cmac_aes(math_cmac_context_t *ctx, const unsigned char *key, size_t key
 
     ret = cmac_starts(ctx, key, keybits);
     if (ret != 0)
+    {
         return ret;
+    }
 
     ret = cmac_update(ctx, input, ilen);
     if (ret != 0)
+    {
         return ret;
+    }
 
     return cmac_finish(ctx, output);
 }

@@ -62,13 +62,17 @@ static void math_zeroize(void *v, size_t n)
     volatile unsigned char *p = (volatile unsigned char *) v;
 
     while (n-- != 0u)
+    {
         *p++ = 0u;
+    }
 }
 
 void math_gcm_init(math_gcm_context *ctx)
 {
     if (ctx == NULL)
+    {
         return;
+    }
 
     memset(ctx, 0, sizeof(*ctx));
 }
@@ -122,7 +126,9 @@ static void gcm_increment_counter(unsigned char counter[GCM_BLOCK_SIZE])
         counter[i - 1u]++;
 
         if (counter[i - 1u] != 0u)
+        {
             break;
+        }
     }
 }
 
@@ -136,17 +142,23 @@ int math_gcm_setkey(math_gcm_context *ctx, const unsigned char *key, unsigned in
     unsigned char h[GCM_BLOCK_SIZE];
 
     if (ctx == NULL || key == NULL)
+    {
         return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     if (keybits != 128u && keybits != 192u && keybits != 256u)
+    {
         return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     math_aes_free(&ctx->aes_ctx);
     math_aes_init(&ctx->aes_ctx);
 
     ret = math_aes_setkey_enc(&ctx->aes_ctx, key, keybits);
     if (ret != 0)
+    {
         return ret;
+    }
 
     memset(h, 0, sizeof(h));
 
@@ -205,13 +217,19 @@ static int gcm_starts(math_gcm_context *ctx, int mode, const unsigned char *iv, 
     const unsigned char *p;
 
     if (ctx == NULL || iv == NULL)
+    {
         return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     if (mode != MATH_GCM_ENCRYPT && mode != MATH_GCM_DECRYPT)
+    {
         return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     if (add_len != 0u && add == NULL)
+    {
         return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     if (iv_len == 0u || (((uint64_t) iv_len) >> 61) != 0u || (((uint64_t) add_len) >> 61) != 0u)
     {
@@ -243,7 +261,9 @@ static int gcm_starts(math_gcm_context *ctx, int mode, const unsigned char *iv, 
             use_len = (remaining < GCM_BLOCK_SIZE) ? remaining : GCM_BLOCK_SIZE;
 
             for (i = 0u; i < use_len; i++)
+            {
                 ctx->y[i] ^= p[i];
+            }
 
             gcm_mult(ctx, ctx->y, ctx->y);
             remaining -= use_len;
@@ -251,7 +271,9 @@ static int gcm_starts(math_gcm_context *ctx, int mode, const unsigned char *iv, 
         }
 
         for (i = 0u; i < GCM_BLOCK_SIZE; i++)
+        {
             ctx->y[i] ^= tmp[i];
+        }
 
         gcm_mult(ctx, ctx->y, ctx->y);
         math_zeroize(tmp, sizeof(tmp));
@@ -259,7 +281,9 @@ static int gcm_starts(math_gcm_context *ctx, int mode, const unsigned char *iv, 
 
     ret = gcm_aes_encrypt_block(ctx, ctx->y, ctx->base_ectr);
     if (ret != 0)
+    {
         return ret;
+    }
 
     p = add;
     while (add_len > 0u)
@@ -267,17 +291,23 @@ static int gcm_starts(math_gcm_context *ctx, int mode, const unsigned char *iv, 
         use_len = (add_len < GCM_BLOCK_SIZE) ? add_len : GCM_BLOCK_SIZE;
 
         for (i = 0u; i < use_len; i++)
+        {
             ctx->buf[i] ^= p[i];
+        }
 
         if (use_len == GCM_BLOCK_SIZE)
+        {
             gcm_mult(ctx, ctx->buf, ctx->buf);
+        }
 
         add_len -= use_len;
         p += use_len;
     }
 
     if ((ctx->add_len % GCM_BLOCK_SIZE) != 0u)
+    {
         gcm_mult(ctx, ctx->buf, ctx->buf);
+    }
 
     return 0;
 }
@@ -297,10 +327,14 @@ static int gcm_update(math_gcm_context *ctx, size_t length, const unsigned char 
     unsigned char *out_p;
 
     if (ctx == NULL)
+    {
         return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     if (length != 0u && (input == NULL || output == NULL))
+    {
         return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     if (length != 0u)
     {
@@ -337,16 +371,22 @@ static int gcm_update(math_gcm_context *ctx, size_t length, const unsigned char 
         for (i = 0u; i < use_len; i++)
         {
             if (ctx->mode == MATH_GCM_DECRYPT)
+            {
                 ctx->buf[i] ^= p[i];
+            }
 
             out_p[i] = (unsigned char) (ectr[i] ^ p[i]);
 
             if (ctx->mode == MATH_GCM_ENCRYPT)
+            {
                 ctx->buf[i] ^= out_p[i];
+            }
         }
 
         if (use_len == GCM_BLOCK_SIZE)
+        {
             gcm_mult(ctx, ctx->buf, ctx->buf);
+        }
 
         ctx->len += use_len;
         length -= use_len;
@@ -366,16 +406,22 @@ static int gcm_finish(math_gcm_context *ctx, unsigned char *tag, size_t tag_len)
     uint64_t add_bits;
 
     if (ctx == NULL || tag == NULL)
+    {
         return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     if (tag_len > GCM_BLOCK_SIZE || tag_len < GCM_MIN_TAG_SIZE)
+    {
         return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     data_bits = ctx->len * 8u;
     add_bits = ctx->add_len * 8u;
 
     if ((ctx->len % GCM_BLOCK_SIZE) != 0u)
+    {
         gcm_mult(ctx, ctx->buf, ctx->buf);
+    }
 
     memcpy(tag, ctx->base_ectr, tag_len);
 
@@ -384,12 +430,16 @@ static int gcm_finish(math_gcm_context *ctx, unsigned char *tag, size_t tag_len)
     GCM_PUT_BE64(tmp, data_bits, 8u);
 
     for (i = 0u; i < GCM_BLOCK_SIZE; i++)
+    {
         ctx->buf[i] ^= tmp[i];
+    }
 
     gcm_mult(ctx, ctx->buf, ctx->buf);
 
     for (i = 0u; i < tag_len; i++)
+    {
         tag[i] ^= ctx->buf[i];
+    }
 
     math_zeroize(tmp, sizeof(tmp));
     return 0;
@@ -404,11 +454,15 @@ int math_gcm_crypt_and_tag(math_gcm_context *ctx, int mode, size_t length, const
 
     ret = gcm_starts(ctx, mode, iv, iv_len, add, add_len);
     if (ret != 0)
+    {
         return ret;
+    }
 
     ret = gcm_update(ctx, length, input, output);
     if (ret != 0)
+    {
         return ret;
+    }
 
     return gcm_finish(ctx, tag, tag_len);
 }
@@ -424,7 +478,9 @@ int math_gcm_auth_decrypt(math_gcm_context *ctx, size_t length, const unsigned c
     unsigned char check_tag[GCM_BLOCK_SIZE];
 
     if (ctx == NULL || tag == NULL)
+    {
         return MATH_ERR_GCM_BAD_INPUT;
+    }
 
     ret = math_gcm_crypt_and_tag(ctx, MATH_GCM_DECRYPT, length, iv, iv_len, add, add_len, input,
                                  output, tag_len, check_tag);
@@ -436,14 +492,18 @@ int math_gcm_auth_decrypt(math_gcm_context *ctx, size_t length, const unsigned c
 
     diff = 0;
     for (i = 0u; i < tag_len; i++)
+    {
         diff |= (int) (tag[i] ^ check_tag[i]);
+    }
 
     math_zeroize(check_tag, sizeof(check_tag));
 
     if (diff != 0)
     {
         if (output != NULL)
+        {
             math_zeroize(output, length);
+        }
 
         return MATH_ERR_GCM_AUTH_FAILED;
     }
@@ -454,7 +514,9 @@ int math_gcm_auth_decrypt(math_gcm_context *ctx, size_t length, const unsigned c
 void math_gcm_free(math_gcm_context *ctx)
 {
     if (ctx == NULL)
+    {
         return;
+    }
 
     math_aes_free(&ctx->aes_ctx);
     math_zeroize(ctx, sizeof(*ctx));
@@ -636,13 +698,16 @@ int math_gcm_self_test(math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], i
             if (pt_len[i] > GCM_BUF_SIZE)
             {
                 if (verbose != 0)
+                {
                     macsec_printf("failed: test vector plaintext too long\n");
-
+                }
                 return 1;
             }
 
             if (verbose != 0)
+            {
                 macsec_printf("  AES-GCM-%3d #%d (enc): ", key_size, i);
+            }
 
             math_gcm_init(ctx);
 
@@ -658,7 +723,9 @@ int math_gcm_self_test(math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], i
                 memcmp(tag_buf, tag[vector_index], GCM_DEFAULT_TAG_SIZE) != 0)
             {
                 if (verbose != 0)
+                {
                     macsec_printf("failed\n");
+                }
 
                 math_gcm_free(ctx);
                 return 1;
@@ -667,10 +734,14 @@ int math_gcm_self_test(math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], i
             math_gcm_free(ctx);
 
             if (verbose != 0)
+            {
                 macsec_printf("passed\n");
+            }
 
             if (verbose != 0)
+            {
                 macsec_printf("  AES-GCM-%3d #%d (dec): ", key_size, i);
+            }
 
             math_gcm_init(ctx);
 
@@ -685,7 +756,9 @@ int math_gcm_self_test(math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], i
             if (ret != 0 || memcmp(buf, pt[pt_index[i]], pt_len[i]) != 0)
             {
                 if (verbose != 0)
+                {
                     macsec_printf("failed\n");
+                }
 
                 math_gcm_free(ctx);
                 return 1;
@@ -694,12 +767,16 @@ int math_gcm_self_test(math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], i
             math_gcm_free(ctx);
 
             if (verbose != 0)
+            {
                 macsec_printf("passed\n");
+            }
         }
     }
 
     if (verbose != 0)
+    {
         macsec_printf("\n");
+    }
 
     return 0;
 }

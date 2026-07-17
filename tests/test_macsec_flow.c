@@ -305,9 +305,8 @@ static int macsec_test_macsec_flow_mka_wait_drops_data_tx(
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MACsec flow MKA WAIT drops data TX test, "
-                      "%u-byte CAK\n",
-                      (unsigned int) cak_len));
+        MACSEC_PRINT(
+            ("  MACsec flow MKA WAIT drops data TX test, %u-byte CAK\n", (unsigned int) cak_len));
     }
 
     macsec_assert(cak != NULL);

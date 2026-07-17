@@ -39,7 +39,9 @@ static int macsec_mka_cmac(macsec_mka_crypto_ctx_t *ctx, const uint8_t *key, siz
     ret = math_cmac_aes(&ctx->cmac_ctx, key, (unsigned int) (key_len * 8u), input, input_len, out);
 
     if (ret != 0)
+    {
         return MACSEC_ERR_CRYPTO;
+    }
 
     MACSEC_INFO_HEX(("MKA CMAC output", out, 16));
 
@@ -154,9 +156,8 @@ static int macsec_mka_derive_one(macsec_mka_crypto_ctx_t *ctx, const char *label
 
     out_bits = (uint16_t) (out_len * 8u);
 
-    MACSEC_MEDIUM(("MKA derive one: label='%s' cak_len=%u "
-                   "ckn_len=%u out_len=%lu\n",
-                   label, ctx->psk.cak_len, ctx->psk.ckn_len, (unsigned long) out_len));
+    MACSEC_MEDIUM(("MKA derive one: label='%s' cak_len=%u ckn_len=%u out_len=%lu\n", label,
+                   ctx->psk.cak_len, ctx->psk.ckn_len, (unsigned long) out_len));
 
     MACSEC_INFO_HEX(("MKA derive KeyID", keyid, sizeof(keyid)));
 

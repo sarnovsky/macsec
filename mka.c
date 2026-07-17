@@ -256,8 +256,7 @@ static void macsec_mka_set_sak_state(macsec_mka_ctx_t *ctx, macsec_mka_sak_state
 
     if (!macsec_mka_sak_transition_allowed(old_state, new_state))
     {
-        MACSEC_ERROR(("MKA invalid SAK transition %s(%u) -> %s(%u): "
-                      "key=%lu an=%u reason=%s\n",
+        MACSEC_ERROR(("MKA invalid SAK transition %s(%u) -> %s(%u): key=%lu an=%u reason=%s\n",
                       macsec_mka_sak_state_name(old_state), (unsigned) old_state,
                       macsec_mka_sak_state_name(new_state), (unsigned) new_state,
                       (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
@@ -268,8 +267,7 @@ static void macsec_mka_set_sak_state(macsec_mka_ctx_t *ctx, macsec_mka_sak_state
         return;
     }
 
-    MACSEC_MEDIUM(("MKA SAK state %s(%u) -> %s(%u): "
-                   "key=%lu an=%u reason=%s\n",
+    MACSEC_MEDIUM(("MKA SAK state %s(%u) -> %s(%u): key=%lu an=%u reason=%s\n",
                    macsec_mka_sak_state_name(old_state), (unsigned) old_state,
                    macsec_mka_sak_state_name(new_state), (unsigned) new_state,
                    (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
@@ -294,9 +292,8 @@ static void macsec_mka_raise_events(macsec_mka_ctx_t *ctx, macsec_mka_event_flag
 
     ctx->pending_events |= events;
 
-    MACSEC_INFO(("MKA events raised: requested=0x%08lX "
-                 "pending=0x%08lX\n",
-                 (unsigned long) events, (unsigned long) ctx->pending_events));
+    MACSEC_INFO(("MKA events raised: requested=0x%08lX pending=0x%08lX\n", (unsigned long) events,
+                 (unsigned long) ctx->pending_events));
 }
 
 static void macsec_mka_schedule_tx(macsec_mka_ctx_t *ctx, macsec_mka_tx_reason_flags_t reasons)
@@ -310,9 +307,8 @@ static void macsec_mka_schedule_tx(macsec_mka_ctx_t *ctx, macsec_mka_tx_reason_f
 
     ctx->tx_reasons |= reasons;
 
-    MACSEC_INFO(("MKA TX scheduled: requested=0x%08lX "
-                 "pending=0x%08lX\n",
-                 (unsigned long) reasons, (unsigned long) ctx->tx_reasons));
+    MACSEC_INFO(("MKA TX scheduled: requested=0x%08lX pending=0x%08lX\n", (unsigned long) reasons,
+                 (unsigned long) ctx->tx_reasons));
 }
 
 static void macsec_mka_build_sci(uint8_t sci[MACSEC_MKA_SCI_LEN], const uint8_t mac[6],
@@ -536,9 +532,8 @@ int macsec_mka_init(macsec_mka_ctx_t *ctx, const uint8_t *cak, size_t cak_len, c
     ret = macsec_mka_crypto_set_psk(&ctx->crypto, cak, cak_len, ckn, ckn_len);
     if (ret != MACSEC_ERR_OK)
     {
-        MACSEC_ERROR(("MKA set PSK failed ret=%d "
-                      "cak_len=%lu ckn_len=%lu\n",
-                      ret, (unsigned long) cak_len, (unsigned long) ckn_len));
+        MACSEC_ERROR(("MKA set PSK failed ret=%d cak_len=%lu ckn_len=%lu\n", ret,
+                      (unsigned long) cak_len, (unsigned long) ckn_len));
 
         macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_ERROR);
 
@@ -576,8 +571,7 @@ int macsec_mka_init(macsec_mka_ctx_t *ctx, const uint8_t *cak, size_t cak_len, c
 
     macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_INITIAL);
 
-    MACSEC_MEDIUM(("MKA init done: state=%u "
-                   "events=0x%08lX tx_reasons=0x%08lX\n",
+    MACSEC_MEDIUM(("MKA init done: state=%u events=0x%08lX tx_reasons=0x%08lX\n",
                    (unsigned) ctx->state, (unsigned long) ctx->pending_events,
                    (unsigned long) ctx->tx_reasons));
 
@@ -785,9 +779,8 @@ int macsec_mka_notify_sak_installed(macsec_mka_ctx_t *ctx, uint32_t key_number, 
 
     ctx->latest_lowest_pn = normalized_lowest_pn;
 
-    MACSEC_MEDIUM(("MKA SAK installation notified: "
-                   "key_number=%lu an=%u directions=0x%02X "
-                   "rx=%u tx=%u lowest_pn=%lu\n",
+    MACSEC_MEDIUM(("MKA SAK installation notified: key_number=%lu an=%u directions=0x%02X rx=%u "
+                   "tx=%u lowest_pn=%lu\n",
                    (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
                    installed_directions, ctx->latest_sak.rx_installed ? 1u : 0u,
                    ctx->latest_sak.tx_installed ? 1u : 0u, (unsigned long) normalized_lowest_pn));
@@ -833,8 +826,7 @@ int macsec_mka_notify_sak_retired(macsec_mka_ctx_t *ctx, uint32_t key_number, ui
 
     if (ctx->latest_sak.key_number != key_number)
     {
-        MACSEC_ERROR(("MKA SAK retirement rejected: "
-                      "key_number=%lu expected=%lu\n",
+        MACSEC_ERROR(("MKA SAK retirement rejected: key_number=%lu expected=%lu\n",
                       (unsigned long) key_number, (unsigned long) ctx->latest_sak.key_number));
 
         return MACSEC_ERR_PARAM;
@@ -842,9 +834,8 @@ int macsec_mka_notify_sak_retired(macsec_mka_ctx_t *ctx, uint32_t key_number, ui
 
     if ((ctx->latest_sak.an & 0x03u) != (an & 0x03u))
     {
-        MACSEC_ERROR(("MKA SAK retirement rejected: "
-                      "AN=%u expected=%u\n",
-                      an & 0x03u, ctx->latest_sak.an & 0x03u));
+        MACSEC_ERROR(("MKA SAK retirement rejected: AN=%u expected=%u\n", an & 0x03u,
+                      ctx->latest_sak.an & 0x03u));
 
         return MACSEC_ERR_PARAM;
     }
@@ -1144,8 +1135,7 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
                 return MACSEC_ERR_BUFFER;
             }
 
-            MACSEC_INFO(("MKA Distributed SAK: key_number=%lu an=%u "
-                         "wrapped_len=%lu\n",
+            MACSEC_INFO(("MKA Distributed SAK: key_number=%lu an=%u wrapped_len=%lu\n",
                          (unsigned long) key_number, an, (unsigned long) wrapped_sak_len));
 
             memset(unwrapped_sak, 0, sizeof(unwrapped_sak));
@@ -1155,9 +1145,9 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
                                                unwrapped_sak, &sak_len, sizeof(unwrapped_sak));
             if (ret != MACSEC_ERR_OK)
             {
-                MACSEC_ERROR(("MKA Distributed SAK unwrap failed ret=%d "
-                              "body_len=%u wrapped_len=%lu\n",
-                              ret, body_len, (unsigned long) wrapped_sak_len));
+                MACSEC_ERROR(
+                    ("MKA Distributed SAK unwrap failed ret=%d body_len=%u wrapped_len=%lu\n", ret,
+                     body_len, (unsigned long) wrapped_sak_len));
 
                 MACSEC_ERROR_HEX(("MKA wrapped SAK", wrapped_sak, (int) wrapped_sak_len));
 
@@ -1187,8 +1177,7 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
 
             if (same_sak)
             {
-                MACSEC_INFO(("MKA Distributed SAK already known: "
-                             "key_number=%lu an=%u\n",
+                MACSEC_INFO(("MKA Distributed SAK already known: key_number=%lu an=%u\n",
                              (unsigned long) key_number, an));
 
                 macsec_zeroize(unwrapped_sak, sizeof(unwrapped_sak));
@@ -1223,8 +1212,7 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
             ctx->latest_key_tx = MACSEC_FALSE;
             ctx->latest_lowest_pn = 1u;
 
-            MACSEC_MEDIUM(("MKA Distributed SAK new candidate: "
-                           "key_number=%lu an=%u sak_len=%lu\n",
+            MACSEC_MEDIUM(("MKA Distributed SAK new candidate: key_number=%lu an=%u sak_len=%lu\n",
                            (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
                            (unsigned long) ctx->latest_sak.sak_len));
 
@@ -1370,8 +1358,7 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
     local_seen_by_peer = macsec_mka_frame_contains_peer_entry(frame, frame_len, ctx->local_mi,
                                                               &listed_mn, &peer_list_type);
 
-    MACSEC_MEDIUM(("MKA peer update: identity_changed=%u "
-                   "local_seen_by_peer=%u list_type=%u "
+    MACSEC_MEDIUM(("MKA peer update: identity_changed=%u local_seen_by_peer=%u list_type=%u "
                    "peer_mn=%lu new_sak=%u\n",
                    peer_identity_changed ? 1u : 0u, local_seen_by_peer ? 1u : 0u, peer_list_type,
                    (unsigned long) basic.actor_mn,
@@ -1418,9 +1405,8 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
         macsec_mka_set_state(ctx, MACSEC_MKA_STATE_PEER_LIVE,
                              "local MI listed by authenticated peer");
 
-        MACSEC_MEDIUM(("MKA peer is LIVE: list_type=%u "
-                       "peer_mn=%lu listed_mn=%lu\n",
-                       peer_list_type, (unsigned long) ctx->peer.mn, (unsigned long) listed_mn));
+        MACSEC_MEDIUM(("MKA peer is LIVE: list_type=%u peer_mn=%lu listed_mn=%lu\n", peer_list_type,
+                       (unsigned long) ctx->peer.mn, (unsigned long) listed_mn));
     }
     else
     {
@@ -1431,8 +1417,7 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
         macsec_mka_set_state(ctx, MACSEC_MKA_STATE_PEER_DISCOVERED,
                              "authenticated peer does not list local MI");
 
-        MACSEC_MEDIUM(("MKA peer found but local MI is not listed: "
-                       "peer_mn=%lu\n",
+        MACSEC_MEDIUM(("MKA peer found but local MI is not listed: peer_mn=%lu\n",
                        (unsigned long) ctx->peer.mn));
     }
 
@@ -1448,8 +1433,7 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
     key_server_changed =
         (previous_local_key_server != ctx->local_key_server) ? MACSEC_TRUE : MACSEC_FALSE;
 
-    MACSEC_MEDIUM(("MKA key server election: "
-                   "local_priority=%u peer_priority=%u "
+    MACSEC_MEDIUM(("MKA key server election: local_priority=%u peer_priority=%u "
                    "local_key_server=%u changed=%u\n",
                    ctx->key_server_priority, ctx->peer.key_server_priority,
                    ctx->local_key_server ? 1u : 0u, key_server_changed ? 1u : 0u));
@@ -1488,9 +1472,8 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
         macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_KEY_SERVER_CHANGE);
     }
 
-    MACSEC_INFO(("MKA RX done: state=%u peer_valid=%u peer_live=%u "
-                 "peer_list_type=%u events=0x%08lX "
-                 "tx_reasons=0x%08lX new_sak=%u\n",
+    MACSEC_INFO(("MKA RX done: state=%u peer_valid=%u peer_live=%u peer_list_type=%u "
+                 "events=0x%08lX tx_reasons=0x%08lX new_sak=%u\n",
                  (unsigned) ctx->state, ctx->peer.valid ? 1u : 0u, ctx->peer.live ? 1u : 0u,
                  peer_list_type, (unsigned long) ctx->pending_events,
                  (unsigned long) ctx->tx_reasons,
@@ -1505,8 +1488,7 @@ int macsec_mka_tick(macsec_mka_ctx_t *ctx, uint32_t now_ms)
 
     ctx->last_tick_ms = now_ms;
 
-    MACSEC_INFO(("MKA tick: now=%lu last_tx=%lu interval=%lu "
-                 "tx_reasons=0x%08lX\n",
+    MACSEC_INFO(("MKA tick: now=%lu last_tx=%lu interval=%lu tx_reasons=0x%08lX\n",
                  (unsigned long) now_ms, (unsigned long) ctx->last_tx_ms,
                  (unsigned long) ctx->tx_interval_ms, (unsigned long) ctx->tx_reasons));
 
@@ -1696,8 +1678,7 @@ static int macsec_mka_key_server_ensure_sak(macsec_mka_ctx_t *ctx)
 
     macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK);
 
-    MACSEC_MEDIUM(("MKA Key Server generated SAK: "
-                   "an=%u key_number=%lu lifecycle=%u\n",
+    MACSEC_MEDIUM(("MKA Key Server generated SAK: an=%u key_number=%lu lifecycle=%u\n",
                    ctx->latest_sak.an, (unsigned long) ctx->latest_sak.key_number,
                    (unsigned) ctx->latest_sak.lifecycle_state));
 
@@ -1983,10 +1964,8 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
 
     *frame_len = total_len;
 
-    MACSEC_MEDIUM(("MKA TX frame built: "
-                   "mn=%lu frame_len=%lu reasons=0x%08lX "
-                   "key_server=%u peer_list=%u "
-                   "dist_sak=%u sak_use=%u\n",
+    MACSEC_MEDIUM(("MKA TX frame built: mn=%lu frame_len=%lu reasons=0x%08lX key_server=%u "
+                   "peer_list=%u dist_sak=%u sak_use=%u\n",
                    (unsigned long) meta->message_number, (unsigned long) *frame_len,
                    (unsigned long) meta->reasons, ctx->local_key_server ? 1u : 0u,
                    meta->contains_peer_list ? 1u : 0u, meta->contains_distributed_sak ? 1u : 0u,
@@ -2015,8 +1994,7 @@ int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta
      */
     if (meta->message_number != ctx->local_mn)
     {
-        MACSEC_ERROR(("MKA TX success rejected: "
-                      "meta_mn=%lu current_mn=%lu\n",
+        MACSEC_ERROR(("MKA TX success rejected: meta_mn=%lu current_mn=%lu\n",
                       (unsigned long) meta->message_number, (unsigned long) ctx->local_mn));
 
         return MACSEC_ERR_STATE;
@@ -2056,8 +2034,7 @@ int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta
             (ctx->latest_sak.key_number != meta->distributed_key_number) ||
             (ctx->latest_sak.an != meta->distributed_an))
         {
-            MACSEC_ERROR(("MKA TX success Distributed SAK mismatch: "
-                          "meta_key=%lu meta_an=%u "
+            MACSEC_ERROR(("MKA TX success Distributed SAK mismatch: meta_key=%lu meta_an=%u "
                           "current_key=%lu current_an=%u state=%u\n",
                           (unsigned long) meta->distributed_key_number, meta->distributed_an,
                           (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
@@ -2115,11 +2092,8 @@ int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta
      */
     ctx->tx_reasons &= ~meta->reasons;
 
-    MACSEC_MEDIUM(("MKA TX success: "
-                   "mn=%lu next_mn=%lu now=%lu "
-                   "sent_reasons=0x%08lX "
-                   "remaining_reasons=0x%08lX "
-                   "dist_sak=%u\n",
+    MACSEC_MEDIUM(("MKA TX success: mn=%lu next_mn=%lu now=%lu sent_reasons=0x%08lX "
+                   "remaining_reasons=0x%08lX dist_sak=%u\n",
                    (unsigned long) meta->message_number, (unsigned long) ctx->local_mn,
                    (unsigned long) ctx->last_tx_ms, (unsigned long) meta->reasons,
                    (unsigned long) ctx->tx_reasons, meta->contains_distributed_sak ? 1u : 0u));
@@ -2146,9 +2120,7 @@ void macsec_mka_notify_tx_failure(macsec_mka_ctx_t *ctx, const macsec_mka_tx_met
      */
     ctx->tx_reasons |= meta->reasons;
 
-    MACSEC_MEDIUM(("MKA TX failure: "
-                   "mn=%lu reasons=0x%08lX "
-                   "pending_reasons=0x%08lX\n",
+    MACSEC_MEDIUM(("MKA TX failure: mn=%lu reasons=0x%08lX pending_reasons=0x%08lX\n",
                    (unsigned long) meta->message_number, (unsigned long) meta->reasons,
                    (unsigned long) ctx->tx_reasons));
 }
@@ -2265,9 +2237,8 @@ void macsec_mka_set_latest_key_tx(macsec_mka_ctx_t *ctx, uint8_t an, uint32_t lo
 
     if ((ctx->latest_sak.an & 0x03u) != (an & 0x03u))
     {
-        MACSEC_INFO(("MKA set latest key TX ignored: "
-                     "requested AN=%u current AN=%u\n",
-                     an & 0x03u, ctx->latest_sak.an & 0x03u));
+        MACSEC_INFO(("MKA set latest key TX ignored: requested AN=%u current AN=%u\n", an & 0x03u,
+                     ctx->latest_sak.an & 0x03u));
 
         return;
     }
@@ -2301,9 +2272,9 @@ void macsec_mka_set_latest_key_tx(macsec_mka_ctx_t *ctx, uint8_t an, uint32_t lo
 
         macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_SAK_USE);
 
-        MACSEC_MEDIUM(("MKA latest key TX/RX installed by legacy API: "
-                       "key_number=%lu an=%u lowest_pn=%lu\n",
-                       (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
-                       (unsigned long) normalized_lowest_pn));
+        MACSEC_MEDIUM(
+            ("MKA latest key TX/RX installed by legacy API: key_number=%lu an=%u lowest_pn=%lu\n",
+             (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
+             (unsigned long) normalized_lowest_pn));
     }
 }

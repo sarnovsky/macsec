@@ -194,9 +194,8 @@ static int macsec_process_mka_sak_install(macsec_ctx_t *ctx)
 
         if (ret != MACSEC_ERR_OK)
         {
-            MACSEC_ERROR(("MACsec MKA RX SAK install failed: "
-                          "ret=%d key_number=%lu an=%u\n",
-                          ret, (unsigned long) sak.key_number, sak.an));
+            MACSEC_ERROR(("MACsec MKA RX SAK install failed: ret=%d key_number=%lu an=%u\n", ret,
+                          (unsigned long) sak.key_number, sak.an));
 
             goto cleanup;
         }
@@ -206,8 +205,7 @@ static int macsec_process_mka_sak_install(macsec_ctx_t *ctx)
 
         if (ret != MACSEC_ERR_OK)
         {
-            MACSEC_ERROR(("MACsec MKA RX SAK confirmation failed: "
-                          "ret=%d key_number=%lu an=%u\n",
+            MACSEC_ERROR(("MACsec MKA RX SAK confirmation failed: ret=%d key_number=%lu an=%u\n",
                           ret, (unsigned long) sak.key_number, sak.an));
 
             goto cleanup;
@@ -223,9 +221,8 @@ static int macsec_process_mka_sak_install(macsec_ctx_t *ctx)
 
         if (ret != MACSEC_ERR_OK)
         {
-            MACSEC_ERROR(("MACsec MKA TX SAK install failed: "
-                          "ret=%d key_number=%lu an=%u\n",
-                          ret, (unsigned long) sak.key_number, sak.an));
+            MACSEC_ERROR(("MACsec MKA TX SAK install failed: ret=%d key_number=%lu an=%u\n", ret,
+                          (unsigned long) sak.key_number, sak.an));
 
             goto cleanup;
         }
@@ -235,16 +232,14 @@ static int macsec_process_mka_sak_install(macsec_ctx_t *ctx)
 
         if (ret != MACSEC_ERR_OK)
         {
-            MACSEC_ERROR(("MACsec MKA TX SAK confirmation failed: "
-                          "ret=%d key_number=%lu an=%u\n",
+            MACSEC_ERROR(("MACsec MKA TX SAK confirmation failed: ret=%d key_number=%lu an=%u\n",
                           ret, (unsigned long) sak.key_number, sak.an));
 
             goto cleanup;
         }
     }
 
-    MACSEC_MEDIUM(("MACsec MKA SAK installed: "
-                   "key_number=%lu an=%u sak_len=%lu\n",
+    MACSEC_MEDIUM(("MACsec MKA SAK installed: key_number=%lu an=%u sak_len=%lu\n",
                    (unsigned long) sak.key_number, sak.an, (unsigned long) sak.sak_len));
 
     ret = MACSEC_ERR_OK;
@@ -726,8 +721,7 @@ int macsec_get_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_le
 
     ctx->pending_mka_tx_valid = MACSEC_TRUE;
 
-    MACSEC_INFO(("MACsec control frame built: "
-                 "len=%lu mn=%lu reasons=0x%08lX\n",
+    MACSEC_INFO(("MACsec control frame built: len=%lu mn=%lu reasons=0x%08lX\n",
                  (unsigned long) *tx_len, (unsigned long) ctx->pending_mka_tx_meta.message_number,
                  (unsigned long) ctx->pending_mka_tx_meta.reasons));
 
@@ -756,10 +750,10 @@ int macsec_notify_control_tx_success(macsec_ctx_t *ctx, uint32_t now_ms)
     {
         ctx->state = MACSEC_STATE_ERROR;
 
-        MACSEC_ERROR(("MACsec control TX success notification failed: "
-                      "ret=%d mn=%lu reasons=0x%08lX\n",
-                      ret, (unsigned long) ctx->pending_mka_tx_meta.message_number,
-                      (unsigned long) ctx->pending_mka_tx_meta.reasons));
+        MACSEC_ERROR(
+            ("MACsec control TX success notification failed: ret=%d mn=%lu reasons=0x%08lX\n", ret,
+             (unsigned long) ctx->pending_mka_tx_meta.message_number,
+             (unsigned long) ctx->pending_mka_tx_meta.reasons));
 
         return ret;
     }

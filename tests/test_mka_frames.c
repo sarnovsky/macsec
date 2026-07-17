@@ -662,9 +662,8 @@ static int macsec_test_mka_frames_stm32_key_server_distributes_sak(
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA STM32 key-server Distributed SAK test, "
-                      "%u-byte CAK\n",
-                      (unsigned int) cak_len));
+        MACSEC_PRINT(
+            ("  MKA STM32 key-server Distributed SAK test, %u-byte CAK\n", (unsigned int) cak_len));
     }
 
     TEST_OK(test_mka_make_a_key_server_live(&data->a, &data->b, cak, cak_len, data->frame_a,

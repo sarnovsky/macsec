@@ -112,9 +112,8 @@ static int macsec_test_mka_crypto_mic_positive_negative(
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA crypto MIC positive/negative test, "
-                      "%u-byte CAK\n",
-                      (unsigned int) cak_len));
+        MACSEC_PRINT(
+            ("  MKA crypto MIC positive/negative test, %u-byte CAK\n", (unsigned int) cak_len));
     }
 
     for (i = 0u; i < sizeof(data->pdu); i++)
@@ -265,9 +264,7 @@ macsec_test_mka_crypto_wrap_unwrap_sak(macsec_test_mka_crypto_wrap_unwrap_sak_da
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA crypto SAK wrap/unwrap test, "
-                      "%u-byte CAK\n",
-                      (unsigned int) cak_len));
+        MACSEC_PRINT(("  MKA crypto SAK wrap/unwrap test, %u-byte CAK\n", (unsigned int) cak_len));
     }
 
     for (i = 0u; i < sizeof(data->sak); i++)
