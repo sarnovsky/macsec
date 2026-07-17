@@ -17,6 +17,8 @@
 #include <tests/test_mka_negative.h>
 #include <tests/unit_tests.h>
 
+#include <string.h>
+
 #if (MACSEC_SELF_TEST != 0)
 
 static const uint8_t test_cak_16[16] =
@@ -108,6 +110,49 @@ static int macsec_test_mka_negative_init(
                            2000u);
 }
 
+
+/*
+ * Build an MKPDU and simulate successful transmission.
+ *
+ * Negative tests subsequently inspect, modify or deliver the generated
+ * frame. The success notification commits the message number, transmission
+ * time and transmitted scheduling reasons.
+ */
+static int macsec_test_mka_build_and_commit_tx(
+    macsec_mka_ctx_t *ctx,
+    uint8_t *frame,
+    size_t *frame_len,
+    size_t frame_max_len,
+    uint32_t now_ms)
+{
+    macsec_mka_tx_meta_t tx_meta;
+    int ret;
+
+    macsec_assert(ctx != NULL);
+    macsec_assert(frame != NULL);
+    macsec_assert(frame_len != NULL);
+
+    memset(&tx_meta, 0, sizeof(tx_meta));
+
+    ret = macsec_mka_build_tx_frame(ctx,
+                                    frame,
+                                    frame_len,
+                                    frame_max_len,
+                                    &tx_meta);
+    if (ret != MACSEC_ERR_OK)
+    {
+        return ret;
+    }
+
+    ret = macsec_mka_notify_tx_success(ctx,
+                                       &tx_meta,
+                                       now_ms);
+
+    macsec_zeroize(&tx_meta, sizeof(tx_meta));
+
+    return ret;
+}
+
 static int macsec_test_mka_negative_bad_ethertype(
     macsec_test_mka_negative_bad_ethertype_data_t *data,
     const uint8_t *cak,
@@ -131,10 +176,12 @@ static int macsec_test_mka_negative_bad_ethertype(
                                         255u);
     TEST_OK(ret);
 
-    ret = macsec_mka_get_tx_frame(&data->mka,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(
+        &data->mka,
+        data->frame,
+        &frame_len,
+        sizeof(data->frame),
+        100u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->mka);
@@ -178,10 +225,12 @@ static int macsec_test_mka_negative_bad_eapol_type(
                                         255u);
     TEST_OK(ret);
 
-    ret = macsec_mka_get_tx_frame(&data->mka,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(
+        &data->mka,
+        data->frame,
+        &frame_len,
+        sizeof(data->frame),
+        100u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->mka);
@@ -277,10 +326,12 @@ static int macsec_test_mka_negative_bad_icv(
         return ret;
     }
 
-    ret = macsec_mka_get_tx_frame(&data->tx,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(
+        &data->tx,
+        data->frame,
+        &frame_len,
+        sizeof(data->frame),
+        100u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->tx);
@@ -329,10 +380,12 @@ static int macsec_test_mka_negative_reflected_own_frame_ignored(
                                         255u);
     TEST_OK(ret);
 
-    ret = macsec_mka_get_tx_frame(&data->mka,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(
+        &data->mka,
+        data->frame,
+        &frame_len,
+        sizeof(data->frame),
+        100u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->mka);
@@ -397,10 +450,12 @@ static int macsec_test_mka_negative_wrong_cak_fails_icv(
         return ret;
     }
 
-    ret = macsec_mka_get_tx_frame(&data->tx,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(
+        &data->tx,
+        data->frame,
+        &frame_len,
+        sizeof(data->frame),
+        100u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->tx);

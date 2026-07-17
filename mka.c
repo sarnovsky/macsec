@@ -2705,54 +2705,6 @@ void macsec_mka_notify_tx_failure(macsec_mka_ctx_t *ctx,
         (unsigned long)ctx->tx_reasons));
 }
 
-/*
- * Temporary compatibility wrapper.
- *
- * Legacy callers treat successful frame construction as successful
- * transmission. New code must use build + notify.
- */
-int macsec_mka_get_tx_frame(macsec_mka_ctx_t *ctx,
-                            uint8_t *frame,
-                            size_t *frame_len,
-                            size_t frame_max_len)
-{
-    macsec_mka_tx_meta_t meta;
-    uint32_t now_ms;
-    int ret;
-
-    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
-    macsec_check(frame != NULL, MACSEC_ERR_PARAM);
-    macsec_check(frame_len != NULL, MACSEC_ERR_PARAM);
-
-    memset(&meta, 0, sizeof(meta));
-
-    ret = macsec_mka_build_tx_frame(
-        ctx,
-        frame,
-        frame_len,
-        frame_max_len,
-        &meta);
-
-    if (ret != MACSEC_ERR_OK)
-    {
-        return ret;
-    }
-
-    now_ms =
-        (ctx->last_tick_ms != 0u) ?
-        ctx->last_tick_ms :
-        1u;
-
-    ret = macsec_mka_notify_tx_success(
-        ctx,
-        &meta,
-        now_ms);
-
-    macsec_zeroize(&meta, sizeof(meta));
-
-    return ret;
-}
-
 int macsec_mka_verify_icv(macsec_mka_ctx_t *ctx,
                           const uint8_t *frame,
                           size_t frame_len,

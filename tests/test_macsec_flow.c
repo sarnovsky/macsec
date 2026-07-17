@@ -151,6 +151,48 @@ static void macsec_test_mka_config(macsec_config_t *cfg,
     cfg->replay_window = 0u;
 }
 
+/*
+ * Build an MKPDU and simulate successful transmission.
+ *
+ * Direct MKA tests use this helper when the generated frame is subsequently
+ * delivered to another participant. The success notification commits the
+ * message number, transmission time and transmitted scheduling reasons.
+ */
+static int macsec_test_mka_build_and_commit_tx(
+    macsec_mka_ctx_t *ctx,
+    uint8_t *frame,
+    size_t *frame_len,
+    size_t frame_max_len,
+    uint32_t now_ms)
+{
+    macsec_mka_tx_meta_t tx_meta;
+    int ret;
+
+    macsec_assert(ctx != NULL);
+    macsec_assert(frame != NULL);
+    macsec_assert(frame_len != NULL);
+
+    memset(&tx_meta, 0, sizeof(tx_meta));
+
+    ret = macsec_mka_build_tx_frame(ctx,
+                                    frame,
+                                    frame_len,
+                                    frame_max_len,
+                                    &tx_meta);
+    if (ret != MACSEC_ERR_OK)
+    {
+        return ret;
+    }
+
+    ret = macsec_mka_notify_tx_success(ctx,
+                                       &tx_meta,
+                                       now_ms);
+
+    macsec_zeroize(&tx_meta, sizeof(tx_meta));
+
+    return ret;
+}
+
 static int macsec_test_macsec_flow_static_bidirectional(
     macsec_test_macsec_flow_static_bidirectional_data_t *data,
     int verbose)
@@ -321,10 +363,12 @@ static int macsec_test_macsec_flow_eapol_consumed(
         return ret;
     }
 
-    ret = macsec_mka_get_tx_frame(&data->mka_tx,
-                                  data->eapol,
-                                  &eapol_len,
-                                  sizeof(data->eapol));
+    ret = macsec_test_mka_build_and_commit_tx(
+        &data->mka_tx,
+        data->eapol,
+        &eapol_len,
+        sizeof(data->eapol),
+        1000u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_clear(&data->macsec);

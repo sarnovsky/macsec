@@ -84,6 +84,49 @@ static int macsec_test_mka_init_ctx(macsec_mka_ctx_t *ctx,
                            2000u);
 }
 
+/*
+ * Build an MKA frame and simulate successful transmission.
+ *
+ * This helper preserves the previous build-and-commit behavior while
+ * keeping the new build/notify lifecycle
+ * explicit in the tests.
+ */
+static int macsec_test_mka_build_and_commit_tx(
+    macsec_mka_ctx_t *ctx,
+    uint8_t *frame,
+    size_t *frame_len,
+    size_t frame_max_len,
+    uint32_t now_ms)
+{
+    macsec_mka_tx_meta_t tx_meta;
+    int ret;
+
+    macsec_assert(ctx != NULL);
+    macsec_assert(frame != NULL);
+    macsec_assert(frame_len != NULL);
+
+    memset(&tx_meta, 0, sizeof(tx_meta));
+
+    ret = macsec_mka_build_tx_frame(ctx,
+                                    frame,
+                                    frame_len,
+                                    frame_max_len,
+                                    &tx_meta);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_zeroize(&tx_meta, sizeof(tx_meta));
+        return ret;
+    }
+
+    ret = macsec_mka_notify_tx_success(ctx,
+                                       &tx_meta,
+                                       now_ms);
+
+    macsec_zeroize(&tx_meta, sizeof(tx_meta));
+
+    return ret;
+}
+
 static int macsec_test_mka_frames_linux_basic_icv(
     macsec_test_mka_frames_linux_basic_icv_data_t *data,
     int verbose)
@@ -191,10 +234,11 @@ static int macsec_test_mka_frames_build_parse_basic(
 
     frame_len = 0u;
 
-    ret = macsec_mka_get_tx_frame(&data->mka,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(&data->mka,
+                                               data->frame,
+                                               &frame_len,
+                                               sizeof(data->frame),
+                                               1u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->mka);
@@ -261,10 +305,11 @@ static int macsec_test_mka_frames_generated_icv_ok(
 
     frame_len = 0u;
 
-    ret = macsec_mka_get_tx_frame(&data->tx,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(&data->tx,
+                                               data->frame,
+                                               &frame_len,
+                                               sizeof(data->frame),
+                                               1000u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->tx);
@@ -333,10 +378,11 @@ static int macsec_test_mka_frames_generated_icv_bad(
 
     frame_len = 0u;
 
-    ret = macsec_mka_get_tx_frame(&data->tx,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(&data->tx,
+                                               data->frame,
+                                               &frame_len,
+                                               sizeof(data->frame),
+                                               1000u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->tx);
@@ -424,10 +470,11 @@ static int macsec_test_mka_frames_two_peer_exchange(
 
     frame_len = 0u;
 
-    ret = macsec_mka_get_tx_frame(&data->a,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(&data->a,
+                                               data->frame,
+                                               &frame_len,
+                                               sizeof(data->frame),
+                                               100u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->a);
@@ -453,10 +500,11 @@ static int macsec_test_mka_frames_two_peer_exchange(
 
     frame_len = 0u;
 
-    ret = macsec_mka_get_tx_frame(&data->b,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(&data->b,
+                                               data->frame,
+                                               &frame_len,
+                                               sizeof(data->frame),
+                                               200u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->a);
@@ -482,10 +530,11 @@ static int macsec_test_mka_frames_two_peer_exchange(
 
     frame_len = 0u;
 
-    ret = macsec_mka_get_tx_frame(&data->a,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(&data->a,
+                                               data->frame,
+                                               &frame_len,
+                                               sizeof(data->frame),
+                                               300u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->a);
@@ -543,10 +592,11 @@ static int macsec_test_mka_frames_tx_pending_timing(
 
     frame_len = 0u;
 
-    ret = macsec_mka_get_tx_frame(&data->mka,
-                                  data->frame,
-                                  &frame_len,
-                                  sizeof(data->frame));
+    ret = macsec_test_mka_build_and_commit_tx(&data->mka,
+                                               data->frame,
+                                               &frame_len,
+                                               sizeof(data->frame),
+                                               1000u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->mka);
@@ -554,8 +604,12 @@ static int macsec_test_mka_frames_tx_pending_timing(
     }
 
     TEST_TRUE(!data->mka.tx_pending);
+    TEST_TRUE(data->mka.tx_reasons == MACSEC_MKA_TX_REASON_NONE);
 
-    ret = macsec_mka_tick(&data->mka, 1000u);
+    /*
+     * Only 1000 ms elapsed since the successful transmission.
+     */
+    ret = macsec_mka_tick(&data->mka, 2000u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->mka);
@@ -563,7 +617,11 @@ static int macsec_test_mka_frames_tx_pending_timing(
     }
 
     TEST_TRUE(!data->mka.tx_pending);
+    TEST_TRUE(data->mka.tx_reasons == MACSEC_MKA_TX_REASON_NONE);
 
+    /*
+     * At 3000 ms, the configured 2000 ms interval has elapsed.
+     */
     ret = macsec_mka_tick(&data->mka, 3000u);
     if (ret != MACSEC_ERR_OK)
     {
@@ -572,6 +630,8 @@ static int macsec_test_mka_frames_tx_pending_timing(
     }
 
     TEST_TRUE(data->mka.tx_pending);
+    TEST_TRUE((data->mka.tx_reasons &
+               MACSEC_MKA_TX_REASON_PERIODIC) != 0u);
 
     macsec_mka_clear(&data->mka);
 
@@ -746,10 +806,11 @@ static int test_mka_make_a_key_server_live(macsec_mka_ctx_t *a,
 
     len_a = 0u;
 
-    TEST_OK(macsec_mka_get_tx_frame(a,
-                                    frame_a,
-                                    &len_a,
-                                    frame_max));
+    TEST_OK(macsec_test_mka_build_and_commit_tx(a,
+                                                       frame_a,
+                                                       &len_a,
+                                                       frame_max,
+                                                       1000u));
 
     TEST_OK(macsec_mka_input(b,
                              frame_a,
@@ -758,10 +819,11 @@ static int test_mka_make_a_key_server_live(macsec_mka_ctx_t *a,
 
     len_b = 0u;
 
-    TEST_OK(macsec_mka_get_tx_frame(b,
-                                    frame_b,
-                                    &len_b,
-                                    frame_max));
+    TEST_OK(macsec_test_mka_build_and_commit_tx(b,
+                                                       frame_b,
+                                                       &len_b,
+                                                       frame_max,
+                                                       2000u));
 
     TEST_OK(macsec_mka_input(a,
                              frame_b,
@@ -774,10 +836,11 @@ static int test_mka_make_a_key_server_live(macsec_mka_ctx_t *a,
 
     len_a = 0u;
 
-    TEST_OK(macsec_mka_get_tx_frame(a,
-                                    frame_a,
-                                    &len_a,
-                                    frame_max));
+    TEST_OK(macsec_test_mka_build_and_commit_tx(a,
+                                                       frame_a,
+                                                       &len_a,
+                                                       frame_max,
+                                                       3000u));
 
     *frame_a_len = len_a;
 
@@ -844,8 +907,9 @@ static int macsec_test_mka_frames_stm32_key_server_distributes_sak(
     TEST_EQ_U32(body_len, 40u);
 
     /*
-     * At this point A has generated the SAK and included it in
-     * frame_a, but B has not received this final frame yet.
+     * A has generated the SAK and successfully transmitted the frame, so
+     * its local SAK is already DISTRIBUTED. B has not processed this final
+     * frame yet.
      */
     TEST_TRUE(data->a.latest_sak.valid);
     TEST_EQ_U32(data->a.latest_sak.sak_len, 16u);
@@ -978,10 +1042,11 @@ static int macsec_test_mka_frames_sak_use_tx_rx_flags(
 
     frame_a_len = 0u;
 
-    TEST_OK(macsec_mka_get_tx_frame(&data->a,
-                                    data->frame_a,
-                                    &frame_a_len,
-                                    sizeof(data->frame_a)));
+    TEST_OK(macsec_test_mka_build_and_commit_tx(&data->a,
+                                                       data->frame_a,
+                                                       &frame_a_len,
+                                                       sizeof(data->frame_a),
+                                                       4000u));
 
     TEST_OK(test_mka_find_param(data->frame_a,
                                 frame_a_len,

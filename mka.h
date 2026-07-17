@@ -535,11 +535,6 @@ void macsec_mka_print_basic(const macsec_mka_basic_t *basic);
  * Remove after macsec.c has been migrated to the event-driven API.
  *****************************************************************************/
 
-int macsec_mka_get_tx_frame(macsec_mka_ctx_t *ctx,
-                            uint8_t *frame,
-                            size_t *frame_len,
-                            size_t frame_max_len);
-
 macsec_bool_t macsec_mka_has_sak(const macsec_mka_ctx_t *ctx);
 
 const macsec_mka_sak_t *
