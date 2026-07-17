@@ -31,6 +31,347 @@ static const uint8_t macsec_mka_dst_mac[6] =
 #define MACSEC_MKA_PARAM_SAK_USE          3u
 #define MACSEC_MKA_PARAM_DISTRIBUTED_SAK  4u
 
+static void macsec_mka_raise_events(
+    macsec_mka_ctx_t *ctx,
+    macsec_mka_event_flags_t events);
+
+static void macsec_mka_schedule_tx(
+    macsec_mka_ctx_t *ctx,
+    macsec_mka_tx_reason_t reasons);
+
+
+static const char *macsec_mka_state_name(macsec_mka_state_t state)
+{
+    switch (state)
+    {
+        case MACSEC_MKA_STATE_INIT:
+            return "INIT";
+
+        case MACSEC_MKA_STATE_WAIT_PEER:
+            return "WAIT_PEER";
+
+        case MACSEC_MKA_STATE_PEER_DISCOVERED:
+            return "PEER_DISCOVERED";
+
+        case MACSEC_MKA_STATE_PEER_LIVE:
+            return "PEER_LIVE";
+
+        case MACSEC_MKA_STATE_OPERATIONAL:
+            return "OPERATIONAL";
+
+        case MACSEC_MKA_STATE_ERROR:
+            return "ERROR";
+
+        default:
+            return "UNKNOWN";
+    }
+}
+
+static const char *macsec_mka_sak_state_name(
+    macsec_mka_sak_state_t state)
+{
+    switch (state)
+    {
+        case MACSEC_MKA_SAK_STATE_NONE:
+            return "NONE";
+
+        case MACSEC_MKA_SAK_STATE_CANDIDATE:
+            return "CANDIDATE";
+
+        case MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING:
+            return "DISTRIBUTION_PENDING";
+
+        case MACSEC_MKA_SAK_STATE_DISTRIBUTED:
+            return "DISTRIBUTED";
+
+        case MACSEC_MKA_SAK_STATE_INSTALL_PENDING:
+            return "INSTALL_PENDING";
+
+        case MACSEC_MKA_SAK_STATE_ACTIVE:
+            return "ACTIVE";
+
+        case MACSEC_MKA_SAK_STATE_CONFIRMED:
+            return "CONFIRMED";
+
+        case MACSEC_MKA_SAK_STATE_RETIRING:
+            return "RETIRING";
+
+        default:
+            return "UNKNOWN";
+    }
+}
+
+static macsec_bool_t macsec_mka_state_transition_allowed(
+    macsec_mka_state_t old_state,
+    macsec_mka_state_t new_state)
+{
+    if (old_state == new_state)
+    {
+        return MACSEC_TRUE;
+    }
+
+    /*
+     * An unrecoverable error may be entered from any state.
+     */
+    if (new_state == MACSEC_MKA_STATE_ERROR)
+    {
+        return MACSEC_TRUE;
+    }
+
+    switch (old_state)
+    {
+        case MACSEC_MKA_STATE_INIT:
+            return (new_state == MACSEC_MKA_STATE_WAIT_PEER) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_STATE_WAIT_PEER:
+            return ((new_state == MACSEC_MKA_STATE_PEER_DISCOVERED) ||
+                    (new_state == MACSEC_MKA_STATE_PEER_LIVE)) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_STATE_PEER_DISCOVERED:
+            return ((new_state == MACSEC_MKA_STATE_WAIT_PEER) ||
+                    (new_state == MACSEC_MKA_STATE_PEER_LIVE)) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_STATE_PEER_LIVE:
+            return ((new_state == MACSEC_MKA_STATE_WAIT_PEER) ||
+                    (new_state == MACSEC_MKA_STATE_PEER_DISCOVERED) ||
+                    (new_state == MACSEC_MKA_STATE_OPERATIONAL)) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_STATE_OPERATIONAL:
+            return ((new_state == MACSEC_MKA_STATE_WAIT_PEER) ||
+                    (new_state == MACSEC_MKA_STATE_PEER_DISCOVERED) ||
+                    (new_state == MACSEC_MKA_STATE_PEER_LIVE)) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_STATE_ERROR:
+            /*
+             * Recovery requires clear + init, not a direct transition.
+             */
+            return MACSEC_FALSE;
+
+        default:
+            return MACSEC_FALSE;
+    }
+}
+
+static void macsec_mka_set_state(macsec_mka_ctx_t *ctx,
+                                 macsec_mka_state_t new_state,
+                                 const char *reason)
+{
+    macsec_mka_state_t old_state;
+
+    macsec_assert(ctx != NULL);
+
+    old_state = ctx->state;
+
+    if (old_state == new_state)
+    {
+        return;
+    }
+
+    if (!macsec_mka_state_transition_allowed(old_state, new_state))
+    {
+        MACSEC_ERROR((
+            "MKA invalid state transition %s(%u) -> %s(%u): %s\n",
+            macsec_mka_state_name(old_state),
+            (unsigned)old_state,
+            macsec_mka_state_name(new_state),
+            (unsigned)new_state,
+            (reason != NULL) ? reason : "no reason"));
+
+        macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_ERROR);
+        macsec_mka_set_state(ctx, MACSEC_MKA_STATE_ERROR, "MKA initialization failed");
+        ctx->pending_events |= MACSEC_MKA_EVENT_ERROR;
+
+        return;
+    }
+
+    MACSEC_MEDIUM((
+        "MKA state %s(%u) -> %s(%u): %s\n",
+        macsec_mka_state_name(old_state),
+        (unsigned)old_state,
+        macsec_mka_state_name(new_state),
+        (unsigned)new_state,
+        (reason != NULL) ? reason : "no reason"));
+
+    ctx->state = new_state;
+}
+
+static macsec_bool_t macsec_mka_sak_transition_allowed(
+    macsec_mka_sak_state_t old_state,
+    macsec_mka_sak_state_t new_state)
+{
+    if (old_state == new_state)
+    {
+        return MACSEC_TRUE;
+    }
+
+    switch (old_state)
+    {
+        case MACSEC_MKA_SAK_STATE_NONE:
+            return (new_state == MACSEC_MKA_SAK_STATE_CANDIDATE) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_SAK_STATE_CANDIDATE:
+            return ((new_state ==
+                     MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING) ||
+                    (new_state ==
+                     MACSEC_MKA_SAK_STATE_INSTALL_PENDING) ||
+                    (new_state == MACSEC_MKA_SAK_STATE_NONE)) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING:
+            return ((new_state == MACSEC_MKA_SAK_STATE_DISTRIBUTED) ||
+                    (new_state == MACSEC_MKA_SAK_STATE_NONE)) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_SAK_STATE_DISTRIBUTED:
+            return ((new_state ==
+                     MACSEC_MKA_SAK_STATE_INSTALL_PENDING) ||
+                    (new_state == MACSEC_MKA_SAK_STATE_RETIRING)) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_SAK_STATE_INSTALL_PENDING:
+            return ((new_state == MACSEC_MKA_SAK_STATE_ACTIVE) ||
+                    (new_state == MACSEC_MKA_SAK_STATE_RETIRING)) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_SAK_STATE_ACTIVE:
+            return ((new_state == MACSEC_MKA_SAK_STATE_CONFIRMED) ||
+                    (new_state == MACSEC_MKA_SAK_STATE_RETIRING)) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_SAK_STATE_CONFIRMED:
+            return (new_state == MACSEC_MKA_SAK_STATE_RETIRING) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        case MACSEC_MKA_SAK_STATE_RETIRING:
+            return (new_state == MACSEC_MKA_SAK_STATE_NONE) ?
+                   MACSEC_TRUE :
+                   MACSEC_FALSE;
+
+        default:
+            return MACSEC_FALSE;
+    }
+}
+
+static void macsec_mka_set_sak_state(
+    macsec_mka_ctx_t *ctx,
+    macsec_mka_sak_state_t new_state,
+    const char *reason)
+{
+    macsec_mka_sak_state_t old_state;
+
+    macsec_assert(ctx != NULL);
+
+    old_state = ctx->latest_sak.lifecycle_state;
+
+    if (old_state == new_state)
+    {
+        return;
+    }
+
+    if (!macsec_mka_sak_transition_allowed(old_state, new_state))
+    {
+        MACSEC_ERROR((
+            "MKA invalid SAK transition %s(%u) -> %s(%u): "
+            "key=%lu an=%u reason=%s\n",
+            macsec_mka_sak_state_name(old_state),
+            (unsigned)old_state,
+            macsec_mka_sak_state_name(new_state),
+            (unsigned)new_state,
+            (unsigned long)ctx->latest_sak.key_number,
+            ctx->latest_sak.an,
+            (reason != NULL) ? reason : "no reason"));
+
+        macsec_mka_set_state(ctx,
+                             MACSEC_MKA_STATE_ERROR,
+                             "invalid SAK state transition");
+
+        return;
+    }
+
+    MACSEC_MEDIUM((
+        "MKA SAK state %s(%u) -> %s(%u): "
+        "key=%lu an=%u reason=%s\n",
+        macsec_mka_sak_state_name(old_state),
+        (unsigned)old_state,
+        macsec_mka_sak_state_name(new_state),
+        (unsigned)new_state,
+        (unsigned long)ctx->latest_sak.key_number,
+        ctx->latest_sak.an,
+        (reason != NULL) ? reason : "no reason"));
+
+    ctx->latest_sak.lifecycle_state = new_state;
+
+    /*
+     * Keep the legacy valid field synchronized during migration.
+     */
+    ctx->latest_sak.valid =
+        (new_state != MACSEC_MKA_SAK_STATE_NONE) ?
+        MACSEC_TRUE :
+        MACSEC_FALSE;
+}
+
+static void macsec_mka_raise_events(
+    macsec_mka_ctx_t *ctx,
+    macsec_mka_event_flags_t events)
+{
+    macsec_assert(ctx != NULL);
+
+    if (events == MACSEC_MKA_EVENT_NONE)
+    {
+        return;
+    }
+
+    ctx->pending_events |= events;
+
+    MACSEC_INFO((
+        "MKA events raised: requested=0x%08lX "
+        "pending=0x%08lX\n",
+        (unsigned long)events,
+        (unsigned long)ctx->pending_events));
+}
+
+static void macsec_mka_schedule_tx(
+    macsec_mka_ctx_t *ctx,
+    macsec_mka_tx_reason_t reasons)
+{
+    macsec_assert(ctx != NULL);
+
+    if (reasons == MACSEC_MKA_TX_REASON_NONE)
+    {
+        return;
+    }
+
+    ctx->tx_reasons |= reasons;
+
+    /*
+     * Keep the legacy scheduler active during migration.
+     */
+    ctx->tx_pending = MACSEC_TRUE;
+
+    MACSEC_INFO((
+        "MKA TX scheduled: requested=0x%08lX "
+        "pending=0x%08lX\n",
+        (unsigned long)reasons,
+        (unsigned long)ctx->tx_reasons));
+}
 
 static void macsec_mka_build_sci(uint8_t sci[MACSEC_MKA_SCI_LEN],
                                  const uint8_t mac[6],
@@ -208,46 +549,90 @@ int macsec_mka_init(macsec_mka_ctx_t *ctx,
     macsec_assert(ctx != NULL);
     macsec_assert(local_mac != NULL);
 
-    memset(ctx, 0, sizeof(macsec_mka_ctx_t));
+    memset(ctx, 0, sizeof(*ctx));
 
-    memcpy(ctx->local_mac, local_mac, 6u);
-    macsec_mka_build_sci(ctx->local_sci, local_mac, port_id);
+    /*
+     * These values are also produced by memset(), but keeping them explicit
+     * documents the initial states and protects the code if enum values are
+     * changed later.
+     */
+    ctx->state = MACSEC_MKA_STATE_INIT;
+    ctx->latest_sak.lifecycle_state =
+        MACSEC_MKA_SAK_STATE_NONE;
+    ctx->latest_sak.origin =
+        MACSEC_MKA_SAK_ORIGIN_NONE;
 
-    macsec_random(ctx->local_mi, MACSEC_MKA_MI_LEN);
+    memcpy(ctx->local_mac,
+           local_mac,
+           MACSEC_MKA_SRC_LEN);
+
+    macsec_mka_build_sci(ctx->local_sci,
+                         local_mac,
+                         port_id);
+
+    macsec_random(ctx->local_mi,
+                  MACSEC_MKA_MI_LEN);
 
     ctx->local_mn = 1u;
+
     ctx->key_server_priority = key_server_priority;
+
+    /*
+     * Until a valid peer is known, the local participant provisionally
+     * considers itself the Key Server. Election is repeated after peer data
+     * is received.
+     */
     ctx->local_key_server = MACSEC_TRUE;
+
     ctx->macsec_desired = MACSEC_TRUE;
-    ctx->macsec_capability = MACSEC_MKA_DEFAULT_CAPABILITY;
+    ctx->macsec_capability =
+        MACSEC_MKA_DEFAULT_CAPABILITY;
+
     ctx->key_server_next_key_number = 1u;
     ctx->key_server_next_an = 0u;
 
-    if (tx_interval_ms == 0u)
-    {
-        ctx->tx_interval_ms = MACSEC_MKA_DEFAULT_TX_INTERVAL_MS;
-    }
-    else
-    {
-        ctx->tx_interval_ms = tx_interval_ms;
-    }
+    ctx->tx_interval_ms =
+        (tx_interval_ms != 0u) ?
+        tx_interval_ms :
+        MACSEC_MKA_DEFAULT_TX_INTERVAL_MS;
 
-    ctx->tx_pending = MACSEC_TRUE;
+    MACSEC_MEDIUM((
+        "MKA init: priority=%u tx_interval=%lu ms port=%u\n",
+        ctx->key_server_priority,
+        (unsigned long)ctx->tx_interval_ms,
+        (unsigned)port_id));
 
-    MACSEC_MEDIUM(("MKA init: priority=%u tx_interval=%lu ms port=%u\n",
-                   ctx->key_server_priority,
-                   (unsigned long)ctx->tx_interval_ms,
-                   (unsigned)port_id));
+    MACSEC_MEDIUM_HEX((
+        "MKA local MAC",
+        ctx->local_mac,
+        MACSEC_MKA_SRC_LEN));
 
-    MACSEC_MEDIUM_HEX(("MKA local MAC", ctx->local_mac, 6));
-    MACSEC_MEDIUM_HEX(("MKA local SCI", ctx->local_sci, MACSEC_MKA_SCI_LEN));
-    MACSEC_MEDIUM_HEX(("MKA local MI", ctx->local_mi, MACSEC_MKA_MI_LEN));
+    MACSEC_MEDIUM_HEX((
+        "MKA local SCI",
+        ctx->local_sci,
+        MACSEC_MKA_SCI_LEN));
+
+    MACSEC_MEDIUM_HEX((
+        "MKA local MI",
+        ctx->local_mi,
+        MACSEC_MKA_MI_LEN));
 
     ret = macsec_mka_crypto_init(&ctx->crypto);
     if (ret != MACSEC_ERR_OK)
     {
-        MACSEC_ERROR(("MKA crypto init failed ret=%d\n", ret));
-        ctx->state = MACSEC_MKA_STATE_ERROR;
+        MACSEC_ERROR((
+            "MKA crypto init failed ret=%d\n",
+            ret));
+
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_ERROR);
+
+        macsec_mka_set_state(
+            ctx,
+            MACSEC_MKA_STATE_ERROR,
+            "crypto initialization failed");
+
         return ret;
     }
 
@@ -258,32 +643,81 @@ int macsec_mka_init(macsec_mka_ctx_t *ctx,
                                     ckn_len);
     if (ret != MACSEC_ERR_OK)
     {
-        MACSEC_ERROR(("MKA set PSK failed ret=%d cak_len=%lu ckn_len=%lu\n",
-                      ret,
-                      (unsigned long)cak_len,
-                      (unsigned long)ckn_len));
-        ctx->state = MACSEC_MKA_STATE_ERROR;
+        MACSEC_ERROR((
+            "MKA set PSK failed ret=%d "
+            "cak_len=%lu ckn_len=%lu\n",
+            ret,
+            (unsigned long)cak_len,
+            (unsigned long)ckn_len));
+
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_ERROR);
+
+        macsec_mka_set_state(
+            ctx,
+            MACSEC_MKA_STATE_ERROR,
+            "PSK configuration failed");
+
         return ret;
     }
 
     ret = macsec_mka_crypto_derive_ick_kek(&ctx->crypto);
     if (ret != MACSEC_ERR_OK)
     {
-        MACSEC_ERROR(("MKA derive ICK/KEK failed ret=%d\n", ret));
-        ctx->state = MACSEC_MKA_STATE_ERROR;
+        MACSEC_ERROR((
+            "MKA derive ICK/KEK failed ret=%d\n",
+            ret));
+
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_ERROR);
+
+        macsec_mka_set_state(
+            ctx,
+            MACSEC_MKA_STATE_ERROR,
+            "ICK/KEK derivation failed");
+
         return ret;
     }
 
-    MACSEC_MEDIUM_HEX(("MKA derived ICK", ctx->crypto.keys.ick, 16));
-    MACSEC_MEDIUM_HEX(("MKA derived KEK", ctx->crypto.keys.kek, 16));
+    MACSEC_MEDIUM_HEX((
+        "MKA derived ICK",
+        ctx->crypto.keys.ick,
+        16));
+
+    MACSEC_MEDIUM_HEX((
+        "MKA derived KEK",
+        ctx->crypto.keys.kek,
+        16));
 
     ctx->verify_icv = MACSEC_TRUE;
     ctx->last_icv_valid = MACSEC_FALSE;
-    ctx->state = MACSEC_MKA_STATE_WAIT_PEER;
 
-    MACSEC_MEDIUM(("MKA init done: state=%u tx_pending=%u\n",
-                   ctx->state,
-                   ctx->tx_pending ? 1u : 0u));
+    macsec_mka_set_state(
+        ctx,
+        MACSEC_MKA_STATE_WAIT_PEER,
+        "MKA initialization complete");
+
+    /*
+     * Initial transmission is scheduled only after crypto initialization,
+     * PSK setup and key derivation have all succeeded.
+     */
+    macsec_mka_raise_events(
+        ctx,
+        MACSEC_MKA_EVENT_TX_INITIAL);
+
+    macsec_mka_schedule_tx(
+        ctx,
+        MACSEC_MKA_TX_REASON_INITIAL);
+
+    MACSEC_MEDIUM((
+        "MKA init done: state=%u "
+        "events=0x%08lX tx_reasons=0x%08lX tx_pending=%u\n",
+        (unsigned)ctx->state,
+        (unsigned long)ctx->pending_events,
+        (unsigned long)ctx->tx_reasons,
+        ctx->tx_pending ? 1u : 0u));
 
     return MACSEC_ERR_OK;
 }
@@ -309,6 +743,382 @@ macsec_mka_state_t macsec_mka_get_state(const macsec_mka_ctx_t *ctx)
     }
 
     return ctx->state;
+}
+
+macsec_mka_event_flags_t macsec_mka_take_events(macsec_mka_ctx_t *ctx)
+{
+    macsec_mka_event_flags_t events;
+
+    macsec_assert(ctx != NULL);
+
+    events = ctx->pending_events;
+    ctx->pending_events = MACSEC_MKA_EVENT_NONE;
+
+    MACSEC_INFO((
+        "MKA events taken: events=0x%08lX\n",
+        (unsigned long)events));
+
+    return events;
+}
+
+int macsec_mka_take_sak_for_install(macsec_mka_ctx_t *ctx,
+                                    macsec_mka_sak_t *sak)
+{
+    macsec_bool_t available;
+
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+    macsec_check(sak != NULL, MACSEC_ERR_PARAM);
+
+    /*
+     * The output must never contain stale key material when no SAK can
+     * currently be returned.
+     */
+    memset(sak, 0, sizeof(*sak));
+
+    if (!ctx->latest_sak.valid)
+    {
+        return MACSEC_ERR_NOT_READY;
+    }
+
+    /*
+     * Validate the stored SAK before exposing it to macsec.c.
+     *
+     * Invalid internal SAK data indicates an MKA state-machine error rather
+     * than a caller parameter error.
+     */
+    if ((ctx->latest_sak.sak_len != 16u) &&
+        (ctx->latest_sak.sak_len != 32u))
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    if (ctx->latest_sak.an >= MACSEC_FRAME_MAX_SA)
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    if (ctx->latest_sak.key_number == 0u)
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    available = MACSEC_FALSE;
+
+    /*
+     * A SAK received from the remote Key Server can be installed as soon
+     * as it has been successfully authenticated and unwrapped.
+     */
+    if ((ctx->latest_sak.origin ==
+         MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER) &&
+        (ctx->latest_sak.lifecycle_state ==
+         MACSEC_MKA_SAK_STATE_CANDIDATE))
+    {
+        available = MACSEC_TRUE;
+    }
+
+    /*
+     * A locally generated Key Server SAK must first be distributed in a
+     * successfully transmitted MKPDU.
+     */
+    if ((ctx->latest_sak.origin ==
+         MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER) &&
+        (ctx->latest_sak.lifecycle_state ==
+         MACSEC_MKA_SAK_STATE_DISTRIBUTED))
+    {
+        available = MACSEC_TRUE;
+    }
+
+    /*
+     * INSTALL_PENDING is intentionally returned again.
+     *
+     * This supports retry when RX or TX installation failed, or when the
+     * corresponding installation confirmation could not be completed.
+     */
+    if (ctx->latest_sak.lifecycle_state ==
+        MACSEC_MKA_SAK_STATE_INSTALL_PENDING)
+    {
+        if ((ctx->latest_sak.origin ==
+             MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER) ||
+            (ctx->latest_sak.origin ==
+             MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER))
+        {
+            available = MACSEC_TRUE;
+        }
+    }
+
+    if (!available)
+    {
+        return MACSEC_ERR_NOT_READY;
+    }
+
+    /*
+     * A fully installed SAK should already be ACTIVE. Do not repeatedly
+     * return it even if the lifecycle state was left inconsistent.
+     */
+    if (ctx->latest_sak.rx_installed &&
+        ctx->latest_sak.tx_installed)
+    {
+        return MACSEC_ERR_NOT_READY;
+    }
+
+    /*
+     * Move the SAK into the installation lifecycle only on its first
+     * handoff. Retry calls keep the existing direction flags unchanged.
+     */
+    if (ctx->latest_sak.lifecycle_state !=
+        MACSEC_MKA_SAK_STATE_INSTALL_PENDING)
+    {
+        macsec_mka_set_sak_state(
+            ctx,
+            MACSEC_MKA_SAK_STATE_INSTALL_PENDING,
+            "SAK handed to MACsec data-plane");
+    }
+
+    /*
+     * Copy the current state after the lifecycle transition so that the
+     * caller receives INSTALL_PENDING together with the current RX/TX
+     * installation flags.
+     */
+    *sak = ctx->latest_sak;
+
+    return MACSEC_ERR_OK;
+}
+
+int macsec_mka_notify_sak_installed(
+    macsec_mka_ctx_t *ctx,
+    uint32_t key_number,
+    uint8_t an,
+    macsec_mka_install_directions_t installed_directions,
+    uint32_t lowest_pn)
+{
+    uint32_t normalized_lowest_pn;
+
+    macsec_assert(ctx != NULL);
+
+    if (!ctx->latest_sak.valid)
+    {
+        return MACSEC_ERR_NOT_READY;
+    }
+
+    if (ctx->latest_sak.lifecycle_state !=
+        MACSEC_MKA_SAK_STATE_INSTALL_PENDING)
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    if (ctx->latest_sak.key_number != key_number)
+    {
+        return MACSEC_ERR_PARAM;
+    }
+
+    if ((ctx->latest_sak.an & 0x03u) !=
+        (an & 0x03u))
+    {
+        return MACSEC_ERR_PARAM;
+    }
+
+    if ((installed_directions == MACSEC_MKA_INSTALL_NONE) ||
+        ((installed_directions &
+          (uint8_t)~(MACSEC_MKA_INSTALL_RX |
+                     MACSEC_MKA_INSTALL_TX)) != 0u))
+    {
+        return MACSEC_ERR_PARAM;
+    }
+
+    normalized_lowest_pn =
+        (lowest_pn != 0u) ?
+        lowest_pn :
+        1u;
+
+    if ((installed_directions &
+         MACSEC_MKA_INSTALL_RX) != 0u)
+    {
+        ctx->latest_sak.rx_installed =
+            MACSEC_TRUE;
+
+        ctx->latest_key_rx =
+            MACSEC_TRUE;
+    }
+
+    if ((installed_directions &
+         MACSEC_MKA_INSTALL_TX) != 0u)
+    {
+        ctx->latest_sak.tx_installed =
+            MACSEC_TRUE;
+
+        ctx->latest_key_tx =
+            MACSEC_TRUE;
+    }
+
+    ctx->latest_sak.lowest_pn =
+        normalized_lowest_pn;
+
+    ctx->latest_lowest_pn =
+        normalized_lowest_pn;
+
+    MACSEC_MEDIUM((
+        "MKA SAK installation notified: "
+        "key_number=%lu an=%u directions=0x%02X "
+        "rx=%u tx=%u lowest_pn=%lu\n",
+        (unsigned long)ctx->latest_sak.key_number,
+        ctx->latest_sak.an,
+        installed_directions,
+        ctx->latest_sak.rx_installed ? 1u : 0u,
+        ctx->latest_sak.tx_installed ? 1u : 0u,
+        (unsigned long)normalized_lowest_pn));
+
+    if (!ctx->latest_sak.rx_installed ||
+        !ctx->latest_sak.tx_installed)
+    {
+        return MACSEC_ERR_OK;
+    }
+
+    macsec_mka_set_sak_state(
+        ctx,
+        MACSEC_MKA_SAK_STATE_ACTIVE,
+        "SAK installed for RX and TX");
+
+    if (ctx->latest_sak.lifecycle_state !=
+        MACSEC_MKA_SAK_STATE_ACTIVE)
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    macsec_mka_raise_events(
+        ctx,
+        MACSEC_MKA_EVENT_SAK_ACTIVE |
+        MACSEC_MKA_EVENT_TX_SAK_USE);
+
+    macsec_mka_schedule_tx(
+        ctx,
+        MACSEC_MKA_TX_REASON_SAK_USE);
+
+    if (ctx->peer.valid &&
+        ctx->peer.live)
+    {
+        macsec_mka_set_state(
+            ctx,
+            MACSEC_MKA_STATE_OPERATIONAL,
+            "active SAK installed in data-plane");
+
+        if (ctx->state !=
+            MACSEC_MKA_STATE_OPERATIONAL)
+        {
+            return MACSEC_ERR_STATE;
+        }
+    }
+
+    return MACSEC_ERR_OK;
+}
+
+int macsec_mka_notify_sak_retired(
+    macsec_mka_ctx_t *ctx,
+    uint32_t key_number,
+    uint8_t an)
+{
+    macsec_assert(ctx != NULL);
+
+    if (!ctx->latest_sak.valid)
+    {
+        return MACSEC_ERR_NOT_READY;
+    }
+
+    if (ctx->latest_sak.key_number != key_number)
+    {
+        MACSEC_ERROR((
+            "MKA SAK retirement rejected: "
+            "key_number=%lu expected=%lu\n",
+            (unsigned long)key_number,
+            (unsigned long)ctx->latest_sak.key_number));
+
+        return MACSEC_ERR_PARAM;
+    }
+
+    if ((ctx->latest_sak.an & 0x03u) !=
+        (an & 0x03u))
+    {
+        MACSEC_ERROR((
+            "MKA SAK retirement rejected: "
+            "AN=%u expected=%u\n",
+            an & 0x03u,
+            ctx->latest_sak.an & 0x03u));
+
+        return MACSEC_ERR_PARAM;
+    }
+
+    if (ctx->latest_sak.lifecycle_state !=
+        MACSEC_MKA_SAK_STATE_RETIRING)
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    MACSEC_MEDIUM((
+        "MKA SAK retired: key_number=%lu an=%u\n",
+        (unsigned long)ctx->latest_sak.key_number,
+        ctx->latest_sak.an));
+
+    macsec_mka_set_sak_state(
+        ctx,
+        MACSEC_MKA_SAK_STATE_NONE,
+        "retiring SAK removed from data-plane");
+
+    if (ctx->latest_sak.lifecycle_state !=
+        MACSEC_MKA_SAK_STATE_NONE)
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    /*
+     * Remove all key material and SAK metadata after completing the
+     * lifecycle transition.
+     */
+    macsec_zeroize(&ctx->latest_sak,
+                   sizeof(ctx->latest_sak));
+
+    ctx->latest_sak.lifecycle_state =
+        MACSEC_MKA_SAK_STATE_NONE;
+
+    ctx->latest_sak.origin =
+        MACSEC_MKA_SAK_ORIGIN_NONE;
+
+    /*
+     * Clear legacy SAK Use state.
+     */
+    ctx->latest_key_rx = MACSEC_FALSE;
+    ctx->latest_key_tx = MACSEC_FALSE;
+    ctx->latest_lowest_pn = 0u;
+
+    macsec_mka_raise_events(
+        ctx,
+        MACSEC_MKA_EVENT_SAK_RETIRED);
+
+    /*
+     * With the current single-SAK representation, retirement means that
+     * no active data-plane key remains. During the later two-slot rekey
+     * implementation, retiring the old slot will not necessarily change
+     * the participant state.
+     */
+    if (ctx->state ==
+        MACSEC_MKA_STATE_OPERATIONAL)
+    {
+        if (ctx->peer.valid &&
+            ctx->peer.live)
+        {
+            macsec_mka_set_state(
+                ctx,
+                MACSEC_MKA_STATE_PEER_LIVE,
+                "active SAK retired");
+        }
+        else
+        {
+            macsec_mka_set_state(
+                ctx,
+                MACSEC_MKA_STATE_WAIT_PEER,
+                "SAK retired without live peer");
+        }
+    }
+
+    return MACSEC_ERR_OK;
 }
 
 static macsec_bool_t macsec_mka_frame_contains_peer_entry(const uint8_t *frame,
@@ -654,7 +1464,18 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx,
             ctx->latest_sak.sak_len = sak_len;
             ctx->latest_sak.an = an;
             ctx->latest_sak.key_number = key_number;
-            ctx->latest_sak.valid = MACSEC_TRUE;
+            ctx->latest_sak.origin = MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER;
+            ctx->latest_sak.lowest_pn = 1u;
+            ctx->latest_sak.rx_installed = MACSEC_FALSE;
+            ctx->latest_sak.tx_installed = MACSEC_FALSE;
+            ctx->latest_sak.peer_rx_confirmed = MACSEC_FALSE;
+            ctx->latest_sak.peer_tx_confirmed = MACSEC_FALSE;
+            macsec_mka_set_sak_state(ctx,
+                                     MACSEC_MKA_SAK_STATE_CANDIDATE,
+                                     "remote Distributed SAK unwrapped");
+
+            macsec_mka_raise_events(ctx,
+                                    MACSEC_MKA_EVENT_SAK_AVAILABLE);
 
             /*
              * A newly received Distributed SAK is known on RX first.
@@ -694,21 +1515,21 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
                      size_t frame_len,
                      uint32_t now_ms)
 {
-    int ret;
     macsec_mka_basic_t basic;
 
     macsec_bool_t peer_identity_changed;
     macsec_bool_t peer_became_live;
     macsec_bool_t peer_became_not_live;
     macsec_bool_t key_server_changed;
-    macsec_bool_t new_sak_received;
 
     macsec_bool_t previous_peer_live;
     macsec_bool_t previous_local_key_server;
 
     macsec_bool_t local_seen_by_peer;
+
     uint32_t listed_mn;
     uint8_t peer_list_type;
+    int ret, distributed_sak_ret;
 
     macsec_assert(ctx != NULL);
     macsec_assert(frame != NULL);
@@ -736,7 +1557,10 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
             "MKA RX parse Basic failed ret=%d\n",
             ret));
 
-        ctx->state = MACSEC_MKA_STATE_ERROR;
+        /*
+         * A malformed received packet is not an unrecoverable participant
+         * error. Persistent MKA state must remain unchanged.
+         */
         return ret;
     }
 
@@ -745,7 +1569,7 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
      */
     if ((memcmp(basic.src_mac,
                 ctx->local_mac,
-                6u) == 0) ||
+                MACSEC_MKA_SRC_LEN) == 0) ||
         (memcmp(basic.sci,
                 ctx->local_sci,
                 MACSEC_MKA_SCI_LEN) == 0) ||
@@ -757,14 +1581,11 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
         return MACSEC_ERR_OK;
     }
 
-    ctx->last_basic = basic;
-    ctx->last_rx_ms = now_ms;
+    /*
+     * Do not update persistent peer state until ICV verification succeeds.
+     */
     ctx->last_icv_valid = MACSEC_FALSE;
 
-    /*
-     * The complete MKPDU must be authenticated before any peer state
-     * or distributed key is accepted.
-     */
     if (ctx->verify_icv)
     {
         ret = macsec_mka_verify_icv(ctx,
@@ -782,7 +1603,10 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
                 basic.icv,
                 MACSEC_MKA_ICV_LEN));
 
-            ctx->state = MACSEC_MKA_STATE_ERROR;
+            /*
+             * An unauthenticated frame must not modify peer state,
+             * Key Server election or SAK state.
+             */
             return ret;
         }
 
@@ -792,15 +1616,19 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
     }
 
     /*
-     * Preserve previous protocol state so that immediate MKPDU
-     * transmission is requested only on real state transitions.
+     * From this point the received MKPDU is authenticated and may update
+     * persistent state.
      */
+    ctx->last_basic = basic;
+    ctx->last_rx_ms = now_ms;
+
     previous_peer_live = ctx->peer.live;
-    previous_local_key_server = ctx->local_key_server;
+    previous_local_key_server =
+        ctx->local_key_server;
 
     /*
-     * Message Number normally increases in every MKPDU. It must not be
-     * treated as a change of peer identity.
+     * actor_mn normally increases in every MKPDU and is deliberately not
+     * treated as a peer identity change.
      */
     peer_identity_changed =
         (!ctx->peer.valid) ||
@@ -812,51 +1640,46 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
                 MACSEC_MKA_SCI_LEN) != 0) ||
         (memcmp(ctx->peer.mac,
                 basic.src_mac,
-                6u) != 0);
+                MACSEC_MKA_SRC_LEN) != 0);
 
     /*
-     * Parse a Distributed SAK only after successful ICV verification.
+     * Distributed SAK parsing is permitted only after successful ICV
+     * verification.
      *
      * MACSEC_ERR_OK:
-     *   A genuinely new SAK was received.
+     *   a genuinely new SAK was received;
      *
      * MACSEC_ERR_NOT_READY:
-     *   No Distributed SAK was present, or the received SAK was already
-     *   known.
+     *   no Distributed SAK was present, or the SAK was already known.
      */
-    ret = macsec_mka_parse_distributed_sak(ctx,
+    distributed_sak_ret = macsec_mka_parse_distributed_sak(ctx,
                                            frame,
                                            frame_len);
 
-    if ((ret != MACSEC_ERR_OK) &&
-        (ret != MACSEC_ERR_NOT_READY))
+    if ((distributed_sak_ret != MACSEC_ERR_OK) &&
+        (distributed_sak_ret != MACSEC_ERR_NOT_READY))
     {
         MACSEC_ERROR((
             "MKA RX Distributed SAK parse failed ret=%d\n",
-            ret));
+            distributed_sak_ret));
 
-        ctx->state = MACSEC_MKA_STATE_ERROR;
-        return ret;
+        /*
+         * A malformed or non-decryptable received SAK does not represent
+         * an unrecoverable internal participant error.
+         */
+        return distributed_sak_ret;
     }
 
-    new_sak_received =
-        (ret == MACSEC_ERR_OK) ?
-        MACSEC_TRUE :
-        MACSEC_FALSE;
-
-    /*
-     * Determine whether the peer lists our local participant and whether
-     * it lists us as a live or only potential peer.
-     */
     listed_mn = 0u;
     peer_list_type = 0u;
 
     local_seen_by_peer =
-        macsec_mka_frame_contains_peer_entry(frame,
-                                             frame_len,
-                                             ctx->local_mi,
-                                             &listed_mn,
-                                             &peer_list_type);
+        macsec_mka_frame_contains_peer_entry(
+            frame,
+            frame_len,
+            ctx->local_mi,
+            &listed_mn,
+            &peer_list_type);
 
     MACSEC_MEDIUM((
         "MKA peer update: identity_changed=%u "
@@ -866,14 +1689,14 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
         local_seen_by_peer ? 1u : 0u,
         peer_list_type,
         (unsigned long)basic.actor_mn,
-        new_sak_received ? 1u : 0u));
+        (distributed_sak_ret == MACSEC_ERR_OK) ? 1u : 0u));
 
     /*
-     * Update current peer identity and advertised capabilities.
+     * Update authenticated peer identity and advertised capabilities.
      */
     memcpy(ctx->peer.mac,
            basic.src_mac,
-           6u);
+           MACSEC_MKA_SRC_LEN);
 
     memcpy(ctx->peer.sci,
            basic.sci,
@@ -901,33 +1724,51 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
     ctx->peer.valid = MACSEC_TRUE;
 
     /*
-     * A valid, authenticated peer becomes live after it includes our
-     * participant MI in either its Potential or Live Peer List.
+     * Migration behavior:
      *
-     * Requiring the Live Peer List exclusively would deadlock two newly
-     * initialized participants: both would keep listing each other only
-     * as potential peers and neither side could become live first.
+     * Listing our MI in either Potential or Live Peer List establishes
+     * liveness. Requiring only the Live Peer List would deadlock two newly
+     * initialized participants.
+     *
+     * In the final state machine, loss of liveness will be driven by a
+     * timeout rather than absence from one individual MKPDU.
      */
     if (local_seen_by_peer)
     {
-        ctx->peer.seen_in_peer_list = MACSEC_TRUE;
-        ctx->peer.live = MACSEC_TRUE;
-        ctx->state = MACSEC_MKA_STATE_AUTHENTICATED;
+        ctx->peer.seen_in_peer_list =
+            MACSEC_TRUE;
+
+        ctx->peer.live =
+            MACSEC_TRUE;
+
+        macsec_mka_set_state(
+            ctx,
+            MACSEC_MKA_STATE_PEER_LIVE,
+            "local MI listed by authenticated peer");
 
         MACSEC_MEDIUM((
-            "MKA peer is LIVE: list_type=%u peer_mn=%lu listed_mn=%lu\n",
+            "MKA peer is LIVE: list_type=%u "
+            "peer_mn=%lu listed_mn=%lu\n",
             peer_list_type,
             (unsigned long)ctx->peer.mn,
             (unsigned long)listed_mn));
     }
     else
     {
-        ctx->peer.seen_in_peer_list = MACSEC_FALSE;
-        ctx->peer.live = MACSEC_FALSE;
-        ctx->state = MACSEC_MKA_STATE_PEER_FOUND;
+        ctx->peer.seen_in_peer_list =
+            MACSEC_FALSE;
+
+        ctx->peer.live =
+            MACSEC_FALSE;
+
+        macsec_mka_set_state(
+            ctx,
+            MACSEC_MKA_STATE_PEER_DISCOVERED,
+            "authenticated peer does not list local MI");
 
         MACSEC_MEDIUM((
-            "MKA peer found but local MI is not listed: peer_mn=%lu\n",
+            "MKA peer found but local MI is not listed: "
+            "peer_mn=%lu\n",
             (unsigned long)ctx->peer.mn));
     }
 
@@ -942,13 +1783,14 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
         MACSEC_FALSE;
 
     /*
-     * Re-run the Key Server election using the current peer data.
+     * Run Key Server election using the authenticated current peer data.
      */
     ctx->local_key_server =
         macsec_mka_local_wins_key_server(ctx);
 
     key_server_changed =
-        (previous_local_key_server != ctx->local_key_server) ?
+        (previous_local_key_server !=
+         ctx->local_key_server) ?
         MACSEC_TRUE :
         MACSEC_FALSE;
 
@@ -962,28 +1804,69 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
         key_server_changed ? 1u : 0u));
 
     /*
-     * Request an immediate MKPDU only after a meaningful protocol change.
-     *
-     * A normal increment of actor_mn does not require an immediate reply.
+     * Schedule immediate control traffic only for meaningful state
+     * transitions. A normal actor_mn increment causes no immediate reply.
      */
-    if (peer_identity_changed ||
-        peer_became_live ||
-        peer_became_not_live ||
-        key_server_changed ||
-        new_sak_received)
+    if (peer_identity_changed)
     {
-        ctx->tx_pending = MACSEC_TRUE;
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_PEER_DISCOVERED |
+            MACSEC_MKA_EVENT_TX_PEER_CHANGE);
+
+        macsec_mka_schedule_tx(
+            ctx,
+            MACSEC_MKA_TX_REASON_PEER_CHANGE);
+    }
+
+    if (peer_became_live)
+    {
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_PEER_LIVE |
+            MACSEC_MKA_EVENT_TX_PEER_CHANGE);
+
+        macsec_mka_schedule_tx(
+            ctx,
+            MACSEC_MKA_TX_REASON_PEER_CHANGE);
+    }
+
+    if (peer_became_not_live)
+    {
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_PEER_LOST |
+            MACSEC_MKA_EVENT_TX_PEER_CHANGE);
+
+        macsec_mka_schedule_tx(
+            ctx,
+            MACSEC_MKA_TX_REASON_PEER_CHANGE);
+    }
+
+    if (key_server_changed)
+    {
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_KEY_SERVER_CHANGED |
+            MACSEC_MKA_EVENT_TX_KEY_SERVER_CHANGE);
+
+        macsec_mka_schedule_tx(
+            ctx,
+            MACSEC_MKA_TX_REASON_KEY_SERVER_CHANGE);
     }
 
     MACSEC_INFO((
         "MKA RX done: state=%u peer_valid=%u peer_live=%u "
-        "peer_list_type=%u tx_pending=%u new_sak=%u\n",
-        ctx->state,
+        "peer_list_type=%u events=0x%08lX "
+        "tx_reasons=0x%08lX tx_pending=%u new_sak=%u\n",
+        (unsigned)ctx->state,
         ctx->peer.valid ? 1u : 0u,
         ctx->peer.live ? 1u : 0u,
         peer_list_type,
+        (unsigned long)ctx->pending_events,
+        (unsigned long)ctx->tx_reasons,
         ctx->tx_pending ? 1u : 0u,
-        new_sak_received ? 1u : 0u));
+        (distributed_sak_ret == MACSEC_ERR_OK) ? 1u : 0u));
 
     return MACSEC_ERR_OK;
 }
@@ -1007,8 +1890,8 @@ int macsec_mka_tick(macsec_mka_ctx_t *ctx, uint32_t now_ms)
 
     if (ctx->last_tx_ms == 0u)
     {
-        ctx->tx_pending = MACSEC_TRUE;
-
+        macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_TX_INITIAL);
+        macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_INITIAL);
         MACSEC_INFO(("MKA tick: first TX scheduled\n"));
 
         return MACSEC_ERR_OK;
@@ -1016,8 +1899,8 @@ int macsec_mka_tick(macsec_mka_ctx_t *ctx, uint32_t now_ms)
 
     if ((uint32_t)(now_ms - ctx->last_tx_ms) >= ctx->tx_interval_ms)
     {
-        ctx->tx_pending = MACSEC_TRUE;
-
+        macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_TX_PERIODIC);
+        macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_PERIODIC);
         MACSEC_INFO(("MKA tick: periodic TX scheduled\n"));
     }
 
@@ -1108,35 +1991,119 @@ static void macsec_mka_write_sak_use(uint8_t **p,
     *p += 4u;
 }
 
-static int macsec_mka_key_server_ensure_sak(macsec_mka_ctx_t *ctx)
+static int macsec_mka_key_server_ensure_sak(
+    macsec_mka_ctx_t *ctx)
 {
     macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
 
-    if (ctx->latest_sak.valid)
+    /*
+     * Only the elected local Key Server may generate a SAK.
+     */
+    macsec_check(ctx->local_key_server,
+                 MACSEC_ERR_STATE);
+
+    /*
+     * SAK generation requires a live peer.
+     */
+    macsec_check(ctx->peer.valid &&
+                 ctx->peer.live,
+                 MACSEC_ERR_NOT_READY);
+
+    /*
+     * An existing SAK must not be generated again.
+     */
+    if (ctx->latest_sak.lifecycle_state !=
+        MACSEC_MKA_SAK_STATE_NONE)
     {
+        macsec_check(ctx->latest_sak.valid,
+                     MACSEC_ERR_STATE);
+
+        macsec_check(
+            ctx->latest_sak.origin ==
+                MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER,
+            MACSEC_ERR_STATE);
+
         return MACSEC_ERR_OK;
     }
 
-    memset(&ctx->latest_sak, 0, sizeof(ctx->latest_sak));
+    memset(&ctx->latest_sak,
+           0,
+           sizeof(ctx->latest_sak));
 
-    macsec_random(ctx->latest_sak.sak, 16u);
+    /*
+     * The current implementation generates a 128-bit SAK.
+     * Configurable 128/256-bit SAK generation can be added later.
+     */
+    macsec_random(ctx->latest_sak.sak,
+                  16u);
 
     ctx->latest_sak.sak_len = 16u;
-    ctx->latest_sak.an = ctx->key_server_next_an & 0x03u;
-    ctx->latest_sak.key_number = ctx->key_server_next_key_number;
-    ctx->latest_sak.valid = MACSEC_TRUE;
 
+    ctx->latest_sak.an =
+        ctx->key_server_next_an & 0x03u;
+
+    ctx->latest_sak.key_number =
+        ctx->key_server_next_key_number;
+
+    ctx->latest_sak.origin =
+        MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER;
+
+    ctx->latest_sak.lowest_pn = 1u;
+
+    /*
+     * The SAK has not yet been installed in frame_crypto and has not yet
+     * been confirmed by the peer.
+     */
+    ctx->latest_sak.rx_installed =
+        MACSEC_FALSE;
+
+    ctx->latest_sak.tx_installed =
+        MACSEC_FALSE;
+
+    ctx->latest_sak.peer_rx_confirmed =
+        MACSEC_FALSE;
+
+    ctx->latest_sak.peer_tx_confirmed =
+        MACSEC_FALSE;
+
+    /*
+     * Legacy SAK Use state retained during migration.
+     *
+     * These fields do not represent actual frame_crypto installation.
+     */
     ctx->latest_key_rx = MACSEC_TRUE;
     ctx->latest_key_tx = MACSEC_FALSE;
     ctx->latest_lowest_pn = 1u;
 
-    MACSEC_MEDIUM(("MKA Key Server generated SAK: an=%u key_number=%lu\n",
-                   ctx->latest_sak.an,
-                   (unsigned long)ctx->latest_sak.key_number));
+    macsec_mka_set_sak_state(
+        ctx,
+        MACSEC_MKA_SAK_STATE_CANDIDATE,
+        "local Key Server generated SAK");
 
-    MACSEC_MEDIUM_HEX(("MKA generated SAK",
-                       ctx->latest_sak.sak,
-                       (int)ctx->latest_sak.sak_len));
+    macsec_mka_set_sak_state(
+        ctx,
+        MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING,
+        "SAK ready for distribution");
+
+    macsec_mka_raise_events(
+        ctx,
+        MACSEC_MKA_EVENT_TX_DISTRIBUTE_SAK);
+
+    macsec_mka_schedule_tx(
+        ctx,
+        MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK);
+
+    MACSEC_MEDIUM((
+        "MKA Key Server generated SAK: "
+        "an=%u key_number=%lu lifecycle=%u\n",
+        ctx->latest_sak.an,
+        (unsigned long)ctx->latest_sak.key_number,
+        (unsigned)ctx->latest_sak.lifecycle_state));
+
+    MACSEC_MEDIUM_HEX((
+        "MKA generated SAK",
+        ctx->latest_sak.sak,
+        (int)ctx->latest_sak.sak_len));
 
     return MACSEC_ERR_OK;
 }
@@ -1382,6 +2349,12 @@ int macsec_mka_get_tx_frame(macsec_mka_ctx_t *ctx,
         ctx->last_tx_ms = 1u;
     }
 
+    /*
+     * Legacy TX behavior: building a frame is temporarily treated as a
+     * successful transmission. The final API will clear only reasons recorded
+     * in macsec_mka_tx_meta_t after notify_tx_success().
+     */
+    ctx->tx_reasons = MACSEC_MKA_TX_REASON_NONE;
     ctx->tx_pending = MACSEC_FALSE;
     *frame_len = total_len;
 
@@ -1520,28 +2493,72 @@ void macsec_mka_set_latest_key_tx(macsec_mka_ctx_t *ctx,
 
     if (!ctx->latest_sak.valid)
     {
+        MACSEC_INFO(("MKA set latest key TX ignored: no valid SAK\n"));
+
         return;
     }
 
     if ((ctx->latest_sak.an & 0x03u) != (an & 0x03u))
     {
+        MACSEC_INFO((
+            "MKA set latest key TX ignored: "
+            "requested AN=%u current AN=%u\n",
+            an & 0x03u,
+            ctx->latest_sak.an & 0x03u));
+
         return;
     }
 
     normalized_lowest_pn =
-        (lowest_pn != 0u) ? lowest_pn : 1u;
+        (lowest_pn != 0u) ?
+        lowest_pn :
+        1u;
 
     state_changed =
         (!ctx->latest_key_tx) ||
         (!ctx->latest_key_rx) ||
-        (ctx->latest_lowest_pn != normalized_lowest_pn);
+        (!ctx->latest_sak.tx_installed) ||
+        (!ctx->latest_sak.rx_installed) ||
+        (ctx->latest_lowest_pn !=
+         normalized_lowest_pn) ||
+        (ctx->latest_sak.lowest_pn !=
+         normalized_lowest_pn);
 
+    /*
+     * Legacy SAK Use state.
+     */
     ctx->latest_key_tx = MACSEC_TRUE;
     ctx->latest_key_rx = MACSEC_TRUE;
-    ctx->latest_lowest_pn = normalized_lowest_pn;
+    ctx->latest_lowest_pn =
+        normalized_lowest_pn;
+
+    /*
+     * New installation tracking.
+     */
+    ctx->latest_sak.rx_installed =
+        MACSEC_TRUE;
+
+    ctx->latest_sak.tx_installed =
+        MACSEC_TRUE;
+
+    ctx->latest_sak.lowest_pn =
+        normalized_lowest_pn;
 
     if (state_changed)
     {
-        ctx->tx_pending = MACSEC_TRUE;
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_TX_SAK_USE);
+
+        macsec_mka_schedule_tx(
+            ctx,
+            MACSEC_MKA_TX_REASON_SAK_USE);
+
+        MACSEC_MEDIUM((
+            "MKA latest key TX/RX installed by legacy API: "
+            "key_number=%lu an=%u lowest_pn=%lu\n",
+            (unsigned long)ctx->latest_sak.key_number,
+            ctx->latest_sak.an,
+            (unsigned long)normalized_lowest_pn));
     }
 }

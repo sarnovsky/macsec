@@ -36,6 +36,7 @@ int macsec_test_all(macsec_test_data_t *data, int verbose)
     TEST_OK(macsec_test_mka_negative(&data->test_mka_negative_data, verbose));
     TEST_OK(macsec_test_rekey(&data->test_rekey_data, verbose));
     TEST_OK(macsec_test_macsec_flow(&data->test_macsec_flow_data, verbose));
+    TEST_OK(macsec_test_mka_state(&data->test_mka_state_data, verbose));
 
     if (verbose)
     {
