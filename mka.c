@@ -37,7 +37,7 @@ static void macsec_mka_raise_events(
 
 static void macsec_mka_schedule_tx(
     macsec_mka_ctx_t *ctx,
-    macsec_mka_tx_reason_t reasons);
+    macsec_mka_tx_reason_flags_t reasons);
 
 
 static const char *macsec_mka_state_name(macsec_mka_state_t state)
@@ -350,7 +350,7 @@ static void macsec_mka_raise_events(
 
 static void macsec_mka_schedule_tx(
     macsec_mka_ctx_t *ctx,
-    macsec_mka_tx_reason_t reasons)
+    macsec_mka_tx_reason_flags_t reasons)
 {
     macsec_assert(ctx != NULL);
 
@@ -362,7 +362,7 @@ static void macsec_mka_schedule_tx(
     ctx->tx_reasons |= reasons;
 
     /*
-     * Keep the legacy scheduler active during migration.
+     * Temporary synchronization for legacy code.
      */
     ctx->tx_pending = MACSEC_TRUE;
 
@@ -1871,37 +1871,59 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx,
     return MACSEC_ERR_OK;
 }
 
-int macsec_mka_tick(macsec_mka_ctx_t *ctx, uint32_t now_ms)
+int macsec_mka_tick(macsec_mka_ctx_t *ctx,
+                    uint32_t now_ms)
 {
-    macsec_assert(ctx != NULL);
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
 
     ctx->last_tick_ms = now_ms;
 
-    MACSEC_INFO(("MKA tick: now=%lu last_tx=%lu interval=%lu pending=%u\n",
-                 (unsigned long)now_ms,
-                 (unsigned long)ctx->last_tx_ms,
-                 (unsigned long)ctx->tx_interval_ms,
-                 ctx->tx_pending ? 1u : 0u));
+    MACSEC_INFO((
+        "MKA tick: now=%lu last_tx=%lu interval=%lu "
+        "tx_reasons=0x%08lX\n",
+        (unsigned long)now_ms,
+        (unsigned long)ctx->last_tx_ms,
+        (unsigned long)ctx->tx_interval_ms,
+        (unsigned long)ctx->tx_reasons));
 
-    if (ctx->tx_pending)
+    /*
+     * Do not schedule another periodic reason while an immediate or
+     * previously scheduled transmission is already pending.
+     */
+    if (ctx->tx_reasons != MACSEC_MKA_TX_REASON_NONE)
     {
         return MACSEC_ERR_OK;
     }
 
     if (ctx->last_tx_ms == 0u)
     {
-        macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_TX_INITIAL);
-        macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_INITIAL);
-        MACSEC_INFO(("MKA tick: first TX scheduled\n"));
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_TX_INITIAL);
+
+        macsec_mka_schedule_tx(
+            ctx,
+            MACSEC_MKA_TX_REASON_INITIAL);
+
+        MACSEC_INFO((
+            "MKA tick: first TX scheduled\n"));
 
         return MACSEC_ERR_OK;
     }
 
-    if ((uint32_t)(now_ms - ctx->last_tx_ms) >= ctx->tx_interval_ms)
+    if ((uint32_t)(now_ms - ctx->last_tx_ms) >=
+        ctx->tx_interval_ms)
     {
-        macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_TX_PERIODIC);
-        macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_PERIODIC);
-        MACSEC_INFO(("MKA tick: periodic TX scheduled\n"));
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_TX_PERIODIC);
+
+        macsec_mka_schedule_tx(
+            ctx,
+            MACSEC_MKA_TX_REASON_PERIODIC);
+
+        MACSEC_INFO((
+            "MKA tick: periodic TX scheduled\n"));
     }
 
     return MACSEC_ERR_OK;
@@ -2159,58 +2181,110 @@ static int macsec_mka_write_distributed_sak(uint8_t **p,
     return MACSEC_ERR_OK;
 }
 
-int macsec_mka_get_tx_frame(macsec_mka_ctx_t *ctx,
-                            uint8_t *frame,
-                            size_t *frame_len,
-                            size_t frame_max_len)
+int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx,
+                              uint8_t *frame,
+                              size_t *frame_len,
+                              size_t frame_max_len,
+                              macsec_mka_tx_meta_t *meta)
 {
     uint8_t *p;
     uint16_t body_len;
     uint16_t peer_list_param_len;
     uint16_t sak_use_param_len;
+    uint16_t distributed_sak_param_len;
     uint16_t eapol_len;
     size_t total_len;
     size_t mic_len;
     uint8_t flags_len_hi;
-    uint32_t tx_mn;
-    uint16_t distributed_sak_param_len;
+    macsec_bool_t include_peer_list;
     macsec_bool_t include_distributed_sak;
+    macsec_bool_t include_sak_use;
     int ret;
 
-    macsec_assert(ctx != NULL);
-    macsec_assert(frame != NULL);
-    macsec_assert(frame_len != NULL);
-    macsec_check(ctx->crypto.keys.valid, MACSEC_ERR_STATE);
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+    macsec_check(frame != NULL, MACSEC_ERR_PARAM);
+    macsec_check(frame_len != NULL, MACSEC_ERR_PARAM);
+    macsec_check(meta != NULL, MACSEC_ERR_PARAM);
+    macsec_check(ctx->crypto.keys.valid,
+                 MACSEC_ERR_STATE);
 
     *frame_len = 0u;
+    memset(meta, 0, sizeof(*meta));
 
-    if (!ctx->tx_pending)
+    /*
+     * TX is scheduled whenever at least one reason is pending.
+     *
+     * tx_pending is retained only as a migration compatibility field.
+     */
+    if (ctx->tx_reasons == MACSEC_MKA_TX_REASON_NONE)
     {
+        ctx->tx_pending = MACSEC_FALSE;
         return MACSEC_ERR_NOT_READY;
     }
 
-    macsec_check(ctx->crypto.psk.ckn_len <= MACSEC_MKA_CA_NAME_MAX_LEN,
-                 MACSEC_ERR_BUFFER);
+    macsec_check(
+        ctx->crypto.psk.ckn_len <=
+            MACSEC_MKA_CA_NAME_MAX_LEN,
+        MACSEC_ERR_BUFFER);
 
-    body_len = (uint16_t)(28u + ctx->crypto.psk.ckn_len);
-
-    peer_list_param_len = 0u;
-    if (ctx->peer.valid)
-    {
-        peer_list_param_len = 4u + 16u;
-    }
-
-    include_distributed_sak = MACSEC_FALSE;
-    distributed_sak_param_len = 0u;
-
-    if (ctx->local_key_server && ctx->peer.live)
+    /*
+     * If the local participant is the elected Key Server and has a live
+     * peer, ensure that a SAK exists before deciding which parameter sets
+     * the frame must contain.
+     *
+     * SAK generation is persistent protocol state, but it does not commit
+     * successful frame transmission.
+     */
+    if (ctx->local_key_server &&
+        ctx->peer.valid &&
+        ctx->peer.live)
     {
         ret = macsec_mka_key_server_ensure_sak(ctx);
         if (ret != MACSEC_ERR_OK)
         {
             return ret;
         }
+    }
 
+    /*
+     * macsec_mka_key_server_ensure_sak() may have added the
+     * DISTRIBUTE_SAK reason, so capture reasons only after that call.
+     */
+    meta->message_number = ctx->local_mn;
+    meta->reasons = ctx->tx_reasons;
+
+    body_len =
+        (uint16_t)(28u + ctx->crypto.psk.ckn_len);
+
+    include_peer_list =
+        ctx->peer.valid ?
+        MACSEC_TRUE :
+        MACSEC_FALSE;
+
+    peer_list_param_len =
+        include_peer_list ?
+        (4u + 16u) :
+        0u;
+
+    include_distributed_sak = MACSEC_FALSE;
+    distributed_sak_param_len = 0u;
+
+    /*
+     * Include Distributed SAK only while the locally generated SAK is
+     * waiting for its first confirmed distribution.
+     *
+     * Later periodic redistribution policy may deliberately include an
+     * already distributed SAK again, but that should be a separate rule.
+     */
+    if (ctx->local_key_server &&
+        ctx->peer.valid &&
+        ctx->peer.live &&
+        ctx->latest_sak.valid &&
+        (ctx->latest_sak.origin ==
+         MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER) &&
+        (ctx->latest_sak.lifecycle_state ==
+         MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING))
+    {
         include_distributed_sak = MACSEC_TRUE;
 
         if (ctx->latest_sak.sak_len == 16u)
@@ -2220,7 +2294,8 @@ int macsec_mka_get_tx_frame(macsec_mka_ctx_t *ctx,
              * 4 B key number
              * 24 B AES-KW wrapped 128-bit SAK
              */
-            distributed_sak_param_len = 4u + 4u + 24u;
+            distributed_sak_param_len =
+                4u + 4u + 24u;
         }
         else if (ctx->latest_sak.sak_len == 32u)
         {
@@ -2229,51 +2304,86 @@ int macsec_mka_get_tx_frame(macsec_mka_ctx_t *ctx,
              * 4 B key number
              * 40 B AES-KW wrapped 256-bit SAK
              */
-            distributed_sak_param_len = 4u + 4u + 40u;
+            distributed_sak_param_len =
+                4u + 4u + 40u;
         }
         else
         {
             return MACSEC_ERR_STATE;
         }
+
+        meta->distributed_key_number =
+            ctx->latest_sak.key_number;
+
+        meta->distributed_an =
+            ctx->latest_sak.an;
     }
 
-    sak_use_param_len = 0u;
-    if (ctx->latest_sak.valid && ctx->peer.live)
-    {
-        sak_use_param_len = 4u + 40u;
-    }
+    include_sak_use =
+        (ctx->latest_sak.valid &&
+         ctx->peer.valid &&
+         ctx->peer.live) ?
+        MACSEC_TRUE :
+        MACSEC_FALSE;
 
-    eapol_len = (uint16_t)(4u +
-                           body_len +
-                           peer_list_param_len +
-                           distributed_sak_param_len +
-                           sak_use_param_len +
-                           MACSEC_MKA_ICV_LEN);
+    sak_use_param_len =
+        include_sak_use ?
+        (4u + 40u) :
+        0u;
+
+    eapol_len =
+        (uint16_t)(4u +
+                   body_len +
+                   peer_list_param_len +
+                   distributed_sak_param_len +
+                   sak_use_param_len +
+                   MACSEC_MKA_ICV_LEN);
 
     total_len = 14u + 4u + eapol_len;
 
-    macsec_check(total_len <= frame_max_len, MACSEC_ERR_BUFFER);
-    macsec_check(total_len <= MACSEC_MKA_MAX_FRAME_LEN, MACSEC_ERR_BUFFER);
+    macsec_check(total_len <= frame_max_len,
+                 MACSEC_ERR_BUFFER);
 
-    tx_mn = ctx->local_mn;
+    macsec_check(total_len <= MACSEC_MKA_MAX_FRAME_LEN,
+                 MACSEC_ERR_BUFFER);
 
     memset(frame, 0, total_len);
 
-    memcpy(&frame[0], macsec_mka_dst_mac, 6u);
-    memcpy(&frame[6], ctx->local_mac, 6u);
-    macsec_wr_be16(&frame[12], MACSEC_MKA_ETHERTYPE_EAPOL);
+    /*
+     * Ethernet header.
+     */
+    memcpy(&frame[0],
+           macsec_mka_dst_mac,
+           MACSEC_MKA_DST_LEN);
 
+    memcpy(&frame[6],
+           ctx->local_mac,
+           MACSEC_MKA_SRC_LEN);
+
+    macsec_wr_be16(
+        &frame[12],
+        MACSEC_MKA_ETHERTYPE_EAPOL);
+
+    /*
+     * EAPOL header.
+     */
     p = &frame[14];
+
     p[0] = MACSEC_MKA_EAPOL_VERSION_2010;
     p[1] = MACSEC_MKA_EAPOL_TYPE_MKA;
+
     macsec_wr_be16(&p[2], eapol_len);
 
+    /*
+     * Basic Parameter Set.
+     */
     p = &frame[18];
 
     p[0] = MACSEC_MKA_VERSION_ID;
     p[1] = ctx->key_server_priority;
 
-    flags_len_hi = (uint8_t)((body_len >> 8u) & 0x0Fu);
+    flags_len_hi =
+        (uint8_t)((body_len >> 8u) & 0x0Fu);
 
     if (ctx->local_key_server)
     {
@@ -2285,88 +2395,362 @@ int macsec_mka_get_tx_frame(macsec_mka_ctx_t *ctx,
         flags_len_hi |= 0x40u;
     }
 
-    flags_len_hi |= (uint8_t)((ctx->macsec_capability & 0x03u) << 4u);
+    flags_len_hi |=
+        (uint8_t)((ctx->macsec_capability &
+                   0x03u) << 4u);
 
     p[2] = flags_len_hi;
     p[3] = (uint8_t)(body_len & 0xFFu);
     p += 4u;
 
-    memcpy(p, ctx->local_sci, MACSEC_MKA_SCI_LEN);
+    memcpy(p,
+           ctx->local_sci,
+           MACSEC_MKA_SCI_LEN);
     p += MACSEC_MKA_SCI_LEN;
 
-    memcpy(p, ctx->local_mi, MACSEC_MKA_MI_LEN);
+    memcpy(p,
+           ctx->local_mi,
+           MACSEC_MKA_MI_LEN);
     p += MACSEC_MKA_MI_LEN;
 
-    macsec_wr_be32(p, tx_mn);
+    /*
+     * The current MN is written into the frame but is not incremented
+     * until transmission success is reported.
+     */
+    macsec_wr_be32(p, meta->message_number);
     p += 4u;
 
-    macsec_wr_be32(p, MACSEC_MKA_ALGORITHM_AGILITY);
+    macsec_wr_be32(
+        p,
+        MACSEC_MKA_ALGORITHM_AGILITY);
     p += 4u;
 
-    memcpy(p, ctx->crypto.psk.ckn, ctx->crypto.psk.ckn_len);
+    memcpy(p,
+           ctx->crypto.psk.ckn,
+           ctx->crypto.psk.ckn_len);
     p += ctx->crypto.psk.ckn_len;
 
-    if (ctx->peer.valid)
+    if (include_peer_list)
     {
-        macsec_mka_write_peer_list(&p,
-                                   ctx->peer.live ?
-                                   MACSEC_MKA_PARAM_LIVE_PEER_LIST :
-                                   MACSEC_MKA_PARAM_POTENTIAL_PEER_LIST,
-                                   &ctx->peer);
+        macsec_mka_write_peer_list(
+            &p,
+            ctx->peer.live ?
+                MACSEC_MKA_PARAM_LIVE_PEER_LIST :
+                MACSEC_MKA_PARAM_POTENTIAL_PEER_LIST,
+            &ctx->peer);
     }
 
     if (include_distributed_sak)
     {
-        ret = macsec_mka_write_distributed_sak(&p, ctx);
+        ret = macsec_mka_write_distributed_sak(
+            &p,
+            ctx);
+
         if (ret != MACSEC_ERR_OK)
         {
             return ret;
         }
     }
 
-    if (ctx->latest_sak.valid && ctx->peer.live)
+    if (include_sak_use)
     {
-        macsec_mka_write_sak_use(&p, ctx);
+        macsec_mka_write_sak_use(
+            &p,
+            ctx);
     }
 
     mic_len = total_len - MACSEC_MKA_ICV_LEN;
 
-    ret = macsec_mka_crypto_calc_mic(&ctx->crypto,
-                                     frame,
-                                     mic_len,
-                                     &frame[mic_len]);
+    ret = macsec_mka_crypto_calc_mic(
+        &ctx->crypto,
+        frame,
+        mic_len,
+        &frame[mic_len]);
+
     if (ret != MACSEC_ERR_OK)
     {
-        MACSEC_ERROR(("MKA TX ICV calculation failed ret=%d\n", ret));
+        MACSEC_ERROR((
+            "MKA TX ICV calculation failed ret=%d\n",
+            ret));
+
         return ret;
     }
 
-    ctx->local_mn++;
-    ctx->last_tx_ms = ctx->last_tick_ms;
+    meta->contains_peer_list =
+        include_peer_list;
 
-    if (ctx->last_tx_ms == 0u)
+    meta->contains_distributed_sak =
+        include_distributed_sak;
+
+    meta->contains_sak_use =
+        include_sak_use;
+
+    *frame_len = total_len;
+
+    MACSEC_MEDIUM((
+        "MKA TX frame built: "
+        "mn=%lu frame_len=%lu reasons=0x%08lX "
+        "key_server=%u peer_list=%u "
+        "dist_sak=%u sak_use=%u\n",
+        (unsigned long)meta->message_number,
+        (unsigned long)*frame_len,
+        (unsigned long)meta->reasons,
+        ctx->local_key_server ? 1u : 0u,
+        meta->contains_peer_list ? 1u : 0u,
+        meta->contains_distributed_sak ? 1u : 0u,
+        meta->contains_sak_use ? 1u : 0u));
+
+    /*
+     * Deliberately unchanged here:
+     *
+     *   ctx->local_mn
+     *   ctx->last_tx_ms
+     *   ctx->tx_reasons
+     *   ctx->tx_pending
+     *   ctx->latest_sak.lifecycle_state
+     */
+
+    return MACSEC_ERR_OK;
+}
+
+int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx,
+                                 const macsec_mka_tx_meta_t *meta,
+                                 uint32_t now_ms)
+{
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+    macsec_check(meta != NULL, MACSEC_ERR_PARAM);
+
+    /*
+     * The notification must refer to the current uncommitted MN.
+     */
+    if (meta->message_number != ctx->local_mn)
     {
-        ctx->last_tx_ms = 1u;
+        MACSEC_ERROR((
+            "MKA TX success rejected: "
+            "meta_mn=%lu current_mn=%lu\n",
+            (unsigned long)meta->message_number,
+            (unsigned long)ctx->local_mn));
+
+        return MACSEC_ERR_STATE;
+    }
+
+    if (meta->reasons == MACSEC_MKA_TX_REASON_NONE)
+    {
+        return MACSEC_ERR_PARAM;
     }
 
     /*
-     * Legacy TX behavior: building a frame is temporarily treated as a
-     * successful transmission. The final API will clear only reasons recorded
-     * in macsec_mka_tx_meta_t after notify_tx_success().
+     * The successfully transmitted frame may acknowledge only reasons
+     * that were actually pending when the frame was built.
+     *
+     * It is acceptable that some of these reasons are already absent if
+     * the caller serializes TX operations through macsec.c. However, the
+     * metadata must not contain unknown flag bits.
      */
-    ctx->tx_reasons = MACSEC_MKA_TX_REASON_NONE;
-    ctx->tx_pending = MACSEC_FALSE;
-    *frame_len = total_len;
+    if ((meta->reasons &
+         (uint32_t)~(MACSEC_MKA_TX_REASON_INITIAL |
+                     MACSEC_MKA_TX_REASON_PERIODIC |
+                     MACSEC_MKA_TX_REASON_PEER_CHANGE |
+                     MACSEC_MKA_TX_REASON_KEY_SERVER_CHANGE |
+                     MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK |
+                     MACSEC_MKA_TX_REASON_SAK_USE |
+                     MACSEC_MKA_TX_REASON_REKEY)) != 0u)
+    {
+        return MACSEC_ERR_PARAM;
+    }
 
-    MACSEC_MEDIUM(("MKA TX done: mn=%lu frame_len=%lu key_server=%u peer_list=%u dist_sak=%u sak_use=%u\n",
-                   (unsigned long)tx_mn,
-                   (unsigned long)*frame_len,
-                   ctx->local_key_server ? 1u : 0u,
-                   ctx->peer.valid ? 1u : 0u,
-                   include_distributed_sak ? 1u : 0u,
-                   sak_use_param_len ? 1u : 0u));
+    /*
+     * Commit successful distribution only when this exact transmitted
+     * frame contained the current pending local SAK.
+     */
+    if (meta->contains_distributed_sak)
+    {
+        if (!ctx->latest_sak.valid ||
+            (ctx->latest_sak.origin !=
+             MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER) ||
+            (ctx->latest_sak.lifecycle_state !=
+             MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING) ||
+            (ctx->latest_sak.key_number !=
+             meta->distributed_key_number) ||
+            (ctx->latest_sak.an !=
+             meta->distributed_an))
+        {
+            MACSEC_ERROR((
+                "MKA TX success Distributed SAK mismatch: "
+                "meta_key=%lu meta_an=%u "
+                "current_key=%lu current_an=%u state=%u\n",
+                (unsigned long)
+                    meta->distributed_key_number,
+                meta->distributed_an,
+                (unsigned long)
+                    ctx->latest_sak.key_number,
+                ctx->latest_sak.an,
+                (unsigned)
+                    ctx->latest_sak.lifecycle_state));
+
+            return MACSEC_ERR_STATE;
+        }
+
+        macsec_mka_set_sak_state(
+            ctx,
+            MACSEC_MKA_SAK_STATE_DISTRIBUTED,
+            "Distributed SAK MKPDU transmitted successfully");
+
+        if (ctx->latest_sak.lifecycle_state !=
+            MACSEC_MKA_SAK_STATE_DISTRIBUTED)
+        {
+            return MACSEC_ERR_STATE;
+        }
+
+        macsec_mka_raise_events(
+            ctx,
+            MACSEC_MKA_EVENT_SAK_DISTRIBUTED |
+            MACSEC_MKA_EVENT_SAK_AVAILABLE);
+
+        /*
+         * Reserve the next Key Number and AN for a future rekey.
+         * This is done only on the first successful distribution.
+         */
+        ctx->key_server_next_key_number++;
+
+        if (ctx->key_server_next_key_number == 0u)
+        {
+            /*
+             * Key Number zero is not used by this implementation.
+             */
+            ctx->key_server_next_key_number = 1u;
+        }
+
+        ctx->key_server_next_an =
+            (uint8_t)((ctx->key_server_next_an + 1u) &
+                      0x03u);
+    }
+
+    /*
+     * Commit the transmitted message number only after successful TX.
+     */
+    ctx->local_mn++;
+
+    if (ctx->local_mn == 0u)
+    {
+        /*
+         * Actor MN zero is avoided by this implementation.
+         */
+        ctx->local_mn = 1u;
+    }
+
+    ctx->last_tx_ms =
+        (now_ms != 0u) ?
+        now_ms :
+        1u;
+
+    /*
+     * Clear only reasons represented by this frame. Reasons scheduled after
+     * frame construction remain pending.
+     */
+    ctx->tx_reasons &= ~meta->reasons;
+
+    ctx->tx_pending =
+        (ctx->tx_reasons != MACSEC_MKA_TX_REASON_NONE) ?
+        MACSEC_TRUE :
+        MACSEC_FALSE;
+
+    MACSEC_MEDIUM((
+        "MKA TX success: "
+        "mn=%lu next_mn=%lu now=%lu "
+        "sent_reasons=0x%08lX "
+        "remaining_reasons=0x%08lX "
+        "dist_sak=%u\n",
+        (unsigned long)meta->message_number,
+        (unsigned long)ctx->local_mn,
+        (unsigned long)ctx->last_tx_ms,
+        (unsigned long)meta->reasons,
+        (unsigned long)ctx->tx_reasons,
+        meta->contains_distributed_sak ? 1u : 0u));
 
     return MACSEC_ERR_OK;
+}
+
+void macsec_mka_notify_tx_failure(macsec_mka_ctx_t *ctx,
+                                  const macsec_mka_tx_meta_t *meta)
+{
+    if ((ctx == NULL) || (meta == NULL))
+    {
+        return;
+    }
+
+    /*
+     * A failed transmission must not commit:
+     *
+     *   local_mn
+     *   last_tx_ms
+     *   SAK distribution
+     *
+     * Re-add the snapshot reasons in case additional code modified the
+     * scheduler while the frame was awaiting transmission.
+     */
+    ctx->tx_reasons |= meta->reasons;
+
+    ctx->tx_pending =
+        (ctx->tx_reasons != MACSEC_MKA_TX_REASON_NONE) ?
+        MACSEC_TRUE :
+        MACSEC_FALSE;
+
+    MACSEC_MEDIUM((
+        "MKA TX failure: "
+        "mn=%lu reasons=0x%08lX "
+        "pending_reasons=0x%08lX\n",
+        (unsigned long)meta->message_number,
+        (unsigned long)meta->reasons,
+        (unsigned long)ctx->tx_reasons));
+}
+
+/*
+ * Temporary compatibility wrapper.
+ *
+ * Legacy callers treat successful frame construction as successful
+ * transmission. New code must use build + notify.
+ */
+int macsec_mka_get_tx_frame(macsec_mka_ctx_t *ctx,
+                            uint8_t *frame,
+                            size_t *frame_len,
+                            size_t frame_max_len)
+{
+    macsec_mka_tx_meta_t meta;
+    uint32_t now_ms;
+    int ret;
+
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+    macsec_check(frame != NULL, MACSEC_ERR_PARAM);
+    macsec_check(frame_len != NULL, MACSEC_ERR_PARAM);
+
+    memset(&meta, 0, sizeof(meta));
+
+    ret = macsec_mka_build_tx_frame(
+        ctx,
+        frame,
+        frame_len,
+        frame_max_len,
+        &meta);
+
+    if (ret != MACSEC_ERR_OK)
+    {
+        return ret;
+    }
+
+    now_ms =
+        (ctx->last_tick_ms != 0u) ?
+        ctx->last_tick_ms :
+        1u;
+
+    ret = macsec_mka_notify_tx_success(
+        ctx,
+        &meta,
+        now_ms);
+
+    macsec_zeroize(&meta, sizeof(meta));
+
+    return ret;
 }
 
 int macsec_mka_verify_icv(macsec_mka_ctx_t *ctx,

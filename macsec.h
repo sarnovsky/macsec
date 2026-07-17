@@ -173,25 +173,16 @@ typedef struct
  */
 typedef struct
 {
-    /** Stored copy of user configuration. */
     macsec_config_t cfg;
-
-    /** Current top-level MACsec state. */
     macsec_state_t state;
 
-    /** MACsec data-plane frame crypto context. */
     macsec_frame_crypto_ctx_t frame_crypto;
-
-    /** MKA control-plane context. */
     macsec_mka_ctx_t mka;
 
-    /** Last timestamp passed to macsec_tick(). */
     uint32_t last_tick_ms;
 
-    uint8_t pending_tx_sak[MACSEC_MKA_SAK_MAX_LEN];
-    size_t pending_tx_sak_len;
-    uint8_t pending_tx_an;
-    macsec_bool_t pending_tx_sak_valid;
+    macsec_mka_tx_meta_t pending_mka_tx_meta;
+    macsec_bool_t pending_mka_tx_valid;
 } macsec_ctx_t;
 
 /**
@@ -302,24 +293,65 @@ int macsec_output(macsec_ctx_t *ctx,
 int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms);
 
 /**
- * @brief Get pending MKA control frame.
+ * @brief Build a pending MKA control frame.
  *
- * If MKA wants to transmit an EAPOL/MKA frame, this function writes it to
- * tx_frame. The caller must send it as raw Ethernet frame, not through
- * macsec_output().
+ * This function only builds the Ethernet EAPOL/MKA frame. It does not notify
+ * MKA that the frame has actually been transmitted.
+ *
+ * After this function returns MACSEC_ERR_OK, the caller must report the
+ * transmission result using either:
+ *
+ *   macsec_notify_control_tx_success()
+ *
+ * or:
+ *
+ *   macsec_notify_control_tx_failure()
+ *
+ * Until the result is reported, another control frame cannot be built.
  *
  * @param ctx MACsec context.
- * @param tx_frame Output buffer.
+ * @param tx_frame Output frame buffer.
  * @param tx_len Output frame length.
  * @param tx_max_len Output buffer size.
  *
- * @return MACSEC_ERR_OK when a control frame is ready.
+ * @return MACSEC_ERR_OK when a control frame was built.
  *         MACSEC_ERR_NOT_READY when no control frame is pending.
+ *         MACSEC_ERR_BUSY when a previously built frame is awaiting result.
+ *         Otherwise MACSEC_ERR_*.
  */
 int macsec_get_control_frame(macsec_ctx_t *ctx,
                              uint8_t *tx_frame,
                              size_t *tx_len,
                              size_t tx_max_len);
+
+/**
+ * @brief Report successful transmission of the pending MKA control frame.
+ *
+ * This commits the pending MKA transmission, updates MKA timers and may
+ * complete SAK distribution. The pending transmission metadata is cleared
+ * after successful processing.
+ *
+ * @param ctx MACsec context.
+ * @param now_ms Timestamp at which the frame was successfully transmitted.
+ *
+ * @return MACSEC_ERR_OK on success, otherwise MACSEC_ERR_*.
+ */
+int macsec_notify_control_tx_success(macsec_ctx_t *ctx,
+                                     uint32_t now_ms);
+
+/**
+ * @brief Report failed transmission of the pending MKA control frame.
+ *
+ * The pending MKA transmission is returned to the MKA scheduler and may be
+ * built again later.
+ *
+ * @param ctx MACsec context.
+ *
+ * @return MACSEC_ERR_OK on success.
+ *         MACSEC_ERR_NOT_READY when no control transmission is pending.
+ *         MACSEC_ERR_STATE when the context is not in MKA mode.
+ */
+int macsec_notify_control_tx_failure(macsec_ctx_t *ctx);
 
 #ifdef __cplusplus
 }

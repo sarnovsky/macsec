@@ -367,7 +367,6 @@ static int macsec_process_mka_events(macsec_ctx_t *ctx)
     if ((events & MACSEC_MKA_EVENT_SAK_ACTIVE) != 0u)
     {
         ctx->state = MACSEC_STATE_SECURED;
-        ctx->pending_tx_sak_valid = MACSEC_FALSE;
 
         MACSEC_MEDIUM((
             "MACsec state: SECURED after active MKA SAK\n"));
@@ -815,9 +814,9 @@ int macsec_get_control_frame(macsec_ctx_t *ctx,
 {
     int ret;
 
-    macsec_assert(ctx != NULL);
-    macsec_assert(tx_frame != NULL);
-    macsec_assert(tx_len != NULL);
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+    macsec_check(tx_frame != NULL, MACSEC_ERR_PARAM);
+    macsec_check(tx_len != NULL, MACSEC_ERR_PARAM);
 
     *tx_len = 0u;
 
@@ -826,44 +825,135 @@ int macsec_get_control_frame(macsec_ctx_t *ctx,
         return MACSEC_ERR_NOT_READY;
     }
 
-    ret = macsec_mka_get_tx_frame(&ctx->mka,
-                                  tx_frame,
-                                  tx_len,
-                                  tx_max_len);
-
-    if (ret == MACSEC_ERR_OK)
+    if (ctx->pending_mka_tx_valid)
     {
-        int service_ret;
+        return MACSEC_ERR_BUSY;
+    }
 
-        /*
-         * The legacy macsec_mka_get_tx_frame() currently commits successful
-         * construction as transmission. For a local Key Server this may move
-         * a SAK from DISTRIBUTION_PENDING to DISTRIBUTED, making it available
-         * for local installation.
-         */
-        service_ret = macsec_service_mka(ctx);
+    memset(&ctx->pending_mka_tx_meta,
+           0,
+           sizeof(ctx->pending_mka_tx_meta));
 
-        if (service_ret != MACSEC_ERR_OK)
+    ret = macsec_mka_build_tx_frame(
+        &ctx->mka,
+        tx_frame,
+        tx_len,
+        tx_max_len,
+        &ctx->pending_mka_tx_meta);
+
+    if (ret != MACSEC_ERR_OK)
+    {
+        if (ret != MACSEC_ERR_NOT_READY)
         {
-            ctx->state = MACSEC_STATE_ERROR;
-
             MACSEC_ERROR((
-                "MACsec MKA service after control TX build failed ret=%d\n",
-                service_ret));
-
-            return service_ret;
+                "MACsec build control frame failed ret=%d\n",
+                ret));
         }
 
-        MACSEC_INFO((
-            "MACsec TX control MKA frame len=%lu\n",
-            (unsigned long)*tx_len));
-    }
-    else if (ret != MACSEC_ERR_NOT_READY)
-    {
-        MACSEC_ERROR((
-            "MACsec get control frame failed ret=%d\n",
-            ret));
+        macsec_zeroize(
+            &ctx->pending_mka_tx_meta,
+            sizeof(ctx->pending_mka_tx_meta));
+
+        return ret;
     }
 
-    return ret;
+    ctx->pending_mka_tx_valid = MACSEC_TRUE;
+
+    MACSEC_INFO((
+        "MACsec control frame built: "
+        "len=%lu mn=%lu reasons=0x%08lX\n",
+        (unsigned long)*tx_len,
+        (unsigned long)ctx->pending_mka_tx_meta.message_number,
+        (unsigned long)ctx->pending_mka_tx_meta.reasons));
+
+    return MACSEC_ERR_OK;
+}
+
+int macsec_notify_control_tx_success(macsec_ctx_t *ctx,
+                                     uint32_t now_ms)
+{
+    int ret;
+
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+
+    if (ctx->cfg.mode != MACSEC_MODE_MKA_PSK)
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    if (!ctx->pending_mka_tx_valid)
+    {
+        return MACSEC_ERR_NOT_READY;
+    }
+
+    ret = macsec_mka_notify_tx_success(
+        &ctx->mka,
+        &ctx->pending_mka_tx_meta,
+        now_ms);
+
+    if (ret != MACSEC_ERR_OK)
+    {
+        ctx->state = MACSEC_STATE_ERROR;
+
+        MACSEC_ERROR((
+            "MACsec control TX success notification failed: "
+            "ret=%d mn=%lu reasons=0x%08lX\n",
+            ret,
+            (unsigned long)
+                ctx->pending_mka_tx_meta.message_number,
+            (unsigned long)
+                ctx->pending_mka_tx_meta.reasons));
+
+        return ret;
+    }
+
+    macsec_zeroize(
+        &ctx->pending_mka_tx_meta,
+        sizeof(ctx->pending_mka_tx_meta));
+
+    ctx->pending_mka_tx_valid = MACSEC_FALSE;
+
+    ret = macsec_service_mka(ctx);
+    if (ret != MACSEC_ERR_OK)
+    {
+        ctx->state = MACSEC_STATE_ERROR;
+
+        MACSEC_ERROR((
+            "MACsec MKA service after control TX failed ret=%d\n",
+            ret));
+
+        return ret;
+    }
+
+    return MACSEC_ERR_OK;
+}
+
+int macsec_notify_control_tx_failure(macsec_ctx_t *ctx)
+{
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+
+    if (ctx->cfg.mode != MACSEC_MODE_MKA_PSK)
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    if (!ctx->pending_mka_tx_valid)
+    {
+        return MACSEC_ERR_NOT_READY;
+    }
+
+    macsec_mka_notify_tx_failure(
+        &ctx->mka,
+        &ctx->pending_mka_tx_meta);
+
+    macsec_zeroize(
+        &ctx->pending_mka_tx_meta,
+        sizeof(ctx->pending_mka_tx_meta));
+
+    ctx->pending_mka_tx_valid = MACSEC_FALSE;
+
+    MACSEC_INFO((
+        "MACsec control TX failure reported\n"));
+
+    return MACSEC_ERR_OK;
 }

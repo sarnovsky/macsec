@@ -54,7 +54,7 @@ typedef uint8_t macsec_bool_t;
 #define MACSEC_ERR_AUTH              -7
 #define MACSEC_ERR_TIMEOUT           -8
 #define MACSEC_ERR_NOT_READY         -9
-
+#define MACSEC_ERR_BUSY              -10
 
 /* =========================================================================
  * Platform functions
