@@ -6,7 +6,7 @@
  * This file validates Secure Association Key (SAK) replacement, packet
  * number continuity and key transition procedures during MACsec operation.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -19,12 +19,10 @@
 
 #if (MACSEC_SELF_TEST != 0)
 
-#define TEST_REKEY_SECTAG_TCI_AN_OFFSET  14u
-#define TEST_REKEY_SECTAG_PN_OFFSET      16u
+#define TEST_REKEY_SECTAG_TCI_AN_OFFSET 14u
+#define TEST_REKEY_SECTAG_PN_OFFSET 16u
 
-static void macsec_test_fill_plain_frame(uint8_t *frame,
-                                         size_t len,
-                                         uint16_t ethertype,
+static void macsec_test_fill_plain_frame(uint8_t *frame, size_t len, uint16_t ethertype,
                                          uint8_t seed)
 {
     size_t i;
@@ -50,13 +48,11 @@ static void macsec_test_fill_plain_frame(uint8_t *frame,
 
     for (i = 14u; i < len; i++)
     {
-        frame[i] = (uint8_t)(seed + (uint8_t)i);
+        frame[i] = (uint8_t) (seed + (uint8_t) i);
     }
 }
 
-static void macsec_test_make_sak_128(macsec_frame_sak_t *sak,
-                                     uint8_t an,
-                                     uint8_t seed)
+static void macsec_test_make_sak_128(macsec_frame_sak_t *sak, uint8_t an, uint8_t seed)
 {
     size_t i;
 
@@ -66,7 +62,7 @@ static void macsec_test_make_sak_128(macsec_frame_sak_t *sak,
 
     for (i = 0u; i < 16u; i++)
     {
-        sak->key[i] = (uint8_t)(seed + (uint8_t)(i * 7u));
+        sak->key[i] = (uint8_t) (seed + (uint8_t) (i * 7u));
     }
 
     sak->key_len = 16u;
@@ -90,9 +86,9 @@ static void macsec_test_make_sci(macsec_frame_sci_t *sci)
     sci->bytes[7] = 0x01u;
 }
 
-static int macsec_test_rekey_an_rotation_decrypts_all(
-    macsec_test_rekey_an_rotation_decrypts_all_data_t *data,
-    int verbose)
+static int
+macsec_test_rekey_an_rotation_decrypts_all(macsec_test_rekey_an_rotation_decrypts_all_data_t *data,
+                                           int verbose)
 {
     size_t plain_len = 96u;
     size_t secure_len = 0u;
@@ -122,9 +118,7 @@ static int macsec_test_rekey_an_rotation_decrypts_all(
 
     for (an = 0u; an < MACSEC_FRAME_MAX_SA; an++)
     {
-        macsec_test_make_sak_128(&data->sak,
-                                 an,
-                                 (uint8_t)(0x10u + (an * 0x20u)));
+        macsec_test_make_sak_128(&data->sak, an, (uint8_t) (0x10u + (an * 0x20u)));
 
         ret = macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &data->sak);
         if (ret != MACSEC_ERR_OK)
@@ -142,19 +136,12 @@ static int macsec_test_rekey_an_rotation_decrypts_all(
             return ret;
         }
 
-        macsec_test_fill_plain_frame(data->plain,
-                                     plain_len,
-                                     0x0800u,
-                                     (uint8_t)(0x40u + an));
+        macsec_test_fill_plain_frame(data->plain, plain_len, 0x0800u, (uint8_t) (0x40u + an));
 
         secure_len = 0u;
         decrypted_len = 0u;
 
-        ret = macsec_frame_encrypt(&data->tx_ctx,
-                                   data->plain,
-                                   plain_len,
-                                   data->secure,
-                                   &secure_len,
+        ret = macsec_frame_encrypt(&data->tx_ctx, data->plain, plain_len, data->secure, &secure_len,
                                    sizeof(data->secure));
         if (ret != MACSEC_ERR_OK)
         {
@@ -166,12 +153,8 @@ static int macsec_test_rekey_an_rotation_decrypts_all(
         TEST_TRUE((data->secure[TEST_REKEY_SECTAG_TCI_AN_OFFSET] & 0x03u) == an);
         TEST_EQ_U32(macsec_rd_be32(&data->secure[TEST_REKEY_SECTAG_PN_OFFSET]), 1u);
 
-        ret = macsec_frame_decrypt(&data->rx_ctx,
-                                   data->secure,
-                                   secure_len,
-                                   data->decrypted,
-                                   &decrypted_len,
-                                   sizeof(data->decrypted));
+        ret = macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                                   &decrypted_len, sizeof(data->decrypted));
         if (ret != MACSEC_ERR_OK)
         {
             macsec_frame_crypto_clear(&data->tx_ctx);
@@ -190,8 +173,7 @@ static int macsec_test_rekey_an_rotation_decrypts_all(
 }
 
 static int macsec_test_rekey_old_rx_sak_still_accepted(
-    macsec_test_rekey_old_rx_sak_still_accepted_data_t *data,
-    int verbose)
+    macsec_test_rekey_old_rx_sak_still_accepted_data_t *data, int verbose)
 {
     size_t plain_len = 96u;
     size_t secure0_len = 0u;
@@ -239,11 +221,7 @@ static int macsec_test_rekey_old_rx_sak_still_accepted(
 
     macsec_test_fill_plain_frame(data->plain0, plain_len, 0x0800u, 0x21u);
 
-    ret = macsec_frame_encrypt(&data->tx_ctx,
-                               data->plain0,
-                               plain_len,
-                               data->secure0,
-                               &secure0_len,
+    ret = macsec_frame_encrypt(&data->tx_ctx, data->plain0, plain_len, data->secure0, &secure0_len,
                                sizeof(data->secure0));
     if (ret != MACSEC_ERR_OK)
     {
@@ -270,11 +248,7 @@ static int macsec_test_rekey_old_rx_sak_still_accepted(
 
     macsec_test_fill_plain_frame(data->plain1, plain_len, 0x0800u, 0x31u);
 
-    ret = macsec_frame_encrypt(&data->tx_ctx,
-                               data->plain1,
-                               plain_len,
-                               data->secure1,
-                               &secure1_len,
+    ret = macsec_frame_encrypt(&data->tx_ctx, data->plain1, plain_len, data->secure1, &secure1_len,
                                sizeof(data->secure1));
     if (ret != MACSEC_ERR_OK)
     {
@@ -288,12 +262,8 @@ static int macsec_test_rekey_old_rx_sak_still_accepted(
     TEST_EQ_U32(macsec_rd_be32(&data->secure0[TEST_REKEY_SECTAG_PN_OFFSET]), 1u);
     TEST_EQ_U32(macsec_rd_be32(&data->secure1[TEST_REKEY_SECTAG_PN_OFFSET]), 1u);
 
-    ret = macsec_frame_decrypt(&data->rx_ctx,
-                               data->secure0,
-                               secure0_len,
-                               data->decrypted,
-                               &decrypted_len,
-                               sizeof(data->decrypted));
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->secure0, secure0_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
     if (ret != MACSEC_ERR_OK)
     {
         macsec_frame_crypto_clear(&data->tx_ctx);
@@ -306,12 +276,8 @@ static int macsec_test_rekey_old_rx_sak_still_accepted(
 
     decrypted_len = 0u;
 
-    ret = macsec_frame_decrypt(&data->rx_ctx,
-                               data->secure1,
-                               secure1_len,
-                               data->decrypted,
-                               &decrypted_len,
-                               sizeof(data->decrypted));
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->secure1, secure1_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
     if (ret != MACSEC_ERR_OK)
     {
         macsec_frame_crypto_clear(&data->tx_ctx);
@@ -328,9 +294,9 @@ static int macsec_test_rekey_old_rx_sak_still_accepted(
     return 0;
 }
 
-static int macsec_test_rekey_wrong_key_same_an_fails(
-    macsec_test_rekey_wrong_key_same_an_fails_data_t *data,
-    int verbose)
+static int
+macsec_test_rekey_wrong_key_same_an_fails(macsec_test_rekey_wrong_key_same_an_fails_data_t *data,
+                                          int verbose)
 {
     size_t plain_len = 96u;
     size_t secure_len = 0u;
@@ -377,11 +343,7 @@ static int macsec_test_rekey_wrong_key_same_an_fails(
 
     macsec_test_fill_plain_frame(data->plain, plain_len, 0x0800u, 0x41u);
 
-    ret = macsec_frame_encrypt(&data->tx_ctx,
-                               data->plain,
-                               plain_len,
-                               data->secure,
-                               &secure_len,
+    ret = macsec_frame_encrypt(&data->tx_ctx, data->plain, plain_len, data->secure, &secure_len,
                                sizeof(data->secure));
     if (ret != MACSEC_ERR_OK)
     {
@@ -390,12 +352,8 @@ static int macsec_test_rekey_wrong_key_same_an_fails(
         return ret;
     }
 
-    ret = macsec_frame_decrypt(&data->rx_ctx,
-                               data->secure,
-                               secure_len,
-                               data->decrypted,
-                               &decrypted_len,
-                               sizeof(data->decrypted));
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
 
     macsec_frame_crypto_clear(&data->tx_ctx);
     macsec_frame_crypto_clear(&data->rx_ctx);
@@ -413,17 +371,14 @@ int macsec_test_rekey(macsec_test_rekey_data_t *data, int verbose)
         MACSEC_PRINT(("MACsec rekey tests\n"));
     }
 
-    TEST_OK(macsec_test_rekey_an_rotation_decrypts_all(
-        &data->rekey_an_rotation_decrypts_all_data,
-        verbose));
+    TEST_OK(macsec_test_rekey_an_rotation_decrypts_all(&data->rekey_an_rotation_decrypts_all_data,
+                                                       verbose));
 
-    TEST_OK(macsec_test_rekey_old_rx_sak_still_accepted(
-        &data->rekey_old_rx_sak_still_accepted_data,
-        verbose));
+    TEST_OK(macsec_test_rekey_old_rx_sak_still_accepted(&data->rekey_old_rx_sak_still_accepted_data,
+                                                        verbose));
 
-    TEST_OK(macsec_test_rekey_wrong_key_same_an_fails(
-        &data->rekey_wrong_key_same_an_fails_data,
-        verbose));
+    TEST_OK(macsec_test_rekey_wrong_key_same_an_fails(&data->rekey_wrong_key_same_an_fails_data,
+                                                      verbose));
 
     return 0;
 }

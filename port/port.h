@@ -7,7 +7,7 @@
  * MACsec stack, such as memory allocation, debug output, timing and
  * other operating system or hardware specific functionality.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -19,7 +19,8 @@
 #define MACSEC_PORT_H
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #include "macsec_common.h"
@@ -41,4 +42,3 @@ void macsec_random(uint8_t *bytes, size_t count);
 #endif
 
 #endif /* MACSEC_PORT_H */
-

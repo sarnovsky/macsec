@@ -6,7 +6,7 @@
  * This file connects the individual MACsec modules together and provides
  * the main public entry points used by the application or network driver.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -17,18 +17,19 @@
 #ifndef MACSEC_MACSEC_H_
 #define MACSEC_MACSEC_H_
 
-#include "macsec_common.h"
 #include "frame_crypto.h"
+#include "macsec_common.h"
 #include "mka.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-#define MACSEC_ETHERTYPE_EAPOL     0x888Eu
-#define MACSEC_MAC_ADDR_LEN        6u
-#define MACSEC_CAK_MAX_LEN         32u
-#define MACSEC_CKN_MAX_LEN         32u
+#define MACSEC_ETHERTYPE_EAPOL 0x888Eu
+#define MACSEC_MAC_ADDR_LEN 6u
+#define MACSEC_CAK_MAX_LEN 32u
+#define MACSEC_CKN_MAX_LEN 32u
 
 /**
  * @brief MACsec operating mode.
@@ -240,13 +241,8 @@ macsec_bool_t macsec_is_secured(const macsec_ctx_t *ctx);
  *
  * @return MACSEC_ERR_OK or MACSEC_ERR_*.
  */
-int macsec_input(macsec_ctx_t *ctx,
-                 const uint8_t *rx_frame,
-                 size_t rx_len,
-                 uint8_t *plain_frame,
-                 size_t *plain_len,
-                 size_t plain_max_len,
-                 macsec_bool_t *pass_to_stack);
+int macsec_input(macsec_ctx_t *ctx, const uint8_t *rx_frame, size_t rx_len, uint8_t *plain_frame,
+                 size_t *plain_len, size_t plain_max_len, macsec_bool_t *pass_to_stack);
 
 /**
  * @brief Protect outgoing Ethernet frame.
@@ -267,12 +263,8 @@ int macsec_input(macsec_ctx_t *ctx,
  *
  * @return MACSEC_ERR_OK or MACSEC_ERR_*.
  */
-int macsec_output(macsec_ctx_t *ctx,
-                  const uint8_t *plain_frame,
-                  size_t plain_len,
-                  uint8_t *tx_frame,
-                  size_t *tx_len,
-                  size_t tx_max_len);
+int macsec_output(macsec_ctx_t *ctx, const uint8_t *plain_frame, size_t plain_len,
+                  uint8_t *tx_frame, size_t *tx_len, size_t tx_max_len);
 
 /**
  * @brief Periodic MACsec processing.
@@ -319,9 +311,7 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms);
  *         MACSEC_ERR_BUSY when a previously built frame is awaiting result.
  *         Otherwise MACSEC_ERR_*.
  */
-int macsec_get_control_frame(macsec_ctx_t *ctx,
-                             uint8_t *tx_frame,
-                             size_t *tx_len,
+int macsec_get_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_len,
                              size_t tx_max_len);
 
 /**
@@ -336,8 +326,7 @@ int macsec_get_control_frame(macsec_ctx_t *ctx,
  *
  * @return MACSEC_ERR_OK on success, otherwise MACSEC_ERR_*.
  */
-int macsec_notify_control_tx_success(macsec_ctx_t *ctx,
-                                     uint32_t now_ms);
+int macsec_notify_control_tx_success(macsec_ctx_t *ctx, uint32_t now_ms);
 
 /**
  * @brief Report failed transmission of the pending MKA control frame.

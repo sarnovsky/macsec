@@ -7,7 +7,7 @@
  * This file provides the Linux-dependent services required by the
  * MACsec stack, such as debug output, panic handling and random data.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -26,7 +26,6 @@
 #include <stdio.h>
 #endif
 
-
 void macsec_sysPanic(void)
 {
 #if (MACSEC_DEBUG_LEVEL > 0)
@@ -37,9 +36,7 @@ void macsec_sysPanic(void)
     abort();
 }
 
-
 //--------------------------------------------------------------------
-
 
 #if (MACSEC_DEBUG_LEVEL > 0)
 
@@ -61,9 +58,7 @@ void macsec_printf(const char *format, ...)
 
 #endif
 
-
 //--------------------------------------------------------------------
-
 
 void macsec_randomInit(uint32_t seed)
 {
@@ -71,9 +66,8 @@ void macsec_randomInit(uint32_t seed)
      * Linux uses the kernel cryptographic random number generator.
      * The supplied seed is therefore not needed.
      */
-    (void)seed;
+    (void) seed;
 }
-
 
 void macsec_random(uint8_t *bytes, size_t count)
 {
@@ -85,13 +79,11 @@ void macsec_random(uint8_t *bytes, size_t count)
     {
         ssize_t ret;
 
-        ret = getrandom(bytes + offset,
-                        count - offset,
-                        0);
+        ret = getrandom(bytes + offset, count - offset, 0);
 
         if (ret > 0)
         {
-            offset += (size_t)ret;
+            offset += (size_t) ret;
             continue;
         }
 

@@ -6,7 +6,7 @@
  * This file verifies the behavior of shared helper routines, including
  * byte-order conversion, buffer manipulation and other common utilities.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -20,7 +20,8 @@
 #include "macsec_common.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #if (MACSEC_SELF_TEST != 0)

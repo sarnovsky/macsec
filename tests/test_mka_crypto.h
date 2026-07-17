@@ -6,7 +6,7 @@
  * This file validates MKA-specific cryptographic operations, including key
  * derivation, integrity calculation and related helper functions.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,7 +21,8 @@
 #include "mka_crypto.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #if (MACSEC_SELF_TEST != 0)
@@ -56,21 +57,16 @@ typedef struct
 
 typedef union
 {
-    macsec_test_mka_crypto_selftest_api_data_t
-        test_mka_crypto_selftest_api_data;
+    macsec_test_mka_crypto_selftest_api_data_t test_mka_crypto_selftest_api_data;
 
-    macsec_test_mka_crypto_psk_derive_data_t
-        test_mka_crypto_psk_derive_data;
+    macsec_test_mka_crypto_psk_derive_data_t test_mka_crypto_psk_derive_data;
 
-    macsec_test_mka_crypto_mic_positive_negative_data_t
-        test_mka_crypto_mic_positive_negative_data;
+    macsec_test_mka_crypto_mic_positive_negative_data_t test_mka_crypto_mic_positive_negative_data;
 
-    macsec_test_mka_crypto_wrap_unwrap_sak_data_t
-        test_mka_crypto_wrap_unwrap_sak_data;
+    macsec_test_mka_crypto_wrap_unwrap_sak_data_t test_mka_crypto_wrap_unwrap_sak_data;
 } macsec_test_mka_crypto_data_t;
 
-int macsec_test_mka_crypto(macsec_test_mka_crypto_data_t *data,
-                           int verbose);
+int macsec_test_mka_crypto(macsec_test_mka_crypto_data_t *data, int verbose);
 
 #endif /* MACSEC_SELF_TEST */
 

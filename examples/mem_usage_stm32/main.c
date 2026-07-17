@@ -8,17 +8,17 @@
  * It is not a functional application.
  */
 
-#define MEMUSAGE_PROFILE_MINIMAL         1
-#define MEMUSAGE_PROFILE_FULL            2
-#define MEMUSAGE_PROFILE_FULL_DEBUG      3
-#define MEMUSAGE_PROFILE_FULL_SELFTEST   4
+#define MEMUSAGE_PROFILE_MINIMAL 1
+#define MEMUSAGE_PROFILE_FULL 2
+#define MEMUSAGE_PROFILE_FULL_DEBUG 3
+#define MEMUSAGE_PROFILE_FULL_SELFTEST 4
 
 #ifndef MEMUSAGE_PROFILE
 #define MEMUSAGE_PROFILE MEMUSAGE_PROFILE_FULL
 #endif
 
-#include <macsec/macsec_common.h>
 #include <macsec/frame_crypto.h>
+#include <macsec/macsec_common.h>
 
 #if (MEMUSAGE_PROFILE != MEMUSAGE_PROFILE_MINIMAL)
 #include <macsec/macsec.h>
@@ -39,7 +39,6 @@
  * values would otherwise be unused.
  */
 static volatile int g_memusage_result;
-
 
 /*
  * The context is static so its complete size is included in .bss.
@@ -62,7 +61,6 @@ static macsec_ctx_t g_macsec_ctx;
 static macsec_config_t g_macsec_cfg;
 
 #endif
-
 
 #if (MEMUSAGE_PROFILE != MEMUSAGE_PROFILE_FULL_SELFTEST)
 
@@ -100,10 +98,10 @@ static void memusage_fill_plain_frame(uint8_t *frame, size_t *frame_len)
     /*
      * Source MAC.
      */
-    frame[6]  = 0x02u;
-    frame[7]  = 0x00u;
-    frame[8]  = 0x00u;
-    frame[9]  = 0x00u;
+    frame[6] = 0x02u;
+    frame[7] = 0x00u;
+    frame[8] = 0x00u;
+    frame[9] = 0x00u;
     frame[10] = 0x00u;
     frame[11] = 0x01u;
 
@@ -115,7 +113,7 @@ static void memusage_fill_plain_frame(uint8_t *frame, size_t *frame_len)
 
     for (i = 14u; i < 64u; i++)
     {
-        frame[i] = (uint8_t)i;
+        frame[i] = (uint8_t) i;
     }
 
     *frame_len = 64u;
@@ -123,24 +121,14 @@ static void memusage_fill_plain_frame(uint8_t *frame, size_t *frame_len)
 
 #endif
 
-
 #if (MEMUSAGE_PROFILE == MEMUSAGE_PROFILE_MINIMAL)
 
 static int memusage_run_minimal(void)
 {
-    static const uint8_t sci_bytes[8] =
-    {
-        0x02u, 0x00u, 0x00u, 0x00u,
-        0x00u, 0x01u, 0x00u, 0x01u
-    };
+    static const uint8_t sci_bytes[8] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u, 0x00u, 0x01u};
 
-    static const uint8_t key[16] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu
-    };
+    static const uint8_t key[16] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu};
 
     macsec_frame_sci_t sci;
     macsec_frame_sak_t sak;
@@ -155,7 +143,7 @@ static int memusage_run_minimal(void)
     memset(&sak, 0, sizeof(sak));
 
     memcpy(sak.key, key, sizeof(key));
-    sak.key_len = (uint8_t)sizeof(key);
+    sak.key_len = (uint8_t) sizeof(key);
     sak.an = 0u;
     sak.next_pn = 1u;
     sak.lowest_acceptable_pn = 1u;
@@ -185,11 +173,7 @@ static int memusage_run_minimal(void)
 
     secure_len = 0u;
 
-    ret = macsec_frame_encrypt(&g_frame_ctx,
-                               g_plain_frame,
-                               plain_len,
-                               g_work.secure,
-                               &secure_len,
+    ret = macsec_frame_encrypt(&g_frame_ctx, g_plain_frame, plain_len, g_work.secure, &secure_len,
                                sizeof(g_work.secure));
 
     if (ret != MACSEC_ERR_OK)
@@ -200,44 +184,27 @@ static int memusage_run_minimal(void)
 
     decrypted_len = 0u;
 
-    ret = macsec_frame_decrypt(&g_frame_ctx,
-                               g_work.secure,
-                               secure_len,
-                               g_work.decrypted,
-                               &decrypted_len,
-                               sizeof(g_work.decrypted));
+    ret = macsec_frame_decrypt(&g_frame_ctx, g_work.secure, secure_len, g_work.decrypted,
+                               &decrypted_len, sizeof(g_work.decrypted));
 
     macsec_frame_crypto_clear(&g_frame_ctx);
 
     return ret;
 }
 
-#elif (MEMUSAGE_PROFILE == MEMUSAGE_PROFILE_FULL) || \
-      (MEMUSAGE_PROFILE == MEMUSAGE_PROFILE_FULL_DEBUG)
+#elif (MEMUSAGE_PROFILE == MEMUSAGE_PROFILE_FULL) ||                                               \
+    (MEMUSAGE_PROFILE == MEMUSAGE_PROFILE_FULL_DEBUG)
 
 static void memusage_prepare_config(macsec_config_t *cfg)
 {
-    static const uint8_t cak[32] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu,
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu
-    };
+    static const uint8_t cak[32] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu,
+                                    0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu};
 
-    static const uint8_t ckn[24] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu,
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u
-    };
+    static const uint8_t ckn[24] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu,
+                                    0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
 
     memset(cfg, 0, sizeof(*cfg));
 
@@ -253,10 +220,10 @@ static void memusage_prepare_config(macsec_config_t *cfg)
     cfg->port_id = 1u;
 
     memcpy(cfg->cak, cak, sizeof(cak));
-    cfg->cak_len = (uint8_t)sizeof(cak);
+    cfg->cak_len = (uint8_t) sizeof(cak);
 
     memcpy(cfg->ckn, ckn, sizeof(ckn));
-    cfg->ckn_len = (uint8_t)sizeof(ckn);
+    cfg->ckn_len = (uint8_t) sizeof(ckn);
 
     cfg->replay_protect = MACSEC_TRUE;
     cfg->replay_window = 0u;
@@ -264,7 +231,6 @@ static void memusage_prepare_config(macsec_config_t *cfg)
     cfg->key_server_priority = 10u;
     cfg->mka_tx_interval_ms = 2000u;
 }
-
 
 static int memusage_run_full(void)
 {
@@ -295,13 +261,10 @@ static int memusage_run_full(void)
      * Pull an MKA control frame. This keeps the complete TX MKA path,
      * including MIC calculation, in the linked image.
      */
-    ret = macsec_get_control_frame(&g_macsec_ctx,
-                                   g_work.control,
-                                   &output_len,
+    ret = macsec_get_control_frame(&g_macsec_ctx, g_work.control, &output_len,
                                    sizeof(g_work.control));
 
-    if ((ret != MACSEC_ERR_OK) &&
-        (ret != MACSEC_ERR_NOT_READY))
+    if ((ret != MACSEC_ERR_OK) && (ret != MACSEC_ERR_NOT_READY))
     {
         macsec_clear(&g_macsec_ctx);
         return ret;
@@ -314,23 +277,14 @@ static int memusage_run_full(void)
     output_len = 0u;
     pass_to_stack = MACSEC_FALSE;
 
-    ret = macsec_input(&g_macsec_ctx,
-                       g_plain_frame,
-                       plain_len,
-                       g_work.decrypted,
-                       &output_len,
-                       sizeof(g_work.decrypted),
-                       &pass_to_stack);
+    ret = macsec_input(&g_macsec_ctx, g_plain_frame, plain_len, g_work.decrypted, &output_len,
+                       sizeof(g_work.decrypted), &pass_to_stack);
 
     g_memusage_result += ret;
 
     output_len = 0u;
 
-    ret = macsec_output(&g_macsec_ctx,
-                        g_plain_frame,
-                        plain_len,
-                        g_work.secure,
-                        &output_len,
+    ret = macsec_output(&g_macsec_ctx, g_plain_frame, plain_len, g_work.secure, &output_len,
                         sizeof(g_work.secure));
 
     g_memusage_result += ret;
@@ -342,15 +296,14 @@ static int memusage_run_full(void)
 
 #endif
 
-
 int main(void)
 {
 #if (MEMUSAGE_PROFILE == MEMUSAGE_PROFILE_MINIMAL)
 
     g_memusage_result = memusage_run_minimal();
 
-#elif (MEMUSAGE_PROFILE == MEMUSAGE_PROFILE_FULL) || \
-      (MEMUSAGE_PROFILE == MEMUSAGE_PROFILE_FULL_DEBUG)
+#elif (MEMUSAGE_PROFILE == MEMUSAGE_PROFILE_FULL) ||                                               \
+    (MEMUSAGE_PROFILE == MEMUSAGE_PROFILE_FULL_DEBUG)
 
     g_memusage_result = memusage_run_full();
 

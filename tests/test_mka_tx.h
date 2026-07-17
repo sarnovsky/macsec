@@ -6,7 +6,7 @@
  * This file verifies separation of MKPDU building from transmission commit,
  * successful and failed transmission notification and TX reason handling.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,7 +21,8 @@
 #include "mka.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #if (MACSEC_SELF_TEST != 0)
@@ -45,8 +46,7 @@ typedef union
     macsec_test_mka_tx_case_data_t periodic_after_success_data;
 } macsec_test_mka_tx_data_t;
 
-int macsec_test_mka_tx(macsec_test_mka_tx_data_t *data,
-                       int verbose);
+int macsec_test_mka_tx(macsec_test_mka_tx_data_t *data, int verbose);
 
 #endif /* MACSEC_SELF_TEST */
 

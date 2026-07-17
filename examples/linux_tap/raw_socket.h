@@ -3,7 +3,7 @@
  *
  * Linux AF_PACKET helper for the lightweight MACsec stack example.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  * SPDX-License-Identifier: MIT
  */
 
@@ -23,12 +23,8 @@ typedef struct
 int linux_raw_open(linux_raw_socket_t *raw, const char *ifname);
 void linux_raw_close(linux_raw_socket_t *raw);
 
-int linux_raw_receive(linux_raw_socket_t *raw,
-                      uint8_t *frame,
-                      size_t frame_capacity);
+int linux_raw_receive(linux_raw_socket_t *raw, uint8_t *frame, size_t frame_capacity);
 
-int linux_raw_send(linux_raw_socket_t *raw,
-                   const uint8_t *frame,
-                   size_t frame_len);
+int linux_raw_send(linux_raw_socket_t *raw, const uint8_t *frame, size_t frame_len);
 
 #endif

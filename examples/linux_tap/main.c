@@ -6,10 +6,10 @@
  * The application supports MACsec with either a statically configured SAK
  * or MKA using a pre-shared CAK/CKN pair.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  * SPDX-License-Identifier: MIT
  */
- 
+
 #include <errno.h>
 #include <poll.h>
 #include <signal.h>
@@ -79,15 +79,13 @@ typedef struct
 
 static void linux_tap_signal_handler(int signal_number)
 {
-    (void)signal_number;
+    (void) signal_number;
     linux_tap_running = 0;
 }
 
 static void linux_tap_print_mac(const uint8_t mac[6])
 {
-    printf("%02X:%02X:%02X:%02X:%02X:%02X",
-           mac[0], mac[1], mac[2],
-           mac[3], mac[4], mac[5]);
+    printf("%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
 static void linux_tap_usage(const char *program)
@@ -110,10 +108,7 @@ static void linux_tap_usage(const char *program)
             "\n"
             "After the program starts, configure an IP address:\n"
             "  sudo ip addr add 10.0.0.1/24 dev tap0\n",
-            program,
-            program,
-            program,
-            program);
+            program, program, program, program);
 }
 
 static char *linux_tap_trim(char *text)
@@ -125,7 +120,7 @@ static char *linux_tap_trim(char *text)
         return NULL;
     }
 
-    while (isspace((unsigned char)*text))
+    while (isspace((unsigned char) *text))
     {
         text++;
     }
@@ -137,7 +132,7 @@ static char *linux_tap_trim(char *text)
 
     end = text + strlen(text);
 
-    while ((end > text) && isspace((unsigned char)end[-1]))
+    while ((end > text) && isspace((unsigned char) end[-1]))
     {
         end--;
     }
@@ -167,18 +162,14 @@ static int linux_tap_hex_value(char c)
     return -1;
 }
 
-static int linux_tap_parse_hex(const char *text,
-                               uint8_t *output,
-                               size_t output_capacity,
+static int linux_tap_parse_hex(const char *text, uint8_t *output, size_t output_capacity,
                                size_t *output_len)
 {
     size_t text_len;
     size_t byte_count;
     size_t i;
 
-    if ((text == NULL) ||
-        (output == NULL) ||
-        (output_len == NULL))
+    if ((text == NULL) || (output == NULL) || (output_len == NULL))
     {
         return -1;
     }
@@ -210,8 +201,7 @@ static int linux_tap_parse_hex(const char *text,
             return -1;
         }
 
-        output[i] = (uint8_t)(((unsigned)high << 4) |
-                              (unsigned)low);
+        output[i] = (uint8_t) (((unsigned) high << 4) | (unsigned) low);
     }
 
     *output_len = byte_count;
@@ -219,8 +209,7 @@ static int linux_tap_parse_hex(const char *text,
     return 0;
 }
 
-static int linux_tap_parse_priority(const char *text,
-                                    uint8_t *priority)
+static int linux_tap_parse_priority(const char *text, uint8_t *priority)
 {
     char *end;
     unsigned long value;
@@ -235,21 +224,17 @@ static int linux_tap_parse_priority(const char *text,
 
     value = strtoul(text, &end, 10);
 
-    if ((errno != 0) ||
-        (end == text) ||
-        (*end != '\0') ||
-        (value > 255ul))
+    if ((errno != 0) || (end == text) || (*end != '\0') || (value > 255ul))
     {
         return -1;
     }
 
-    *priority = (uint8_t)value;
+    *priority = (uint8_t) value;
 
     return 0;
 }
 
-static int linux_tap_load_config(const char *path,
-                                 linux_tap_config_t *config)
+static int linux_tap_load_config(const char *path, linux_tap_config_t *config)
 {
     FILE *file;
     char line[LINUX_TAP_CONFIG_LINE_MAX];
@@ -267,10 +252,7 @@ static int linux_tap_load_config(const char *path,
     file = fopen(path, "r");
     if (file == NULL)
     {
-        fprintf(stderr,
-                "Cannot open configuration file '%s': %s\n",
-                path,
-                strerror(errno));
+        fprintf(stderr, "Cannot open configuration file '%s': %s\n", path, strerror(errno));
         return -1;
     }
 
@@ -283,10 +265,7 @@ static int linux_tap_load_config(const char *path,
 
         if ((strchr(line, '\n') == NULL) && !feof(file))
         {
-            fprintf(stderr,
-                    "%s:%lu: configuration line is too long\n",
-                    path,
-                    line_number);
+            fprintf(stderr, "%s:%lu: configuration line is too long\n", path, line_number);
 
             fclose(file);
             return -1;
@@ -314,34 +293,21 @@ static int linux_tap_load_config(const char *path,
 
             if (config->cak_set)
             {
-                fprintf(stderr,
-                        "%s:%lu: duplicate mka_cak\n",
-                        path,
-                        line_number);
+                fprintf(stderr, "%s:%lu: duplicate mka_cak\n", path, line_number);
                 fclose(file);
                 return -1;
             }
 
-            if (linux_tap_parse_hex(value,
-                                    config->cak,
-                                    sizeof(config->cak),
-                                    &config->cak_len) < 0)
+            if (linux_tap_parse_hex(value, config->cak, sizeof(config->cak), &config->cak_len) < 0)
             {
-                fprintf(stderr,
-                        "%s:%lu: invalid mka_cak\n",
-                        path,
-                        line_number);
+                fprintf(stderr, "%s:%lu: invalid mka_cak\n", path, line_number);
                 fclose(file);
                 return -1;
             }
 
-            if ((config->cak_len != 16u) &&
-                (config->cak_len != 32u))
+            if ((config->cak_len != 16u) && (config->cak_len != 32u))
             {
-                fprintf(stderr,
-                        "%s:%lu: mka_cak must contain 16 or 32 bytes\n",
-                        path,
-                        line_number);
+                fprintf(stderr, "%s:%lu: mka_cak must contain 16 or 32 bytes\n", path, line_number);
                 fclose(file);
                 return -1;
             }
@@ -354,34 +320,21 @@ static int linux_tap_load_config(const char *path,
 
             if (config->ckn_set)
             {
-                fprintf(stderr,
-                        "%s:%lu: duplicate mka_ckn\n",
-                        path,
-                        line_number);
+                fprintf(stderr, "%s:%lu: duplicate mka_ckn\n", path, line_number);
                 fclose(file);
                 return -1;
             }
 
-            if (linux_tap_parse_hex(value,
-                                    config->ckn,
-                                    sizeof(config->ckn),
-                                    &config->ckn_len) < 0)
+            if (linux_tap_parse_hex(value, config->ckn, sizeof(config->ckn), &config->ckn_len) < 0)
             {
-                fprintf(stderr,
-                        "%s:%lu: invalid mka_ckn\n",
-                        path,
-                        line_number);
+                fprintf(stderr, "%s:%lu: invalid mka_ckn\n", path, line_number);
                 fclose(file);
                 return -1;
             }
 
-            if ((config->ckn_len == 0u) ||
-                (config->ckn_len > LINUX_TAP_CKN_MAX_LEN))
+            if ((config->ckn_len == 0u) || (config->ckn_len > LINUX_TAP_CKN_MAX_LEN))
             {
-                fprintf(stderr,
-                        "%s:%lu: mka_ckn must contain 1 to 32 bytes\n",
-                        path,
-                        line_number);
+                fprintf(stderr, "%s:%lu: mka_ckn must contain 1 to 32 bytes\n", path, line_number);
                 fclose(file);
                 return -1;
             }
@@ -394,21 +347,14 @@ static int linux_tap_load_config(const char *path,
 
             if (config->priority_set)
             {
-                fprintf(stderr,
-                        "%s:%lu: duplicate mka_priority\n",
-                        path,
-                        line_number);
+                fprintf(stderr, "%s:%lu: duplicate mka_priority\n", path, line_number);
                 fclose(file);
                 return -1;
             }
 
-            if (linux_tap_parse_priority(value,
-                                         &config->mka_priority) < 0)
+            if (linux_tap_parse_priority(value, &config->mka_priority) < 0)
             {
-                fprintf(stderr,
-                        "%s:%lu: invalid mka_priority\n",
-                        path,
-                        line_number);
+                fprintf(stderr, "%s:%lu: invalid mka_priority\n", path, line_number);
                 fclose(file);
                 return -1;
             }
@@ -426,9 +372,7 @@ static int linux_tap_load_config(const char *path,
 
     if (ferror(file))
     {
-        fprintf(stderr,
-                "Cannot read configuration file '%s'\n",
-                path);
+        fprintf(stderr, "Cannot read configuration file '%s'\n", path);
         fclose(file);
         return -1;
     }
@@ -456,8 +400,7 @@ static int linux_tap_load_config(const char *path,
     return 0;
 }
 
-static int linux_tap_parse_static_sak(const char *argument,
-                                      linux_tap_config_t *config)
+static int linux_tap_parse_static_sak(const char *argument, linux_tap_config_t *config)
 {
     const char *value;
 
@@ -466,9 +409,7 @@ static int linux_tap_parse_static_sak(const char *argument,
         return -1;
     }
 
-    if (strncmp(argument,
-                LINUX_TAP_STATIC_SAK_PREFIX,
-                strlen(LINUX_TAP_STATIC_SAK_PREFIX)) != 0)
+    if (strncmp(argument, LINUX_TAP_STATIC_SAK_PREFIX, strlen(LINUX_TAP_STATIC_SAK_PREFIX)) != 0)
     {
         return -1;
     }
@@ -478,35 +419,28 @@ static int linux_tap_parse_static_sak(const char *argument,
     memset(config, 0, sizeof(*config));
     config->mode = LINUX_TAP_MODE_STATIC_SAK;
 
-    if (linux_tap_parse_hex(value,
-                            config->static_sak,
-                            sizeof(config->static_sak),
+    if (linux_tap_parse_hex(value, config->static_sak, sizeof(config->static_sak),
                             &config->static_sak_len) < 0)
     {
         fprintf(stderr, "Invalid STATIC_SAK hexadecimal value\n");
         return -1;
     }
 
-    if ((config->static_sak_len != 16u) &&
-        (config->static_sak_len != 32u))
+    if ((config->static_sak_len != 16u) && (config->static_sak_len != 32u))
     {
-        fprintf(stderr,
-                "STATIC_SAK must contain 16 or 32 bytes\n");
+        fprintf(stderr, "STATIC_SAK must contain 16 or 32 bytes\n");
         return -1;
     }
 
     return 0;
 }
 
-static int linux_tap_init_macsec(macsec_ctx_t *ctx,
-                                 const uint8_t local_mac[6],
+static int linux_tap_init_macsec(macsec_ctx_t *ctx, const uint8_t local_mac[6],
                                  const linux_tap_config_t *config)
 {
     macsec_config_t cfg;
 
-    if ((ctx == NULL) ||
-        (local_mac == NULL) ||
-        (config == NULL))
+    if ((ctx == NULL) || (local_mac == NULL) || (config == NULL))
     {
         return -1;
     }
@@ -523,9 +457,7 @@ static int linux_tap_init_macsec(macsec_ctx_t *ctx,
     {
         cfg.mode = MACSEC_MODE_STATIC_SAK;
 
-        memcpy(cfg.static_sak,
-               config->static_sak,
-               config->static_sak_len);
+        memcpy(cfg.static_sak, config->static_sak, config->static_sak_len);
 
         cfg.static_sak_len = config->static_sak_len;
         cfg.static_an = 0u;
@@ -547,9 +479,7 @@ static int linux_tap_init_macsec(macsec_ctx_t *ctx,
     return macsec_init(ctx, &cfg);
 }
 
-static int linux_tap_process_plain(macsec_ctx_t *macsec,
-                                   linux_raw_socket_t *raw,
-                                   int tap_fd,
+static int linux_tap_process_plain(macsec_ctx_t *macsec, linux_raw_socket_t *raw, int tap_fd,
                                    linux_tap_stats_t *stats)
 {
     uint8_t plain[LINUX_TAP_FRAME_MAX];
@@ -572,27 +502,18 @@ static int linux_tap_process_plain(macsec_ctx_t *macsec,
 
     stats->tap_rx++;
 
-    ret = macsec_output(macsec,
-                        plain,
-                        (size_t)plain_len,
-                        secure,
-                        &secure_len,
-                        sizeof(secure));
+    ret = macsec_output(macsec, plain, (size_t) plain_len, secure, &secure_len, sizeof(secure));
     if (ret != MACSEC_ERR_OK)
     {
         stats->encrypt_errors++;
 
         if (macsec->state != MACSEC_STATE_SECURED)
         {
-            printf("TX plaintext deferred: MACsec state=%u\n",
-                   (unsigned)macsec->state);
+            printf("TX plaintext deferred: MACsec state=%u\n", (unsigned) macsec->state);
         }
         else
         {
-            fprintf(stderr,
-                    "MACsec encrypt failed: ret=%d plain_len=%d\n",
-                    ret,
-                    plain_len);
+            fprintf(stderr, "MACsec encrypt failed: ret=%d plain_len=%d\n", ret, plain_len);
         }
 
         return 0;
@@ -614,9 +535,7 @@ static int linux_tap_process_plain(macsec_ctx_t *macsec,
     return 0;
 }
 
-static int linux_tap_process_physical(macsec_ctx_t *macsec,
-                                      linux_raw_socket_t *raw,
-                                      int tap_fd,
+static int linux_tap_process_physical(macsec_ctx_t *macsec, linux_raw_socket_t *raw, int tap_fd,
                                       linux_tap_stats_t *stats)
 {
     uint8_t input[LINUX_TAP_FRAME_MAX];
@@ -636,14 +555,11 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec,
 
     if (input_len < 14)
     {
-        fprintf(stderr,
-                "Received Ethernet frame is too short: len=%d\n",
-                input_len);
+        fprintf(stderr, "Received Ethernet frame is too short: len=%d\n", input_len);
         return 0;
     }
 
-    ether_type = ((uint16_t)input[12] << 8) |
-                  (uint16_t)input[13];
+    ether_type = ((uint16_t) input[12] << 8) | (uint16_t) input[13];
 
     if (ether_type == 0x888Eu)
     {
@@ -656,27 +572,17 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec,
 
     if (ether_type == 0x888Eu)
     {
-        printf("RX MKA len=%d state=%u\n",
-               input_len,
-               (unsigned)macsec->state);
+        printf("RX MKA len=%d state=%u\n", input_len, (unsigned) macsec->state);
     }
 
-    ret = macsec_input(macsec,
-                       input,
-                       (size_t)input_len,
-                       plain,
-                       &plain_len,
-                       sizeof(plain),
+    ret = macsec_input(macsec, input, (size_t) input_len, plain, &plain_len, sizeof(plain),
                        &pass_to_stack);
 
     if (ret != MACSEC_ERR_OK)
     {
         stats->decrypt_errors++;
 
-        fprintf(stderr,
-                "macsec_input failed: ret=%d type=0x%04X len=%d\n",
-                ret,
-                ether_type,
+        fprintf(stderr, "macsec_input failed: ret=%d type=0x%04X len=%d\n", ret, ether_type,
                 input_len);
 
         return 0;
@@ -705,13 +611,13 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec,
 static void linux_tap_print_stats(const linux_tap_stats_t *stats)
 {
     printf("\nStatistics:\n");
-    printf("  TAP -> stack       : %lu\n", (unsigned long)stats->tap_rx);
-    printf("  MACsec TX          : %lu\n", (unsigned long)stats->raw_tx);
-    printf("  MKA RX             : %lu\n", (unsigned long)stats->mka_rx);
-    printf("  MACsec RX          : %lu\n", (unsigned long)stats->macsec_rx);
-    printf("  stack -> TAP       : %lu\n", (unsigned long)stats->tap_tx);
-    printf("  encrypt errors     : %lu\n", (unsigned long)stats->encrypt_errors);
-    printf("  decrypt/input errors: %lu\n",(unsigned long)stats->decrypt_errors);
+    printf("  TAP -> stack       : %lu\n", (unsigned long) stats->tap_rx);
+    printf("  MACsec TX          : %lu\n", (unsigned long) stats->raw_tx);
+    printf("  MKA RX             : %lu\n", (unsigned long) stats->mka_rx);
+    printf("  MACsec RX          : %lu\n", (unsigned long) stats->macsec_rx);
+    printf("  stack -> TAP       : %lu\n", (unsigned long) stats->tap_tx);
+    printf("  encrypt errors     : %lu\n", (unsigned long) stats->encrypt_errors);
+    printf("  decrypt/input errors: %lu\n", (unsigned long) stats->decrypt_errors);
 }
 
 static uint32_t linux_tap_get_time_ms(void)
@@ -724,14 +630,12 @@ static uint32_t linux_tap_get_time_ms(void)
         return 0u;
     }
 
-    milliseconds = ((uint64_t)ts.tv_sec * 1000u) +
-                   ((uint64_t)ts.tv_nsec / 1000000u);
+    milliseconds = ((uint64_t) ts.tv_sec * 1000u) + ((uint64_t) ts.tv_nsec / 1000000u);
 
-    return (uint32_t)milliseconds;
+    return (uint32_t) milliseconds;
 }
 
-static int linux_tap_macsec_control_service(macsec_ctx_t *macsec,
-                                            linux_raw_socket_t *raw)
+static int linux_tap_macsec_control_service(macsec_ctx_t *macsec, linux_raw_socket_t *raw)
 {
     uint8_t frame[MACSEC_MKA_MAX_FRAME_LEN];
     size_t frame_len = 0u;
@@ -747,10 +651,7 @@ static int linux_tap_macsec_control_service(macsec_ctx_t *macsec,
         return -1;
     }
 
-    ret = macsec_get_control_frame(macsec,
-                                   frame,
-                                   &frame_len,
-                                   sizeof(frame));
+    ret = macsec_get_control_frame(macsec, frame, &frame_len, sizeof(frame));
 
     if (ret == MACSEC_ERR_OK)
     {
@@ -760,9 +661,7 @@ static int linux_tap_macsec_control_service(macsec_ctx_t *macsec,
             return -1;
         }
 
-        printf("TX MKA len=%zu state=%u\n",
-               frame_len,
-               (unsigned)macsec->state);
+        printf("TX MKA len=%zu state=%u\n", frame_len, (unsigned) macsec->state);
     }
 
     /*
@@ -821,9 +720,7 @@ int main(int argc, char *argv[])
         config_path = argv[3];
     }
 
-    if (strncmp(config_path,
-                LINUX_TAP_STATIC_SAK_PREFIX,
-                strlen(LINUX_TAP_STATIC_SAK_PREFIX)) == 0)
+    if (strncmp(config_path, LINUX_TAP_STATIC_SAK_PREFIX, strlen(LINUX_TAP_STATIC_SAK_PREFIX)) == 0)
     {
         if (linux_tap_parse_static_sak(config_path, &config) < 0)
         {
@@ -871,9 +768,7 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
-    ret = linux_tap_init_macsec(&macsec,
-                                raw.mac,
-                                &config);
+    ret = linux_tap_init_macsec(&macsec, raw.mac, &config);
     if (ret != MACSEC_ERR_OK)
     {
         fprintf(stderr, "macsec_init failed: ret=%d\n", ret);
@@ -900,8 +795,7 @@ int main(int argc, char *argv[])
         printf("  config  : %s\n", config_path);
         printf("  CAK     : %zu bytes\n", config.cak_len);
         printf("  CKN     : %zu bytes\n", config.ckn_len);
-        printf("  priority: %u\n",
-               (unsigned)config.mka_priority);
+        printf("  priority: %u\n", (unsigned) config.mka_priority);
     }
     printf("  replay  : disabled\n");
 
@@ -950,26 +844,21 @@ int main(int argc, char *argv[])
 
         if ((poll_fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0)
         {
-            fprintf(stderr, "TAP poll error: revents=0x%X\n",
-                    poll_fds[0].revents);
+            fprintf(stderr, "TAP poll error: revents=0x%X\n", poll_fds[0].revents);
             exit_code = EXIT_FAILURE;
             break;
         }
 
         if ((poll_fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) != 0)
         {
-            fprintf(stderr, "AF_PACKET poll error: revents=0x%X\n",
-                    poll_fds[1].revents);
+            fprintf(stderr, "AF_PACKET poll error: revents=0x%X\n", poll_fds[1].revents);
             exit_code = EXIT_FAILURE;
             break;
         }
 
         if ((poll_fds[0].revents & POLLIN) != 0)
         {
-            if (linux_tap_process_plain(&macsec,
-                                        &raw,
-                                        tap_fd,
-                                        &stats) < 0)
+            if (linux_tap_process_plain(&macsec, &raw, tap_fd, &stats) < 0)
             {
                 exit_code = EXIT_FAILURE;
                 break;
@@ -978,10 +867,7 @@ int main(int argc, char *argv[])
 
         if ((poll_fds[1].revents & POLLIN) != 0)
         {
-            if (linux_tap_process_physical(&macsec,
-                                         &raw,
-                                         tap_fd,
-                                         &stats) < 0)
+            if (linux_tap_process_physical(&macsec, &raw, tap_fd, &stats) < 0)
             {
                 exit_code = EXIT_FAILURE;
                 break;

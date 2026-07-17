@@ -6,7 +6,7 @@
  * This file contains the MKA protocol logic used to build, parse and process
  * MKA-related protocol data structures required for MACsec key management.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -25,30 +25,29 @@
  */
 #include "port/port.h"
 
-
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
-
 
 /******************************************************************************
  * MKA protocol constants
  *****************************************************************************/
 
-#define MACSEC_MKA_ETHERTYPE_EAPOL       0x888Eu
-#define MACSEC_MKA_EAPOL_TYPE_MKA        5u
-#define MACSEC_MKA_EAPOL_VERSION_2010    3u
+#define MACSEC_MKA_ETHERTYPE_EAPOL 0x888Eu
+#define MACSEC_MKA_EAPOL_TYPE_MKA 5u
+#define MACSEC_MKA_EAPOL_VERSION_2010 3u
 
-#define MACSEC_MKA_DST_LEN               6u
-#define MACSEC_MKA_SRC_LEN               6u
-#define MACSEC_MKA_SCI_LEN               8u
-#define MACSEC_MKA_MI_LEN                12u
-#define MACSEC_MKA_ICV_LEN               16u
-#define MACSEC_MKA_CA_NAME_MAX_LEN       32u
+#define MACSEC_MKA_DST_LEN 6u
+#define MACSEC_MKA_SRC_LEN 6u
+#define MACSEC_MKA_SCI_LEN 8u
+#define MACSEC_MKA_MI_LEN 12u
+#define MACSEC_MKA_ICV_LEN 16u
+#define MACSEC_MKA_CA_NAME_MAX_LEN 32u
 
-#define MACSEC_MKA_MAX_FRAME_LEN         512u
+#define MACSEC_MKA_MAX_FRAME_LEN 512u
 
-#define MACSEC_FRAME_MAX_SA              4u
+#define MACSEC_FRAME_MAX_SA 4u
 
 /******************************************************************************
  * MKA participant state
@@ -94,16 +93,14 @@ typedef enum
     MACSEC_MKA_STATE_ERROR
 } macsec_mka_state_t;
 
-
 /*
  * Temporary migration aliases.
  *
  * Remove these after mka.c and the existing tests have been migrated to the
  * new state names.
  */
-#define MACSEC_MKA_STATE_PEER_FOUND    MACSEC_MKA_STATE_PEER_DISCOVERED
+#define MACSEC_MKA_STATE_PEER_FOUND MACSEC_MKA_STATE_PEER_DISCOVERED
 #define MACSEC_MKA_STATE_AUTHENTICATED MACSEC_MKA_STATE_PEER_LIVE
-
 
 /******************************************************************************
  * SAK origin and lifecycle
@@ -127,7 +124,6 @@ typedef enum
      */
     MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER
 } macsec_mka_sak_origin_t;
-
 
 typedef enum
 {
@@ -177,7 +173,6 @@ typedef enum
     MACSEC_MKA_SAK_STATE_RETIRING
 } macsec_mka_sak_state_t;
 
-
 /******************************************************************************
  * MKA event flags
  *
@@ -187,45 +182,44 @@ typedef enum
 
 typedef uint32_t macsec_mka_event_flags_t;
 
-#define MACSEC_MKA_EVENT_NONE                  0x00000000u
+#define MACSEC_MKA_EVENT_NONE 0x00000000u
 
 /*
  * Peer lifecycle events.
  */
-#define MACSEC_MKA_EVENT_PEER_DISCOVERED       0x00000001u
-#define MACSEC_MKA_EVENT_PEER_LIVE             0x00000002u
-#define MACSEC_MKA_EVENT_PEER_LOST             0x00000004u
+#define MACSEC_MKA_EVENT_PEER_DISCOVERED 0x00000001u
+#define MACSEC_MKA_EVENT_PEER_LIVE 0x00000002u
+#define MACSEC_MKA_EVENT_PEER_LOST 0x00000004u
 
 /*
  * Key Server election event.
  */
-#define MACSEC_MKA_EVENT_KEY_SERVER_CHANGED    0x00000008u
+#define MACSEC_MKA_EVENT_KEY_SERVER_CHANGED 0x00000008u
 
 /*
  * SAK lifecycle events.
  */
-#define MACSEC_MKA_EVENT_SAK_AVAILABLE         0x00000010u
-#define MACSEC_MKA_EVENT_SAK_DISTRIBUTED       0x00000020u
-#define MACSEC_MKA_EVENT_SAK_ACTIVE            0x00000040u
-#define MACSEC_MKA_EVENT_SAK_CONFIRMED         0x00000080u
-#define MACSEC_MKA_EVENT_SAK_RETIRED           0x00000100u
+#define MACSEC_MKA_EVENT_SAK_AVAILABLE 0x00000010u
+#define MACSEC_MKA_EVENT_SAK_DISTRIBUTED 0x00000020u
+#define MACSEC_MKA_EVENT_SAK_ACTIVE 0x00000040u
+#define MACSEC_MKA_EVENT_SAK_CONFIRMED 0x00000080u
+#define MACSEC_MKA_EVENT_SAK_RETIRED 0x00000100u
 
 /*
  * Control-frame scheduling events.
  */
-#define MACSEC_MKA_EVENT_TX_INITIAL            0x00001000u
-#define MACSEC_MKA_EVENT_TX_PERIODIC           0x00002000u
-#define MACSEC_MKA_EVENT_TX_PEER_CHANGE        0x00004000u
-#define MACSEC_MKA_EVENT_TX_KEY_SERVER_CHANGE  0x00008000u
-#define MACSEC_MKA_EVENT_TX_DISTRIBUTE_SAK     0x00010000u
-#define MACSEC_MKA_EVENT_TX_SAK_USE            0x00020000u
+#define MACSEC_MKA_EVENT_TX_INITIAL 0x00001000u
+#define MACSEC_MKA_EVENT_TX_PERIODIC 0x00002000u
+#define MACSEC_MKA_EVENT_TX_PEER_CHANGE 0x00004000u
+#define MACSEC_MKA_EVENT_TX_KEY_SERVER_CHANGE 0x00008000u
+#define MACSEC_MKA_EVENT_TX_DISTRIBUTE_SAK 0x00010000u
+#define MACSEC_MKA_EVENT_TX_SAK_USE 0x00020000u
 
 /*
  * Rekey and error events.
  */
-#define MACSEC_MKA_EVENT_REKEY_REQUIRED        0x00100000u
-#define MACSEC_MKA_EVENT_ERROR                 0x80000000u
-
+#define MACSEC_MKA_EVENT_REKEY_REQUIRED 0x00100000u
+#define MACSEC_MKA_EVENT_ERROR 0x80000000u
 
 /******************************************************************************
  * MKA transmit reasons
@@ -236,15 +230,14 @@ typedef uint32_t macsec_mka_event_flags_t;
 
 typedef uint32_t macsec_mka_tx_reason_flags_t;
 
-#define MACSEC_MKA_TX_REASON_NONE               0x00000000u
-#define MACSEC_MKA_TX_REASON_INITIAL            0x00000001u
-#define MACSEC_MKA_TX_REASON_PERIODIC           0x00000002u
-#define MACSEC_MKA_TX_REASON_PEER_CHANGE        0x00000004u
-#define MACSEC_MKA_TX_REASON_KEY_SERVER_CHANGE  0x00000008u
-#define MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK     0x00000010u
-#define MACSEC_MKA_TX_REASON_SAK_USE            0x00000020u
-#define MACSEC_MKA_TX_REASON_REKEY              0x00000040u
-
+#define MACSEC_MKA_TX_REASON_NONE 0x00000000u
+#define MACSEC_MKA_TX_REASON_INITIAL 0x00000001u
+#define MACSEC_MKA_TX_REASON_PERIODIC 0x00000002u
+#define MACSEC_MKA_TX_REASON_PEER_CHANGE 0x00000004u
+#define MACSEC_MKA_TX_REASON_KEY_SERVER_CHANGE 0x00000008u
+#define MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK 0x00000010u
+#define MACSEC_MKA_TX_REASON_SAK_USE 0x00000020u
+#define MACSEC_MKA_TX_REASON_REKEY 0x00000040u
 
 /******************************************************************************
  * SAK installation directions
@@ -252,10 +245,9 @@ typedef uint32_t macsec_mka_tx_reason_flags_t;
 
 typedef uint8_t macsec_mka_install_directions_t;
 
-#define MACSEC_MKA_INSTALL_NONE  0x00u
-#define MACSEC_MKA_INSTALL_RX    0x01u
-#define MACSEC_MKA_INSTALL_TX    0x02u
-
+#define MACSEC_MKA_INSTALL_NONE 0x00u
+#define MACSEC_MKA_INSTALL_RX 0x01u
+#define MACSEC_MKA_INSTALL_TX 0x02u
 
 /******************************************************************************
  * Parsed MKA Basic Parameter Set
@@ -290,7 +282,6 @@ typedef struct
     uint8_t icv[MACSEC_MKA_ICV_LEN];
 } macsec_mka_basic_t;
 
-
 /******************************************************************************
  * MKA peer
  *****************************************************************************/
@@ -314,7 +305,6 @@ typedef struct
     macsec_bool_t seen_in_peer_list;
     macsec_bool_t live;
 } macsec_mka_peer_t;
-
 
 /******************************************************************************
  * MKA SAK
@@ -379,7 +369,6 @@ typedef struct
      */
     uint32_t lowest_pn;
 } macsec_mka_sak_t;
-
 
 /******************************************************************************
  * Metadata describing a built MKPDU
@@ -463,49 +452,33 @@ typedef struct
     uint32_t latest_lowest_pn;
 } macsec_mka_ctx_t;
 
-
 /******************************************************************************
  * Existing MKA API
  *
  * These functions remain available during the migration.
  *****************************************************************************/
 
-int macsec_mka_init(macsec_mka_ctx_t *ctx,
-                    const uint8_t *cak,
-                    size_t cak_len,
-                    const uint8_t *ckn,
-                    size_t ckn_len,
-                    const uint8_t local_mac[MACSEC_MKA_SRC_LEN],
-                    uint16_t port_id,
-                    uint8_t key_server_priority,
-                    uint32_t tx_interval_ms);
+int macsec_mka_init(macsec_mka_ctx_t *ctx, const uint8_t *cak, size_t cak_len, const uint8_t *ckn,
+                    size_t ckn_len, const uint8_t local_mac[MACSEC_MKA_SRC_LEN], uint16_t port_id,
+                    uint8_t key_server_priority, uint32_t tx_interval_ms);
 
 void macsec_mka_clear(macsec_mka_ctx_t *ctx);
 
 macsec_mka_state_t macsec_mka_get_state(const macsec_mka_ctx_t *ctx);
 
-int macsec_mka_tick(macsec_mka_ctx_t *ctx,
-                    uint32_t now_ms);
+int macsec_mka_tick(macsec_mka_ctx_t *ctx, uint32_t now_ms);
 
-macsec_bool_t macsec_mka_is_eapol_mka(const uint8_t *frame,
-                                      size_t frame_len);
+macsec_bool_t macsec_mka_is_eapol_mka(const uint8_t *frame, size_t frame_len);
 
-int macsec_mka_parse_basic(const uint8_t *frame,
-                           size_t frame_len,
-                           macsec_mka_basic_t *out);
+int macsec_mka_parse_basic(const uint8_t *frame, size_t frame_len, macsec_mka_basic_t *out);
 
-int macsec_mka_input(macsec_mka_ctx_t *ctx,
-                     const uint8_t *frame,
-                     size_t frame_len,
+int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_len,
                      uint32_t now_ms);
 
-int macsec_mka_verify_icv(macsec_mka_ctx_t *ctx,
-                          const uint8_t *frame,
-                          size_t frame_len,
+int macsec_mka_verify_icv(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_len,
                           const macsec_mka_basic_t *basic);
 
 void macsec_mka_print_basic(const macsec_mka_basic_t *basic);
-
 
 /******************************************************************************
  * Legacy TX and SAK API
@@ -515,13 +488,9 @@ void macsec_mka_print_basic(const macsec_mka_basic_t *basic);
 
 macsec_bool_t macsec_mka_has_sak(const macsec_mka_ctx_t *ctx);
 
-const macsec_mka_sak_t *
-macsec_mka_get_latest_sak(const macsec_mka_ctx_t *ctx);
+const macsec_mka_sak_t *macsec_mka_get_latest_sak(const macsec_mka_ctx_t *ctx);
 
-void macsec_mka_set_latest_key_tx(macsec_mka_ctx_t *ctx,
-                                  uint8_t an,
-                                  uint32_t lowest_pn);
-
+void macsec_mka_set_latest_key_tx(macsec_mka_ctx_t *ctx, uint8_t an, uint32_t lowest_pn);
 
 /******************************************************************************
  * New event-driven MKA API
@@ -533,36 +502,26 @@ void macsec_mka_set_latest_key_tx(macsec_mka_ctx_t *ctx,
 /*
  * Return and atomically clear all currently pending MKA events.
  */
-macsec_mka_event_flags_t
-macsec_mka_take_events(macsec_mka_ctx_t *ctx);
-
+macsec_mka_event_flags_t macsec_mka_take_events(macsec_mka_ctx_t *ctx);
 
 /*
  * Build an MKPDU without yet committing the transmission as successful.
  */
-int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx,
-                              uint8_t *frame,
-                              size_t *frame_len,
-                              size_t frame_max_len,
-                              macsec_mka_tx_meta_t *meta);
-
+int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *frame_len,
+                              size_t frame_max_len, macsec_mka_tx_meta_t *meta);
 
 /*
  * Notify MKA that the previously built MKPDU was successfully transmitted.
  */
-int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx,
-                                 const macsec_mka_tx_meta_t *meta,
+int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta_t *meta,
                                  uint32_t now_ms);
-
 
 /*
  * Notify MKA that transmission of the previously built MKPDU failed.
  *
  * Required TX reasons remain scheduled for a later retry.
  */
-void macsec_mka_notify_tx_failure(macsec_mka_ctx_t *ctx,
-                                  const macsec_mka_tx_meta_t *meta);
-
+void macsec_mka_notify_tx_failure(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta_t *meta);
 
 /*
  * Return a SAK that is ready for installation in the MACsec data-plane.
@@ -571,28 +530,20 @@ void macsec_mka_notify_tx_failure(macsec_mka_ctx_t *ctx,
  * A SAK in INSTALL_PENDING may be returned again until all required RX and
  * TX installation directions have been confirmed.
  */
-int macsec_mka_take_sak_for_install(macsec_mka_ctx_t *ctx,
-                                    macsec_mka_sak_t *sak);
+int macsec_mka_take_sak_for_install(macsec_mka_ctx_t *ctx, macsec_mka_sak_t *sak);
 
 /*
  * Notify MKA which SAK directions were successfully installed in the
  * MACsec data-plane.
  */
-int macsec_mka_notify_sak_installed(
-    macsec_mka_ctx_t *ctx,
-    uint32_t key_number,
-    uint8_t an,
-    macsec_mka_install_directions_t installed_directions,
-    uint32_t lowest_pn);
-
+int macsec_mka_notify_sak_installed(macsec_mka_ctx_t *ctx, uint32_t key_number, uint8_t an,
+                                    macsec_mka_install_directions_t installed_directions,
+                                    uint32_t lowest_pn);
 
 /*
  * Notify MKA that an old SAK has been removed from the MACsec data-plane.
  */
-int macsec_mka_notify_sak_retired(macsec_mka_ctx_t *ctx,
-                                  uint32_t key_number,
-                                  uint8_t an);
-
+int macsec_mka_notify_sak_retired(macsec_mka_ctx_t *ctx, uint32_t key_number, uint8_t an);
 
 #ifdef __cplusplus
 }

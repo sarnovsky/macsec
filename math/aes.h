@@ -4,7 +4,7 @@
  * Lightweight MACsec stack
  * Minimal AES interface for the embedded MACsec stack
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -20,38 +20,33 @@
 #define MATH_SELF_TEST
 #endif
 
-#define MATH_AES_ENCRYPT     1
-#define MATH_AES_DECRYPT     0
+#define MATH_AES_ENCRYPT 1
+#define MATH_AES_DECRYPT 0
 
 typedef struct
 {
     uint32_t *round_keys;
     int number_of_rounds;
-    uint32_t buf[68];   /* round-key buffer */
+    uint32_t buf[68]; /* round-key buffer */
 } math_aes_context;
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-void math_aes_init( math_aes_context *ctx );
-void math_aes_free( math_aes_context *ctx );
+void math_aes_init(math_aes_context *ctx);
+void math_aes_free(math_aes_context *ctx);
 
-int math_aes_setkey_enc( math_aes_context *ctx,
-                         const unsigned char *key,
-                         unsigned int keybits );
+int math_aes_setkey_enc(math_aes_context *ctx, const unsigned char *key, unsigned int keybits);
 
-int math_aes_setkey_dec( math_aes_context *ctx,
-                         const unsigned char *key,
-                         unsigned int keybits );
+int math_aes_setkey_dec(math_aes_context *ctx, const unsigned char *key, unsigned int keybits);
 
-int math_aes_crypt_ecb( math_aes_context *ctx,
-                        int mode,
-                        const unsigned char input[16],
-                        unsigned char output[16] );
+int math_aes_crypt_ecb(math_aes_context *ctx, int mode, const unsigned char input[16],
+                       unsigned char output[16]);
 
 #if defined(MATH_SELF_TEST)
-int math_aes_self_test( math_aes_context *ctx, int verbose );
+int math_aes_self_test(math_aes_context *ctx, int verbose);
 #endif
 
 #ifdef __cplusplus

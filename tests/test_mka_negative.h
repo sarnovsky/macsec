@@ -6,7 +6,7 @@
  * This file verifies correct handling of malformed, invalid and unexpected
  * MKA messages, ensuring proper error detection and protocol robustness.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -18,7 +18,8 @@
 #define TEST_MKA_NEGATIVE_H
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #include "macsec_common.h"
@@ -68,27 +69,21 @@ typedef struct
 
 typedef union
 {
-    macsec_test_mka_negative_bad_ethertype_data_t
-        test_mka_negative_bad_ethertype_data;
+    macsec_test_mka_negative_bad_ethertype_data_t test_mka_negative_bad_ethertype_data;
 
-    macsec_test_mka_negative_bad_eapol_type_data_t
-        test_mka_negative_bad_eapol_type_data;
+    macsec_test_mka_negative_bad_eapol_type_data_t test_mka_negative_bad_eapol_type_data;
 
-    macsec_test_mka_negative_short_frame_data_t
-        test_mka_negative_short_frame_data_data;
+    macsec_test_mka_negative_short_frame_data_t test_mka_negative_short_frame_data_data;
 
-    macsec_test_mka_negative_bad_icv_data_t
-        test_mka_negative_bad_icv_data_data;
+    macsec_test_mka_negative_bad_icv_data_t test_mka_negative_bad_icv_data_data;
 
-    macsec_test_mka_negative_wrong_cak_fails_icv_data_t
-        test_mka_negative_wrong_cak_fails_icv_data;
+    macsec_test_mka_negative_wrong_cak_fails_icv_data_t test_mka_negative_wrong_cak_fails_icv_data;
 
     macsec_test_mka_negative_reflected_own_frame_ignored_data_t
         test_mka_negative_reflected_own_frame_ignored_data;
 } macsec_test_mka_negative_data_t;
 
-int macsec_test_mka_negative(macsec_test_mka_negative_data_t *data,
-                             int verbose);
+int macsec_test_mka_negative(macsec_test_mka_negative_data_t *data, int verbose);
 
 #endif /* MACSEC_SELF_TEST */
 

@@ -6,7 +6,7 @@
  * This file connects the individual MACsec modules together and provides
  * the main public entry points used by the application or network driver.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -16,9 +16,7 @@
 
 #include "macsec.h"
 
-
-static void macsec_build_sci(macsec_frame_sci_t *sci,
-                             const macsec_mac_addr_t *mac,
+static void macsec_build_sci(macsec_frame_sci_t *sci, const macsec_mac_addr_t *mac,
                              uint16_t port_id)
 {
     macsec_assert(sci != NULL);
@@ -31,23 +29,17 @@ static void macsec_build_sci(macsec_frame_sci_t *sci,
     MACSEC_MEDIUM_HEX(("MACsec SCI", sci->bytes, 8));
 }
 
-static macsec_bool_t macsec_sak_equal(const macsec_frame_sak_t *sak,
-                                      const uint8_t *key,
+static macsec_bool_t macsec_sak_equal(const macsec_frame_sak_t *sak, const uint8_t *key,
                                       size_t key_len)
 {
     macsec_assert(sak != NULL);
     macsec_assert(key != NULL);
 
-    return sak->valid &&
-           sak->key_len == key_len &&
-           memcmp(sak->key, key, key_len) == 0;
+    return sak->valid && sak->key_len == key_len && memcmp(sak->key, key, key_len) == 0;
 }
 
-static int macsec_install_rx_sak(macsec_ctx_t *ctx,
-                                 const uint8_t *sak_key,
-                                 size_t sak_len,
-                                 uint8_t an,
-                                 uint32_t lowest_pn)
+static int macsec_install_rx_sak(macsec_ctx_t *ctx, const uint8_t *sak_key, size_t sak_len,
+                                 uint8_t an, uint32_t lowest_pn)
 {
     macsec_frame_sak_t sak;
     uint8_t real_an;
@@ -55,10 +47,8 @@ static int macsec_install_rx_sak(macsec_ctx_t *ctx,
 
     macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
     macsec_check(sak_key != NULL, MACSEC_ERR_PARAM);
-    macsec_check((sak_len == 16u) || (sak_len == 32u),
-                 MACSEC_ERR_PARAM);
-    macsec_check(an < MACSEC_FRAME_MAX_SA,
-                 MACSEC_ERR_PARAM);
+    macsec_check((sak_len == 16u) || (sak_len == 32u), MACSEC_ERR_PARAM);
+    macsec_check(an < MACSEC_FRAME_MAX_SA, MACSEC_ERR_PARAM);
 
     real_an = an;
 
@@ -67,9 +57,7 @@ static int macsec_install_rx_sak(macsec_ctx_t *ctx,
         lowest_pn = 1u;
     }
 
-    if (macsec_sak_equal(&ctx->frame_crypto.rx_sak[real_an],
-                         sak_key,
-                         sak_len))
+    if (macsec_sak_equal(&ctx->frame_crypto.rx_sak[real_an], sak_key, sak_len))
     {
         return MACSEC_ERR_OK;
     }
@@ -77,21 +65,16 @@ static int macsec_install_rx_sak(macsec_ctx_t *ctx,
     memset(&sak, 0, sizeof(sak));
     memcpy(sak.key, sak_key, sak_len);
 
-    sak.key_len = (uint8_t)sak_len;
+    sak.key_len = (uint8_t) sak_len;
     sak.an = real_an;
     sak.lowest_acceptable_pn = lowest_pn;
     sak.next_pn = 1u;
     sak.valid = MACSEC_TRUE;
 
-    MACSEC_MEDIUM((
-        "MACsec install RX SAK: an=%u sak_len=%lu lowest_pn=%lu\n",
-        real_an,
-        (unsigned long)sak_len,
-        (unsigned long)lowest_pn));
+    MACSEC_MEDIUM(("MACsec install RX SAK: an=%u sak_len=%lu lowest_pn=%lu\n", real_an,
+                   (unsigned long) sak_len, (unsigned long) lowest_pn));
 
-    ret = macsec_frame_crypto_set_rx_sak(
-        &ctx->frame_crypto,
-        &sak);
+    ret = macsec_frame_crypto_set_rx_sak(&ctx->frame_crypto, &sak);
 
     if (ret != MACSEC_ERR_OK)
     {
@@ -101,9 +84,7 @@ static int macsec_install_rx_sak(macsec_ctx_t *ctx,
     return MACSEC_ERR_OK;
 }
 
-static int macsec_install_tx_sak(macsec_ctx_t *ctx,
-                                 const uint8_t *sak_key,
-                                 size_t sak_len,
+static int macsec_install_tx_sak(macsec_ctx_t *ctx, const uint8_t *sak_key, size_t sak_len,
                                  uint8_t an)
 {
     macsec_frame_sak_t sak;
@@ -114,8 +95,7 @@ static int macsec_install_tx_sak(macsec_ctx_t *ctx,
     macsec_check(sak_key != NULL, MACSEC_ERR_PARAM);
     macsec_check((sak_len == 16u) || (sak_len == 32u), MACSEC_ERR_PARAM);
 
-    macsec_check(an < MACSEC_FRAME_MAX_SA,
-                 MACSEC_ERR_PARAM);
+    macsec_check(an < MACSEC_FRAME_MAX_SA, MACSEC_ERR_PARAM);
 
     real_an = an;
 
@@ -128,15 +108,14 @@ static int macsec_install_tx_sak(macsec_ctx_t *ctx,
     memset(&sak, 0, sizeof(sak));
     memcpy(sak.key, sak_key, sak_len);
 
-    sak.key_len = (uint8_t)sak_len;
+    sak.key_len = (uint8_t) sak_len;
     sak.an = real_an;
     sak.next_pn = 1u;
     sak.lowest_acceptable_pn = 1u;
     sak.valid = MACSEC_TRUE;
 
-    MACSEC_MEDIUM(("MACsec activate TX SAK: an=%u sak_len=%lu\n",
-                   real_an,
-                   (unsigned long)sak_len));
+    MACSEC_MEDIUM(
+        ("MACsec activate TX SAK: an=%u sak_len=%lu\n", real_an, (unsigned long) sak_len));
 
     ret = macsec_frame_crypto_set_tx_sak(&ctx->frame_crypto, &sak);
     if (ret != MACSEC_ERR_OK)
@@ -153,27 +132,19 @@ static int macsec_install_static_sak(macsec_ctx_t *ctx)
     uint8_t an;
 
     macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
-    macsec_check(ctx->cfg.static_an < MACSEC_FRAME_MAX_SA,
-                 MACSEC_ERR_PARAM);
+    macsec_check(ctx->cfg.static_an < MACSEC_FRAME_MAX_SA, MACSEC_ERR_PARAM);
 
     an = ctx->cfg.static_an;
 
     MACSEC_MEDIUM(("MACsec install static SAK an=%u\n", an));
 
-    ret = macsec_install_rx_sak(ctx,
-                                ctx->cfg.static_sak,
-                                ctx->cfg.static_sak_len,
-                                an,
-                                1u);
+    ret = macsec_install_rx_sak(ctx, ctx->cfg.static_sak, ctx->cfg.static_sak_len, an, 1u);
     if (ret != MACSEC_ERR_OK)
     {
         return ret;
     }
 
-    ret = macsec_install_tx_sak(ctx,
-                                ctx->cfg.static_sak,
-                                ctx->cfg.static_sak_len,
-                                an);
+    ret = macsec_install_tx_sak(ctx, ctx->cfg.static_sak, ctx->cfg.static_sak_len, an);
     if (ret != MACSEC_ERR_OK)
     {
         return ret;
@@ -193,9 +164,7 @@ static int macsec_process_mka_sak_install(macsec_ctx_t *ctx)
 
     memset(&sak, 0, sizeof(sak));
 
-    ret = macsec_mka_take_sak_for_install(
-        &ctx->mka,
-        &sak);
+    ret = macsec_mka_take_sak_for_install(&ctx->mka, &sak);
 
     if (ret == MACSEC_ERR_NOT_READY)
     {
@@ -204,16 +173,12 @@ static int macsec_process_mka_sak_install(macsec_ctx_t *ctx)
 
     if (ret != MACSEC_ERR_OK)
     {
-        MACSEC_ERROR((
-            "MACsec MKA SAK take failed ret=%d\n",
-            ret));
+        MACSEC_ERROR(("MACsec MKA SAK take failed ret=%d\n", ret));
 
         return ret;
     }
 
-    if (!sak.valid ||
-        ((sak.sak_len != 16u) &&
-         (sak.sak_len != 32u)) ||
+    if (!sak.valid || ((sak.sak_len != 16u) && (sak.sak_len != 32u)) ||
         (sak.an >= MACSEC_FRAME_MAX_SA))
     {
         ret = MACSEC_ERR_STATE;
@@ -225,40 +190,25 @@ static int macsec_process_mka_sak_install(macsec_ctx_t *ctx)
      */
     if (!sak.rx_installed)
     {
-        ret = macsec_install_rx_sak(
-            ctx,
-            sak.sak,
-            sak.sak_len,
-            sak.an,
-            sak.lowest_pn);
+        ret = macsec_install_rx_sak(ctx, sak.sak, sak.sak_len, sak.an, sak.lowest_pn);
 
         if (ret != MACSEC_ERR_OK)
         {
-            MACSEC_ERROR((
-                "MACsec MKA RX SAK install failed: "
-                "ret=%d key_number=%lu an=%u\n",
-                ret,
-                (unsigned long)sak.key_number,
-                sak.an));
+            MACSEC_ERROR(("MACsec MKA RX SAK install failed: "
+                          "ret=%d key_number=%lu an=%u\n",
+                          ret, (unsigned long) sak.key_number, sak.an));
 
             goto cleanup;
         }
 
-        ret = macsec_mka_notify_sak_installed(
-            &ctx->mka,
-            sak.key_number,
-            sak.an,
-            MACSEC_MKA_INSTALL_RX,
-            sak.lowest_pn);
+        ret = macsec_mka_notify_sak_installed(&ctx->mka, sak.key_number, sak.an,
+                                              MACSEC_MKA_INSTALL_RX, sak.lowest_pn);
 
         if (ret != MACSEC_ERR_OK)
         {
-            MACSEC_ERROR((
-                "MACsec MKA RX SAK confirmation failed: "
-                "ret=%d key_number=%lu an=%u\n",
-                ret,
-                (unsigned long)sak.key_number,
-                sak.an));
+            MACSEC_ERROR(("MACsec MKA RX SAK confirmation failed: "
+                          "ret=%d key_number=%lu an=%u\n",
+                          ret, (unsigned long) sak.key_number, sak.an));
 
             goto cleanup;
         }
@@ -269,50 +219,33 @@ static int macsec_process_mka_sak_install(macsec_ctx_t *ctx)
      */
     if (!sak.tx_installed)
     {
-        ret = macsec_install_tx_sak(
-            ctx,
-            sak.sak,
-            sak.sak_len,
-            sak.an);
+        ret = macsec_install_tx_sak(ctx, sak.sak, sak.sak_len, sak.an);
 
         if (ret != MACSEC_ERR_OK)
         {
-            MACSEC_ERROR((
-                "MACsec MKA TX SAK install failed: "
-                "ret=%d key_number=%lu an=%u\n",
-                ret,
-                (unsigned long)sak.key_number,
-                sak.an));
+            MACSEC_ERROR(("MACsec MKA TX SAK install failed: "
+                          "ret=%d key_number=%lu an=%u\n",
+                          ret, (unsigned long) sak.key_number, sak.an));
 
             goto cleanup;
         }
 
-        ret = macsec_mka_notify_sak_installed(
-            &ctx->mka,
-            sak.key_number,
-            sak.an,
-            MACSEC_MKA_INSTALL_TX,
-            sak.lowest_pn);
+        ret = macsec_mka_notify_sak_installed(&ctx->mka, sak.key_number, sak.an,
+                                              MACSEC_MKA_INSTALL_TX, sak.lowest_pn);
 
         if (ret != MACSEC_ERR_OK)
         {
-            MACSEC_ERROR((
-                "MACsec MKA TX SAK confirmation failed: "
-                "ret=%d key_number=%lu an=%u\n",
-                ret,
-                (unsigned long)sak.key_number,
-                sak.an));
+            MACSEC_ERROR(("MACsec MKA TX SAK confirmation failed: "
+                          "ret=%d key_number=%lu an=%u\n",
+                          ret, (unsigned long) sak.key_number, sak.an));
 
             goto cleanup;
         }
     }
 
-    MACSEC_MEDIUM((
-        "MACsec MKA SAK installed: "
-        "key_number=%lu an=%u sak_len=%lu\n",
-        (unsigned long)sak.key_number,
-        sak.an,
-        (unsigned long)sak.sak_len));
+    MACSEC_MEDIUM(("MACsec MKA SAK installed: "
+                   "key_number=%lu an=%u sak_len=%lu\n",
+                   (unsigned long) sak.key_number, sak.an, (unsigned long) sak.sak_len));
 
     ret = MACSEC_ERR_OK;
 
@@ -335,16 +268,13 @@ static int macsec_process_mka_events(macsec_ctx_t *ctx)
         return MACSEC_ERR_OK;
     }
 
-    MACSEC_INFO((
-        "MACsec process MKA events: 0x%08lX\n",
-        (unsigned long)events));
+    MACSEC_INFO(("MACsec process MKA events: 0x%08lX\n", (unsigned long) events));
 
     if ((events & MACSEC_MKA_EVENT_ERROR) != 0u)
     {
         ctx->state = MACSEC_STATE_ERROR;
 
-        MACSEC_ERROR((
-            "MACsec state: ERROR after MKA error event\n"));
+        MACSEC_ERROR(("MACsec state: ERROR after MKA error event\n"));
 
         return MACSEC_ERR_STATE;
     }
@@ -360,16 +290,14 @@ static int macsec_process_mka_events(macsec_ctx_t *ctx)
          */
         ctx->state = MACSEC_STATE_WAIT_MKA;
 
-        MACSEC_MEDIUM((
-            "MACsec state: WAIT_MKA after peer loss\n"));
+        MACSEC_MEDIUM(("MACsec state: WAIT_MKA after peer loss\n"));
     }
 
     if ((events & MACSEC_MKA_EVENT_SAK_ACTIVE) != 0u)
     {
         ctx->state = MACSEC_STATE_SECURED;
 
-        MACSEC_MEDIUM((
-            "MACsec state: SECURED after active MKA SAK\n"));
+        MACSEC_MEDIUM(("MACsec state: SECURED after active MKA SAK\n"));
     }
 
     if ((events & MACSEC_MKA_EVENT_SAK_RETIRED) != 0u)
@@ -378,8 +306,7 @@ static int macsec_process_mka_events(macsec_ctx_t *ctx)
         {
             ctx->state = MACSEC_STATE_WAIT_MKA;
 
-            MACSEC_MEDIUM((
-                "MACsec state: WAIT_MKA after SAK retirement\n"));
+            MACSEC_MEDIUM(("MACsec state: WAIT_MKA after SAK retirement\n"));
         }
     }
 
@@ -428,7 +355,7 @@ static int macsec_init_frame_crypto(macsec_ctx_t *ctx)
 
     MACSEC_MEDIUM(("MACsec frame crypto init OK: replay=%u window=%lu\n",
                    ctx->frame_crypto.replay_protect ? 1u : 0u,
-                   (unsigned long)ctx->frame_crypto.replay_window));
+                   (unsigned long) ctx->frame_crypto.replay_window));
 
     return MACSEC_ERR_OK;
 }
@@ -442,18 +369,11 @@ static int macsec_init_mka(macsec_ctx_t *ctx)
 
     priority = ctx->cfg.key_server_priority;
 
-    MACSEC_MEDIUM(("MACsec MKA init: priority=%u tx_interval=%lu\n",
-                   priority,
-                   (unsigned long)ctx->cfg.mka_tx_interval_ms));
+    MACSEC_MEDIUM(("MACsec MKA init: priority=%u tx_interval=%lu\n", priority,
+                   (unsigned long) ctx->cfg.mka_tx_interval_ms));
 
-    ret = macsec_mka_init(&ctx->mka,
-                          ctx->cfg.cak,
-                          ctx->cfg.cak_len,
-                          ctx->cfg.ckn,
-                          ctx->cfg.ckn_len,
-                          ctx->cfg.local_mac.addr,
-                          ctx->cfg.port_id,
-                          priority,
+    ret = macsec_mka_init(&ctx->mka, ctx->cfg.cak, ctx->cfg.cak_len, ctx->cfg.ckn, ctx->cfg.ckn_len,
+                          ctx->cfg.local_mac.addr, ctx->cfg.port_id, priority,
                           ctx->cfg.mka_tx_interval_ms);
 
     if (ret != MACSEC_ERR_OK)
@@ -485,9 +405,7 @@ int macsec_init(macsec_ctx_t *ctx, const macsec_config_t *cfg)
         ctx->cfg.port_id = 1u;
     }
 
-    MACSEC_MEDIUM(("MACsec init: mode=%u port_id=%u\n",
-                   ctx->cfg.mode,
-                   ctx->cfg.port_id));
+    MACSEC_MEDIUM(("MACsec init: mode=%u port_id=%u\n", ctx->cfg.mode, ctx->cfg.port_id));
 
     MACSEC_MEDIUM_HEX(("MACsec local MAC", ctx->cfg.local_mac.addr, 6));
 
@@ -572,13 +490,8 @@ macsec_bool_t macsec_is_secured(const macsec_ctx_t *ctx)
     return ctx->state == MACSEC_STATE_SECURED;
 }
 
-int macsec_input(macsec_ctx_t *ctx,
-                 const uint8_t *rx_frame,
-                 size_t rx_len,
-                 uint8_t *plain_frame,
-                 size_t *plain_len,
-                 size_t plain_max_len,
-                 macsec_bool_t *pass_to_stack)
+int macsec_input(macsec_ctx_t *ctx, const uint8_t *rx_frame, size_t rx_len, uint8_t *plain_frame,
+                 size_t *plain_len, size_t plain_max_len, macsec_bool_t *pass_to_stack)
 {
     int ret;
 
@@ -592,9 +505,7 @@ int macsec_input(macsec_ctx_t *ctx,
     *pass_to_stack = MACSEC_FALSE;
 
     MACSEC_INFO(("MACsec RX frame: len=%lu state=%u mode=%u ethertype=0x%04X\n",
-                 (unsigned long)rx_len,
-                 ctx->state,
-                 ctx->cfg.mode,
+                 (unsigned long) rx_len, ctx->state, ctx->cfg.mode,
                  (rx_len >= 14u) ? macsec_rd_be16(&rx_frame[12]) : 0u));
 
     if (ctx->cfg.mode == MACSEC_MODE_DISABLED)
@@ -606,21 +517,16 @@ int macsec_input(macsec_ctx_t *ctx,
         *plain_len = rx_len;
         *pass_to_stack = MACSEC_TRUE;
 
-        MACSEC_INFO(("MACsec RX pass-through len=%lu\n",
-                     (unsigned long)*plain_len));
+        MACSEC_INFO(("MACsec RX pass-through len=%lu\n", (unsigned long) *plain_len));
 
         return MACSEC_ERR_OK;
     }
 
     if (macsec_mka_is_eapol_mka(rx_frame, rx_len))
     {
-        MACSEC_INFO(("MACsec RX EAPOL/MKA len=%lu\n",
-                     (unsigned long)rx_len));
+        MACSEC_INFO(("MACsec RX EAPOL/MKA len=%lu\n", (unsigned long) rx_len));
 
-        ret = macsec_mka_input(&ctx->mka,
-                               rx_frame,
-                               rx_len,
-                               ctx->last_tick_ms);
+        ret = macsec_mka_input(&ctx->mka, rx_frame, rx_len, ctx->last_tick_ms);
 
         *pass_to_stack = MACSEC_FALSE;
 
@@ -632,19 +538,15 @@ int macsec_input(macsec_ctx_t *ctx,
         }
 
         MACSEC_INFO(("MACsec MKA input OK: peer=%u live=%u local_ks=%u tx_reasons=0x%08lx\n",
-                     ctx->mka.peer.valid ? 1u : 0u,
-                     ctx->mka.peer.live ? 1u : 0u,
-                     ctx->mka.local_key_server ? 1u : 0u,
-                     ctx->mka.tx_reasons));
+                     ctx->mka.peer.valid ? 1u : 0u, ctx->mka.peer.live ? 1u : 0u,
+                     ctx->mka.local_key_server ? 1u : 0u, ctx->mka.tx_reasons));
 
         ret = macsec_service_mka(ctx);
         if (ret != MACSEC_ERR_OK)
         {
             ctx->state = MACSEC_STATE_ERROR;
 
-            MACSEC_ERROR((
-                "MACsec MKA service after input failed ret=%d\n",
-                ret));
+            MACSEC_ERROR(("MACsec MKA service after input failed ret=%d\n", ret));
 
             return ret;
         }
@@ -654,22 +556,16 @@ int macsec_input(macsec_ctx_t *ctx,
 
     if (macsec_frame_is_macsec(rx_frame, rx_len))
     {
-        MACSEC_INFO(("MACsec RX protected frame len=%lu\n",
-                     (unsigned long)rx_len));
+        MACSEC_INFO(("MACsec RX protected frame len=%lu\n", (unsigned long) rx_len));
 
         if (ctx->state != MACSEC_STATE_SECURED)
         {
             *pass_to_stack = MACSEC_FALSE;
-            MACSEC_ERROR(("MACsec RX protected frame but state=%u not SECURED\n",
-                          ctx->state));
+            MACSEC_ERROR(("MACsec RX protected frame but state=%u not SECURED\n", ctx->state));
             return MACSEC_ERR_NOT_READY;
         }
 
-        ret = macsec_frame_decrypt(&ctx->frame_crypto,
-                                   rx_frame,
-                                   rx_len,
-                                   plain_frame,
-                                   plain_len,
+        ret = macsec_frame_decrypt(&ctx->frame_crypto, rx_frame, rx_len, plain_frame, plain_len,
                                    plain_max_len);
 
         if (ret != MACSEC_ERR_OK)
@@ -681,32 +577,27 @@ int macsec_input(macsec_ctx_t *ctx,
 
         *pass_to_stack = MACSEC_TRUE;
 
-        MACSEC_INFO(("MACsec decrypt OK plain_len=%lu\n",
-                     (unsigned long)*plain_len));
+        MACSEC_INFO(("MACsec decrypt OK plain_len=%lu\n", (unsigned long) *plain_len));
 
         return MACSEC_ERR_OK;
     }
 
     *pass_to_stack = MACSEC_FALSE;
 
-    MACSEC_INFO(("MACsec RX plain frame dropped in protected mode len=%lu\n",
-                 (unsigned long)rx_len));
+    MACSEC_INFO(
+        ("MACsec RX plain frame dropped in protected mode len=%lu\n", (unsigned long) rx_len));
 
     if ((rx_len >= 14u) && macsec_rd_be16(&rx_frame[12]) == MACSEC_ETHERTYPE_EAPOL)
     {
-        MACSEC_INFO(("MACsec RX non-MKA EAPOL frame dropped len=%lu\n", (unsigned long)rx_len));
+        MACSEC_INFO(("MACsec RX non-MKA EAPOL frame dropped len=%lu\n", (unsigned long) rx_len));
         return MACSEC_ERR_UNSUPPORTED;
     }
 
     return MACSEC_ERR_AUTH;
 }
 
-int macsec_output(macsec_ctx_t *ctx,
-                  const uint8_t *plain_frame,
-                  size_t plain_len,
-                  uint8_t *tx_frame,
-                  size_t *tx_len,
-                  size_t tx_max_len)
+int macsec_output(macsec_ctx_t *ctx, const uint8_t *plain_frame, size_t plain_len,
+                  uint8_t *tx_frame, size_t *tx_len, size_t tx_max_len)
 {
     int ret;
 
@@ -717,10 +608,8 @@ int macsec_output(macsec_ctx_t *ctx,
 
     *tx_len = 0u;
 
-    MACSEC_INFO(("MACsec TX frame: plain_len=%lu state=%u mode=%u\n",
-                 (unsigned long)plain_len,
-                 ctx->state,
-                 ctx->cfg.mode));
+    MACSEC_INFO(("MACsec TX frame: plain_len=%lu state=%u mode=%u\n", (unsigned long) plain_len,
+                 ctx->state, ctx->cfg.mode));
 
     if (ctx->cfg.mode == MACSEC_MODE_DISABLED)
     {
@@ -730,8 +619,7 @@ int macsec_output(macsec_ctx_t *ctx,
 
         *tx_len = plain_len;
 
-        MACSEC_INFO(("MACsec TX pass-through len=%lu\n",
-                     (unsigned long)*tx_len));
+        MACSEC_INFO(("MACsec TX pass-through len=%lu\n", (unsigned long) *tx_len));
 
         return MACSEC_ERR_OK;
     }
@@ -745,15 +633,11 @@ int macsec_output(macsec_ctx_t *ctx,
     if (!ctx->frame_crypto.tx_sak.valid)
     {
         MACSEC_INFO(("MACsec TX deferred: TX SAK is not active yet\n"));
-    
+
         return MACSEC_ERR_NOT_READY;
     }
 
-    ret = macsec_frame_encrypt(&ctx->frame_crypto,
-                               plain_frame,
-                               plain_len,
-                               tx_frame,
-                               tx_len,
+    ret = macsec_frame_encrypt(&ctx->frame_crypto, plain_frame, plain_len, tx_frame, tx_len,
                                tx_max_len);
 
     if (ret != MACSEC_ERR_OK)
@@ -762,8 +646,7 @@ int macsec_output(macsec_ctx_t *ctx,
         return ret;
     }
 
-    MACSEC_INFO(("MACsec encrypt OK tx_len=%lu\n",
-                 (unsigned long)*tx_len));
+    MACSEC_INFO(("MACsec encrypt OK tx_len=%lu\n", (unsigned long) *tx_len));
 
     return MACSEC_ERR_OK;
 }
@@ -776,9 +659,7 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms)
 
     ctx->last_tick_ms = now_ms;
 
-    MACSEC_INFO(("MACsec tick: now=%lu state=%u mode=%u\n",
-                 (unsigned long)now_ms,
-                 ctx->state,
+    MACSEC_INFO(("MACsec tick: now=%lu state=%u mode=%u\n", (unsigned long) now_ms, ctx->state,
                  ctx->cfg.mode));
 
     if (ctx->cfg.mode == MACSEC_MODE_MKA_PSK)
@@ -796,9 +677,7 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms)
         {
             ctx->state = MACSEC_STATE_ERROR;
 
-            MACSEC_ERROR((
-                "MACsec MKA service after tick failed ret=%d\n",
-                ret));
+            MACSEC_ERROR(("MACsec MKA service after tick failed ret=%d\n", ret));
 
             return ret;
         }
@@ -807,9 +686,7 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms)
     return MACSEC_ERR_OK;
 }
 
-int macsec_get_control_frame(macsec_ctx_t *ctx,
-                             uint8_t *tx_frame,
-                             size_t *tx_len,
+int macsec_get_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_len,
                              size_t tx_max_len)
 {
     int ret;
@@ -830,47 +707,34 @@ int macsec_get_control_frame(macsec_ctx_t *ctx,
         return MACSEC_ERR_BUSY;
     }
 
-    memset(&ctx->pending_mka_tx_meta,
-           0,
-           sizeof(ctx->pending_mka_tx_meta));
+    memset(&ctx->pending_mka_tx_meta, 0, sizeof(ctx->pending_mka_tx_meta));
 
-    ret = macsec_mka_build_tx_frame(
-        &ctx->mka,
-        tx_frame,
-        tx_len,
-        tx_max_len,
-        &ctx->pending_mka_tx_meta);
+    ret = macsec_mka_build_tx_frame(&ctx->mka, tx_frame, tx_len, tx_max_len,
+                                    &ctx->pending_mka_tx_meta);
 
     if (ret != MACSEC_ERR_OK)
     {
         if (ret != MACSEC_ERR_NOT_READY)
         {
-            MACSEC_ERROR((
-                "MACsec build control frame failed ret=%d\n",
-                ret));
+            MACSEC_ERROR(("MACsec build control frame failed ret=%d\n", ret));
         }
 
-        macsec_zeroize(
-            &ctx->pending_mka_tx_meta,
-            sizeof(ctx->pending_mka_tx_meta));
+        macsec_zeroize(&ctx->pending_mka_tx_meta, sizeof(ctx->pending_mka_tx_meta));
 
         return ret;
     }
 
     ctx->pending_mka_tx_valid = MACSEC_TRUE;
 
-    MACSEC_INFO((
-        "MACsec control frame built: "
-        "len=%lu mn=%lu reasons=0x%08lX\n",
-        (unsigned long)*tx_len,
-        (unsigned long)ctx->pending_mka_tx_meta.message_number,
-        (unsigned long)ctx->pending_mka_tx_meta.reasons));
+    MACSEC_INFO(("MACsec control frame built: "
+                 "len=%lu mn=%lu reasons=0x%08lX\n",
+                 (unsigned long) *tx_len, (unsigned long) ctx->pending_mka_tx_meta.message_number,
+                 (unsigned long) ctx->pending_mka_tx_meta.reasons));
 
     return MACSEC_ERR_OK;
 }
 
-int macsec_notify_control_tx_success(macsec_ctx_t *ctx,
-                                     uint32_t now_ms)
+int macsec_notify_control_tx_success(macsec_ctx_t *ctx, uint32_t now_ms)
 {
     int ret;
 
@@ -886,30 +750,21 @@ int macsec_notify_control_tx_success(macsec_ctx_t *ctx,
         return MACSEC_ERR_NOT_READY;
     }
 
-    ret = macsec_mka_notify_tx_success(
-        &ctx->mka,
-        &ctx->pending_mka_tx_meta,
-        now_ms);
+    ret = macsec_mka_notify_tx_success(&ctx->mka, &ctx->pending_mka_tx_meta, now_ms);
 
     if (ret != MACSEC_ERR_OK)
     {
         ctx->state = MACSEC_STATE_ERROR;
 
-        MACSEC_ERROR((
-            "MACsec control TX success notification failed: "
-            "ret=%d mn=%lu reasons=0x%08lX\n",
-            ret,
-            (unsigned long)
-                ctx->pending_mka_tx_meta.message_number,
-            (unsigned long)
-                ctx->pending_mka_tx_meta.reasons));
+        MACSEC_ERROR(("MACsec control TX success notification failed: "
+                      "ret=%d mn=%lu reasons=0x%08lX\n",
+                      ret, (unsigned long) ctx->pending_mka_tx_meta.message_number,
+                      (unsigned long) ctx->pending_mka_tx_meta.reasons));
 
         return ret;
     }
 
-    macsec_zeroize(
-        &ctx->pending_mka_tx_meta,
-        sizeof(ctx->pending_mka_tx_meta));
+    macsec_zeroize(&ctx->pending_mka_tx_meta, sizeof(ctx->pending_mka_tx_meta));
 
     ctx->pending_mka_tx_valid = MACSEC_FALSE;
 
@@ -918,9 +773,7 @@ int macsec_notify_control_tx_success(macsec_ctx_t *ctx,
     {
         ctx->state = MACSEC_STATE_ERROR;
 
-        MACSEC_ERROR((
-            "MACsec MKA service after control TX failed ret=%d\n",
-            ret));
+        MACSEC_ERROR(("MACsec MKA service after control TX failed ret=%d\n", ret));
 
         return ret;
     }
@@ -942,18 +795,13 @@ int macsec_notify_control_tx_failure(macsec_ctx_t *ctx)
         return MACSEC_ERR_NOT_READY;
     }
 
-    macsec_mka_notify_tx_failure(
-        &ctx->mka,
-        &ctx->pending_mka_tx_meta);
+    macsec_mka_notify_tx_failure(&ctx->mka, &ctx->pending_mka_tx_meta);
 
-    macsec_zeroize(
-        &ctx->pending_mka_tx_meta,
-        sizeof(ctx->pending_mka_tx_meta));
+    macsec_zeroize(&ctx->pending_mka_tx_meta, sizeof(ctx->pending_mka_tx_meta));
 
     ctx->pending_mka_tx_valid = MACSEC_FALSE;
 
-    MACSEC_INFO((
-        "MACsec control TX failure reported\n"));
+    MACSEC_INFO(("MACsec control TX failure reported\n"));
 
     return MACSEC_ERR_OK;
 }

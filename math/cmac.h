@@ -4,7 +4,7 @@
  * Lightweight MACsec stack
  * Minimal AES-CMAC interface for the embedded MACsec stack
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -25,7 +25,8 @@
 #define MATH_AES_BLOCK_SIZE 16
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 typedef struct
@@ -36,18 +37,14 @@ typedef struct
     size_t unprocessed_len;
 } math_cmac_context_t;
 
-void math_cmac_init( math_cmac_context_t *ctx );
-void math_cmac_free( math_cmac_context_t *ctx );
+void math_cmac_init(math_cmac_context_t *ctx);
+void math_cmac_free(math_cmac_context_t *ctx);
 
-int math_cmac_aes( math_cmac_context_t *ctx,
-                   const unsigned char *key,
-                   size_t keybits,
-                   const unsigned char *input,
-                   size_t ilen,
-                   unsigned char output[16] );
+int math_cmac_aes(math_cmac_context_t *ctx, const unsigned char *key, size_t keybits,
+                  const unsigned char *input, size_t ilen, unsigned char output[16]);
 
 #if defined(MATH_SELF_TEST)
-int math_cmac_self_test( math_cmac_context_t *ctx, int verbose );
+int math_cmac_self_test(math_cmac_context_t *ctx, int verbose);
 #endif
 
 #ifdef __cplusplus

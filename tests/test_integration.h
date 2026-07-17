@@ -6,7 +6,7 @@
  * This file verifies correct interaction between the MACsec, MKA and
  * cryptographic modules under realistic operating conditions.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -18,7 +18,8 @@
 #define TEST_INTEGRATION_H
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #include "macsec_common.h"
@@ -70,21 +71,17 @@ typedef struct
 
 typedef union
 {
-    macsec_test_integration_disabled_passthrough_data_t
-        test_integration_disabled_passthrough_data;
+    macsec_test_integration_disabled_passthrough_data_t test_integration_disabled_passthrough_data;
 
-    macsec_test_integration_static_sak_ping_like_data_t
-        test_integration_static_sak_ping_like_data;
+    macsec_test_integration_static_sak_ping_like_data_t test_integration_static_sak_ping_like_data;
 
     macsec_test_integration_protected_drops_plain_data_t
         test_integration_protected_drops_plain_data;
 
-    macsec_test_integration_output_not_ready_mka_data_t
-        test_integration_output_not_ready_mka_data;
+    macsec_test_integration_output_not_ready_mka_data_t test_integration_output_not_ready_mka_data;
 } macsec_test_integration_data_t;
 
-int macsec_test_integration(macsec_test_integration_data_t *data,
-                            int verbose);
+int macsec_test_integration(macsec_test_integration_data_t *data, int verbose);
 
 #endif /* MACSEC_SELF_TEST */
 

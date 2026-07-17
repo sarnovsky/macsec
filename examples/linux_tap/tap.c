@@ -3,7 +3,7 @@
  *
  * Linux TAP helper for the lightweight MACsec stack example.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  * SPDX-License-Identifier: MIT
  */
 
@@ -67,7 +67,7 @@ int linux_tap_open(char *name, size_t name_size)
     }
 
     memset(&ifr, 0, sizeof(ifr));
-    ifr.ifr_flags = (short)(IFF_TAP | IFF_NO_PI);
+    ifr.ifr_flags = (short) (IFF_TAP | IFF_NO_PI);
 
     if (name[0] != '\0')
     {
@@ -167,7 +167,7 @@ int linux_tap_set_up(const char *name)
         return -1;
     }
 
-    ifr.ifr_flags = (short)(ifr.ifr_flags | IFF_UP | IFF_RUNNING);
+    ifr.ifr_flags = (short) (ifr.ifr_flags | IFF_UP | IFF_RUNNING);
 
     ret = ioctl(fd, SIOCSIFFLAGS, &ifr);
     saved_errno = errno;
@@ -190,8 +190,7 @@ int linux_tap_read(int fd, uint8_t *frame, size_t frame_capacity)
     do
     {
         ret = read(fd, frame, frame_capacity);
-    }
-    while ((ret < 0) && (errno == EINTR));
+    } while ((ret < 0) && (errno == EINTR));
 
     if (ret > INT32_MAX)
     {
@@ -199,7 +198,7 @@ int linux_tap_read(int fd, uint8_t *frame, size_t frame_capacity)
         return -1;
     }
 
-    return (int)ret;
+    return (int) ret;
 }
 
 int linux_tap_write(int fd, const uint8_t *frame, size_t frame_len)
@@ -232,8 +231,8 @@ int linux_tap_write(int fd, const uint8_t *frame, size_t frame_len)
             return -1;
         }
 
-        written += (size_t)ret;
+        written += (size_t) ret;
     }
 
-    return (int)written;
+    return (int) written;
 }

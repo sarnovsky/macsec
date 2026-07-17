@@ -1,0 +1,6 @@
+# Ignorovat všechny adresáře .svn (včetně podadresářů)
+.svn/
+
+# Ignorovat specifické build adresáře
+/examples/unit_tests/build/
+/examples/linux_tap/build/

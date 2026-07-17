@@ -3,7 +3,7 @@
  *
  * Linux TAP helper for the lightweight MACsec stack example.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  * SPDX-License-Identifier: MIT
  */
 

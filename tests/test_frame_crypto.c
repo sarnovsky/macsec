@@ -6,7 +6,7 @@
  * This file validates Ethernet frame encryption, decryption, authentication
  * and MACsec frame processing using predefined test vectors.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,9 +21,7 @@
 
 #if (MACSEC_SELF_TEST != 0)
 
-static void macsec_test_fill_plain_frame(uint8_t *frame,
-                                         size_t len,
-                                         uint16_t ethertype,
+static void macsec_test_fill_plain_frame(uint8_t *frame, size_t len, uint16_t ethertype,
                                          uint8_t seed)
 {
     size_t i;
@@ -49,7 +47,7 @@ static void macsec_test_fill_plain_frame(uint8_t *frame,
 
     for (i = 14u; i < len; i++)
     {
-        frame[i] = (uint8_t)(seed + (uint8_t)i);
+        frame[i] = (uint8_t) (seed + (uint8_t) i);
     }
 }
 
@@ -67,22 +65,13 @@ static void macsec_test_fill_sci(macsec_frame_sci_t *sci)
     sci->bytes[7] = 0x01u;
 }
 
-static void macsec_test_fill_sak(macsec_frame_sak_t *sak,
-                                 uint8_t an,
-                                 size_t key_len)
+static void macsec_test_fill_sak(macsec_frame_sak_t *sak, uint8_t an, size_t key_len)
 {
-    static const uint8_t key[32] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu,
+    static const uint8_t key[32] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu,
 
-        0x10u, 0x21u, 0x32u, 0x43u,
-        0x54u, 0x65u, 0x76u, 0x87u,
-        0x98u, 0xA9u, 0xBAu, 0xCBu,
-        0xDCu, 0xEDu, 0xFEu, 0x0Fu
-    };
+                                    0x10u, 0x21u, 0x32u, 0x43u, 0x54u, 0x65u, 0x76u, 0x87u,
+                                    0x98u, 0xA9u, 0xBAu, 0xCBu, 0xDCu, 0xEDu, 0xFEu, 0x0Fu};
 
     macsec_assert(sak != NULL);
     macsec_assert((key_len == 16u) || (key_len == 32u));
@@ -98,9 +87,9 @@ static void macsec_test_fill_sak(macsec_frame_sak_t *sak,
     sak->valid = MACSEC_TRUE;
 }
 
-static int macsec_test_frame_crypto_selftest_wrapper(
-    macsec_test_frame_crypto_selftest_wrapper_data_t *data,
-    int verbose)
+static int
+macsec_test_frame_crypto_selftest_wrapper(macsec_test_frame_crypto_selftest_wrapper_data_t *data,
+                                          int verbose)
 {
     int ret;
 
@@ -109,17 +98,15 @@ static int macsec_test_frame_crypto_selftest_wrapper(
         MACSEC_PRINT(("  Frame crypto built-in self-test\n"));
     }
 
-    ret = macsec_frame_crypto_self_test(&data->test_ctx,
-                                        verbose ? 1 : 0);
+    ret = macsec_frame_crypto_self_test(&data->test_ctx, verbose ? 1 : 0);
     TEST_OK(ret);
 
     return 0;
 }
 
-static int macsec_test_frame_crypto_encrypt_decrypt(
-    macsec_test_frame_crypto_encrypt_decrypt_one_data_t *data,
-    size_t sak_len,
-    int verbose)
+static int
+macsec_test_frame_crypto_encrypt_decrypt(macsec_test_frame_crypto_encrypt_decrypt_one_data_t *data,
+                                         size_t sak_len, int verbose)
 {
     size_t plain_len = 96u;
     size_t secure_len = 0u;
@@ -129,9 +116,8 @@ static int macsec_test_frame_crypto_encrypt_decrypt(
 
     if (verbose)
     {
-        MACSEC_PRINT((
-            "  Frame crypto encrypt/decrypt test, %u-byte SAK\n",
-            (unsigned int)sak_len));
+        MACSEC_PRINT(
+            ("  Frame crypto encrypt/decrypt test, %u-byte SAK\n", (unsigned int) sak_len));
     }
 
     macsec_test_fill_sci(&data->sci);
@@ -149,10 +135,7 @@ static int macsec_test_frame_crypto_encrypt_decrypt(
         TEST_TRUE(data->sak.key[31] == 0x0Fu);
     }
 
-    macsec_test_fill_plain_frame(data->plain,
-                                 plain_len,
-                                 0x0800u,
-                                 (sak_len == 16u) ? 0x20u : 0x21u);
+    macsec_test_fill_plain_frame(data->plain, plain_len, 0x0800u, (sak_len == 16u) ? 0x20u : 0x21u);
 
     ret = macsec_frame_crypto_init(&data->tx_ctx, &data->sci);
     TEST_OK(ret);
@@ -167,8 +150,7 @@ static int macsec_test_frame_crypto_encrypt_decrypt(
     data->tx_ctx.replay_protect = MACSEC_FALSE;
     data->rx_ctx.replay_protect = MACSEC_FALSE;
 
-    ret = macsec_frame_crypto_set_tx_sak(&data->tx_ctx,
-                                         &data->sak);
+    ret = macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &data->sak);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_frame_crypto_clear(&data->tx_ctx);
@@ -176,8 +158,7 @@ static int macsec_test_frame_crypto_encrypt_decrypt(
         return ret;
     }
 
-    ret = macsec_frame_crypto_set_rx_sak(&data->rx_ctx,
-                                         &data->sak);
+    ret = macsec_frame_crypto_set_rx_sak(&data->rx_ctx, &data->sak);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_frame_crypto_clear(&data->tx_ctx);
@@ -185,11 +166,7 @@ static int macsec_test_frame_crypto_encrypt_decrypt(
         return ret;
     }
 
-    ret = macsec_frame_encrypt(&data->tx_ctx,
-                               data->plain,
-                               plain_len,
-                               data->secure,
-                               &secure_len,
+    ret = macsec_frame_encrypt(&data->tx_ctx, data->plain, plain_len, data->secure, &secure_len,
                                sizeof(data->secure));
     if (ret != MACSEC_ERR_OK)
     {
@@ -199,16 +176,11 @@ static int macsec_test_frame_crypto_encrypt_decrypt(
     }
 
     TEST_TRUE(macsec_frame_is_macsec(data->secure, secure_len));
-    TEST_TRUE(macsec_rd_be16(&data->secure[12]) ==
-              MACSEC_FRAME_ETHERTYPE);
+    TEST_TRUE(macsec_rd_be16(&data->secure[12]) == MACSEC_FRAME_ETHERTYPE);
     TEST_TRUE((data->secure[14] & 0x03u) == 0u);
 
-    ret = macsec_frame_decrypt(&data->rx_ctx,
-                               data->secure,
-                               secure_len,
-                               data->decrypted,
-                               &decrypted_len,
-                               sizeof(data->decrypted));
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
     if (ret != MACSEC_ERR_OK)
     {
         macsec_frame_crypto_clear(&data->tx_ctx);
@@ -217,9 +189,7 @@ static int macsec_test_frame_crypto_encrypt_decrypt(
     }
 
     TEST_TRUE(decrypted_len == plain_len);
-    TEST_TRUE(memcmp(data->plain,
-                     data->decrypted,
-                     plain_len) == 0);
+    TEST_TRUE(memcmp(data->plain, data->decrypted, plain_len) == 0);
 
     macsec_frame_crypto_clear(&data->tx_ctx);
     macsec_frame_crypto_clear(&data->rx_ctx);
@@ -227,10 +197,8 @@ static int macsec_test_frame_crypto_encrypt_decrypt(
     return 0;
 }
 
-static int macsec_test_frame_crypto_bad_icv(
-    macsec_test_frame_crypto_bad_icv_data_t *data,
-    size_t sak_len,
-    int verbose)
+static int macsec_test_frame_crypto_bad_icv(macsec_test_frame_crypto_bad_icv_data_t *data,
+                                            size_t sak_len, int verbose)
 {
     size_t plain_len = 96u;
     size_t secure_len = 0u;
@@ -240,18 +208,13 @@ static int macsec_test_frame_crypto_bad_icv(
 
     if (verbose)
     {
-        MACSEC_PRINT((
-            "  Frame crypto bad ICV/auth test, %u-byte SAK\n",
-            (unsigned int)sak_len));
+        MACSEC_PRINT(("  Frame crypto bad ICV/auth test, %u-byte SAK\n", (unsigned int) sak_len));
     }
 
     macsec_test_fill_sci(&data->sci);
     macsec_test_fill_sak(&data->sak, 0u, sak_len);
 
-    macsec_test_fill_plain_frame(data->plain,
-                                 plain_len,
-                                 0x0800u,
-                                 (sak_len == 16u) ? 0x30u : 0x31u);
+    macsec_test_fill_plain_frame(data->plain, plain_len, 0x0800u, (sak_len == 16u) ? 0x30u : 0x31u);
 
     ret = macsec_frame_crypto_init(&data->tx_ctx, &data->sci);
     TEST_OK(ret);
@@ -266,8 +229,7 @@ static int macsec_test_frame_crypto_bad_icv(
     data->tx_ctx.replay_protect = MACSEC_FALSE;
     data->rx_ctx.replay_protect = MACSEC_FALSE;
 
-    ret = macsec_frame_crypto_set_tx_sak(&data->tx_ctx,
-                                         &data->sak);
+    ret = macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &data->sak);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_frame_crypto_clear(&data->tx_ctx);
@@ -275,8 +237,7 @@ static int macsec_test_frame_crypto_bad_icv(
         return ret;
     }
 
-    ret = macsec_frame_crypto_set_rx_sak(&data->rx_ctx,
-                                         &data->sak);
+    ret = macsec_frame_crypto_set_rx_sak(&data->rx_ctx, &data->sak);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_frame_crypto_clear(&data->tx_ctx);
@@ -284,11 +245,7 @@ static int macsec_test_frame_crypto_bad_icv(
         return ret;
     }
 
-    ret = macsec_frame_encrypt(&data->tx_ctx,
-                               data->plain,
-                               plain_len,
-                               data->secure,
-                               &secure_len,
+    ret = macsec_frame_encrypt(&data->tx_ctx, data->plain, plain_len, data->secure, &secure_len,
                                sizeof(data->secure));
     if (ret != MACSEC_ERR_OK)
     {
@@ -299,12 +256,8 @@ static int macsec_test_frame_crypto_bad_icv(
 
     data->secure[secure_len - 1u] ^= 0x01u;
 
-    ret = macsec_frame_decrypt(&data->rx_ctx,
-                               data->secure,
-                               secure_len,
-                               data->decrypted,
-                               &decrypted_len,
-                               sizeof(data->decrypted));
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
 
     TEST_TRUE(ret == MACSEC_ERR_AUTH);
     TEST_TRUE(decrypted_len == 0u);
@@ -315,10 +268,9 @@ static int macsec_test_frame_crypto_bad_icv(
     return 0;
 }
 
-static int macsec_test_frame_crypto_replay_reject(
-    macsec_test_frame_crypto_replay_reject_data_t *data,
-    size_t sak_len,
-    int verbose)
+static int
+macsec_test_frame_crypto_replay_reject(macsec_test_frame_crypto_replay_reject_data_t *data,
+                                       size_t sak_len, int verbose)
 {
     size_t plain_len = 96u;
     size_t secure_len = 0u;
@@ -328,18 +280,13 @@ static int macsec_test_frame_crypto_replay_reject(
 
     if (verbose)
     {
-        MACSEC_PRINT((
-            "  Frame crypto replay reject test, %u-byte SAK\n",
-            (unsigned int)sak_len));
+        MACSEC_PRINT(("  Frame crypto replay reject test, %u-byte SAK\n", (unsigned int) sak_len));
     }
 
     macsec_test_fill_sci(&data->sci);
     macsec_test_fill_sak(&data->sak, 0u, sak_len);
 
-    macsec_test_fill_plain_frame(data->plain,
-                                 plain_len,
-                                 0x0800u,
-                                 (sak_len == 16u) ? 0x40u : 0x41u);
+    macsec_test_fill_plain_frame(data->plain, plain_len, 0x0800u, (sak_len == 16u) ? 0x40u : 0x41u);
 
     ret = macsec_frame_crypto_init(&data->tx_ctx, &data->sci);
     TEST_OK(ret);
@@ -357,8 +304,7 @@ static int macsec_test_frame_crypto_replay_reject(
     data->rx_ctx.replay_protect = MACSEC_TRUE;
     data->rx_ctx.replay_window = 0u;
 
-    ret = macsec_frame_crypto_set_tx_sak(&data->tx_ctx,
-                                         &data->sak);
+    ret = macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &data->sak);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_frame_crypto_clear(&data->tx_ctx);
@@ -366,8 +312,7 @@ static int macsec_test_frame_crypto_replay_reject(
         return ret;
     }
 
-    ret = macsec_frame_crypto_set_rx_sak(&data->rx_ctx,
-                                         &data->sak);
+    ret = macsec_frame_crypto_set_rx_sak(&data->rx_ctx, &data->sak);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_frame_crypto_clear(&data->tx_ctx);
@@ -375,11 +320,7 @@ static int macsec_test_frame_crypto_replay_reject(
         return ret;
     }
 
-    ret = macsec_frame_encrypt(&data->tx_ctx,
-                               data->plain,
-                               plain_len,
-                               data->secure,
-                               &secure_len,
+    ret = macsec_frame_encrypt(&data->tx_ctx, data->plain, plain_len, data->secure, &secure_len,
                                sizeof(data->secure));
     if (ret != MACSEC_ERR_OK)
     {
@@ -388,12 +329,8 @@ static int macsec_test_frame_crypto_replay_reject(
         return ret;
     }
 
-    ret = macsec_frame_decrypt(&data->rx_ctx,
-                               data->secure,
-                               secure_len,
-                               data->decrypted,
-                               &decrypted_len,
-                               sizeof(data->decrypted));
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
     if (ret != MACSEC_ERR_OK)
     {
         macsec_frame_crypto_clear(&data->tx_ctx);
@@ -402,18 +339,12 @@ static int macsec_test_frame_crypto_replay_reject(
     }
 
     TEST_TRUE(decrypted_len == plain_len);
-    TEST_TRUE(memcmp(data->plain,
-                     data->decrypted,
-                     plain_len) == 0);
+    TEST_TRUE(memcmp(data->plain, data->decrypted, plain_len) == 0);
 
     decrypted_len = 0u;
 
-    ret = macsec_frame_decrypt(&data->rx_ctx,
-                               data->secure,
-                               secure_len,
-                               data->decrypted,
-                               &decrypted_len,
-                               sizeof(data->decrypted));
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
 
     TEST_TRUE(ret == MACSEC_ERR_REPLAY);
     TEST_TRUE(decrypted_len == 0u);
@@ -424,8 +355,7 @@ static int macsec_test_frame_crypto_replay_reject(
     return 0;
 }
 
-int macsec_test_frame_crypto(macsec_test_frame_crypto_data_t *data,
-                             int verbose)
+int macsec_test_frame_crypto(macsec_test_frame_crypto_data_t *data, int verbose)
 {
     if (verbose)
     {
@@ -433,38 +363,23 @@ int macsec_test_frame_crypto(macsec_test_frame_crypto_data_t *data,
     }
 
     TEST_OK(macsec_test_frame_crypto_selftest_wrapper(
-        &data->test_frame_crypto_selftest_wrapper_data,
-        verbose));
+        &data->test_frame_crypto_selftest_wrapper_data, verbose));
 
     TEST_OK(macsec_test_frame_crypto_encrypt_decrypt(
-        &data->test_frame_crypto_encrypt_decrypt_one_data,
-        16u,
-        verbose));
+        &data->test_frame_crypto_encrypt_decrypt_one_data, 16u, verbose));
 
     TEST_OK(macsec_test_frame_crypto_encrypt_decrypt(
-        &data->test_frame_crypto_encrypt_decrypt_one_data,
-        32u,
-        verbose));
+        &data->test_frame_crypto_encrypt_decrypt_one_data, 32u, verbose));
 
-    TEST_OK(macsec_test_frame_crypto_bad_icv(
-        &data->test_frame_crypto_bad_icv_data,
-        16u,
-        verbose));
+    TEST_OK(macsec_test_frame_crypto_bad_icv(&data->test_frame_crypto_bad_icv_data, 16u, verbose));
 
-    TEST_OK(macsec_test_frame_crypto_bad_icv(
-        &data->test_frame_crypto_bad_icv_data,
-        32u,
-        verbose));
+    TEST_OK(macsec_test_frame_crypto_bad_icv(&data->test_frame_crypto_bad_icv_data, 32u, verbose));
 
-    TEST_OK(macsec_test_frame_crypto_replay_reject(
-        &data->test_frame_crypto_replay_reject_data,
-        16u,
-        verbose));
+    TEST_OK(macsec_test_frame_crypto_replay_reject(&data->test_frame_crypto_replay_reject_data, 16u,
+                                                   verbose));
 
-    TEST_OK(macsec_test_frame_crypto_replay_reject(
-        &data->test_frame_crypto_replay_reject_data,
-        32u,
-        verbose));
+    TEST_OK(macsec_test_frame_crypto_replay_reject(&data->test_frame_crypto_replay_reject_data, 32u,
+                                                   verbose));
 
     return 0;
 }

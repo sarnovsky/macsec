@@ -6,7 +6,7 @@
  * This file provides the common infrastructure for executing and organizing
  * the unit tests included with the lightweight MACsec stack.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *

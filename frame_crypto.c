@@ -6,7 +6,7 @@
  * This file implements encryption and decryption of Ethernet frames using
  * MACsec SecTAG/ICV handling and AES-GCM based authenticated encryption.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -16,16 +16,15 @@
 
 #include "frame_crypto.h"
 
-#define MACSEC_FRAME_TCI_BASE          0x2Cu
-#define MACSEC_FRAME_SHORT_LEN_MAX     48u
+#define MACSEC_FRAME_TCI_BASE 0x2Cu
+#define MACSEC_FRAME_SHORT_LEN_MAX 48u
 
 static macsec_bool_t macsec_frame_key_len_valid(uint8_t key_len)
 {
     return (key_len == 16u) || (key_len == 32u) ? MACSEC_TRUE : MACSEC_FALSE;
 }
 
-static int macsec_frame_gcm_setkey(macsec_frame_crypto_ctx_t *ctx,
-                                   const uint8_t *key,
+static int macsec_frame_gcm_setkey(macsec_frame_crypto_ctx_t *ctx, const uint8_t *key,
                                    uint8_t key_len)
 {
     int ret;
@@ -43,9 +42,7 @@ static int macsec_frame_gcm_setkey(macsec_frame_crypto_ctx_t *ctx,
     math_gcm_init(&ctx->gcm);
     ctx->gcm_initialized = MACSEC_TRUE;
 
-    ret = math_gcm_setkey(&ctx->gcm,
-                          key,
-                          (unsigned int)key_len * 8u);
+    ret = math_gcm_setkey(&ctx->gcm, key, (unsigned int) key_len * 8u);
 
     if (ret != 0)
     {
@@ -55,8 +52,7 @@ static int macsec_frame_gcm_setkey(macsec_frame_crypto_ctx_t *ctx,
     return MACSEC_ERR_OK;
 }
 
-int macsec_frame_crypto_init(macsec_frame_crypto_ctx_t *ctx,
-                             const macsec_frame_sci_t *local_sci)
+int macsec_frame_crypto_init(macsec_frame_crypto_ctx_t *ctx, const macsec_frame_sci_t *local_sci)
 {
     macsec_assert(ctx != NULL);
     macsec_assert(local_sci != NULL);
@@ -71,10 +67,8 @@ int macsec_frame_crypto_init(macsec_frame_crypto_ctx_t *ctx,
     math_gcm_init(&ctx->gcm);
     ctx->gcm_initialized = MACSEC_TRUE;
 
-    MACSEC_MEDIUM(("Frame crypto init: encrypt=%u replay=%u window=%lu\n",
-                   ctx->encrypt ? 1u : 0u,
-                   ctx->replay_protect ? 1u : 0u,
-                   (unsigned long)ctx->replay_window));
+    MACSEC_MEDIUM(("Frame crypto init: encrypt=%u replay=%u window=%lu\n", ctx->encrypt ? 1u : 0u,
+                   ctx->replay_protect ? 1u : 0u, (unsigned long) ctx->replay_window));
     MACSEC_MEDIUM_HEX(("Frame local SCI", ctx->local_sci.bytes, MACSEC_FRAME_SCI_LEN));
 
     return MACSEC_ERR_OK;
@@ -95,8 +89,7 @@ void macsec_frame_crypto_clear(macsec_frame_crypto_ctx_t *ctx)
     macsec_zeroize(ctx, sizeof(*ctx));
 }
 
-int macsec_frame_crypto_set_tx_sak(macsec_frame_crypto_ctx_t *ctx,
-                                   const macsec_frame_sak_t *sak)
+int macsec_frame_crypto_set_tx_sak(macsec_frame_crypto_ctx_t *ctx, const macsec_frame_sak_t *sak)
 {
     macsec_assert(ctx != NULL);
     macsec_assert(sak != NULL);
@@ -111,17 +104,14 @@ int macsec_frame_crypto_set_tx_sak(macsec_frame_crypto_ctx_t *ctx,
         ctx->tx_sak.next_pn = 1u;
     }
 
-    MACSEC_MEDIUM(("Frame TX SAK installed: an=%u key_len=%u next_pn=%lu\n",
-                   ctx->tx_sak.an,
-                   ctx->tx_sak.key_len,
-                   (unsigned long)ctx->tx_sak.next_pn));
+    MACSEC_MEDIUM(("Frame TX SAK installed: an=%u key_len=%u next_pn=%lu\n", ctx->tx_sak.an,
+                   ctx->tx_sak.key_len, (unsigned long) ctx->tx_sak.next_pn));
     MACSEC_INFO_HEX(("Frame TX SAK key", ctx->tx_sak.key, ctx->tx_sak.key_len));
 
     return MACSEC_ERR_OK;
 }
 
-int macsec_frame_crypto_set_rx_sak(macsec_frame_crypto_ctx_t *ctx,
-                                   const macsec_frame_sak_t *sak)
+int macsec_frame_crypto_set_rx_sak(macsec_frame_crypto_ctx_t *ctx, const macsec_frame_sak_t *sak)
 {
     uint8_t an;
 
@@ -139,10 +129,8 @@ int macsec_frame_crypto_set_rx_sak(macsec_frame_crypto_ctx_t *ctx,
         ctx->rx_sak[an].lowest_acceptable_pn = 1u;
     }
 
-    MACSEC_MEDIUM(("Frame RX SAK installed: an=%u key_len=%u lowest_pn=%lu\n",
-                   an,
-                   ctx->rx_sak[an].key_len,
-                   (unsigned long)ctx->rx_sak[an].lowest_acceptable_pn));
+    MACSEC_MEDIUM(("Frame RX SAK installed: an=%u key_len=%u lowest_pn=%lu\n", an,
+                   ctx->rx_sak[an].key_len, (unsigned long) ctx->rx_sak[an].lowest_acceptable_pn));
     MACSEC_INFO_HEX(("Frame RX SAK key", ctx->rx_sak[an].key, ctx->rx_sak[an].key_len));
 
     return MACSEC_ERR_OK;
@@ -152,12 +140,10 @@ macsec_bool_t macsec_frame_crypto_ready_tx(const macsec_frame_crypto_ctx_t *ctx)
 {
     macsec_assert(ctx != NULL);
 
-    return ctx->tx_sak.valid &&
-        macsec_frame_key_len_valid(ctx->tx_sak.key_len);
+    return ctx->tx_sak.valid && macsec_frame_key_len_valid(ctx->tx_sak.key_len);
 }
 
-macsec_bool_t macsec_frame_crypto_ready_rx(const macsec_frame_crypto_ctx_t *ctx,
-                                           uint8_t an)
+macsec_bool_t macsec_frame_crypto_ready_rx(const macsec_frame_crypto_ctx_t *ctx, uint8_t an)
 {
     macsec_assert(ctx != NULL);
     if (an >= MACSEC_FRAME_MAX_SA)
@@ -165,12 +151,10 @@ macsec_bool_t macsec_frame_crypto_ready_rx(const macsec_frame_crypto_ctx_t *ctx,
         return MACSEC_FALSE;
     }
 
-    return ctx->rx_sak[an].valid &&
-           macsec_frame_key_len_valid(ctx->rx_sak[an].key_len);
+    return ctx->rx_sak[an].valid && macsec_frame_key_len_valid(ctx->rx_sak[an].key_len);
 }
 
-macsec_bool_t macsec_frame_is_macsec(const uint8_t *frame,
-                                     size_t frame_len)
+macsec_bool_t macsec_frame_is_macsec(const uint8_t *frame, size_t frame_len)
 {
     macsec_assert(frame != NULL);
     if (frame_len < MACSEC_FRAME_ETH_HDR_LEN)
@@ -181,11 +165,8 @@ macsec_bool_t macsec_frame_is_macsec(const uint8_t *frame,
     return macsec_rd_be16(&frame[12]) == MACSEC_FRAME_ETHERTYPE;
 }
 
-int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx,
-                         const uint8_t *plain_eth,
-                         size_t plain_eth_len,
-                         uint8_t *secure_eth,
-                         size_t *secure_eth_len,
+int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *plain_eth,
+                         size_t plain_eth_len, uint8_t *secure_eth, size_t *secure_eth_len,
                          size_t secure_eth_max_len)
 {
     uint8_t iv[12];
@@ -210,10 +191,8 @@ int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx,
     secure_data = plain_eth + 12u;
     secure_len = plain_eth_len - 12u;
 
-    out_len = MACSEC_FRAME_ETH_HDR_LEN +
-              MACSEC_FRAME_SECTAG_LEN +
-              secure_len +
-              MACSEC_FRAME_ICV_LEN;
+    out_len =
+        MACSEC_FRAME_ETH_HDR_LEN + MACSEC_FRAME_SECTAG_LEN + secure_len + MACSEC_FRAME_ICV_LEN;
 
     macsec_check(out_len <= secure_eth_max_len, MACSEC_ERR_BUFFER);
 
@@ -221,22 +200,19 @@ int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx,
     macsec_check(pn != 0u, MACSEC_ERR_STATE);
 
     MACSEC_INFO(("Frame encrypt: plain_len=%lu secure_len=%lu out_len=%lu an=%u pn=%lu\n",
-                 (unsigned long)plain_eth_len,
-                 (unsigned long)secure_len,
-                 (unsigned long)out_len,
-                 ctx->tx_sak.an,
-                 (unsigned long)pn));
+                 (unsigned long) plain_eth_len, (unsigned long) secure_len, (unsigned long) out_len,
+                 ctx->tx_sak.an, (unsigned long) pn));
 
     memcpy(secure_eth, plain_eth, 12u);
     macsec_wr_be16(&secure_eth[12], MACSEC_FRAME_ETHERTYPE);
 
     sectag = secure_eth + MACSEC_FRAME_ETH_HDR_LEN;
 
-    sectag[0] = (uint8_t)(MACSEC_FRAME_TCI_BASE | (ctx->tx_sak.an & 0x03u));
+    sectag[0] = (uint8_t) (MACSEC_FRAME_TCI_BASE | (ctx->tx_sak.an & 0x03u));
 
     if (secure_len < MACSEC_FRAME_SHORT_LEN_MAX)
     {
-        sectag[1] = (uint8_t)secure_len;
+        sectag[1] = (uint8_t) secure_len;
     }
     else
     {
@@ -255,26 +231,16 @@ int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx,
     MACSEC_INFO_HEX(("Frame encrypt IV", iv, sizeof(iv)));
     MACSEC_INFO_HEX(("Frame encrypt AAD", secure_eth, MACSEC_FRAME_AAD_LEN));
 
-    ret = macsec_frame_gcm_setkey(ctx,
-                                  ctx->tx_sak.key,
-                                  ctx->tx_sak.key_len);
+    ret = macsec_frame_gcm_setkey(ctx, ctx->tx_sak.key, ctx->tx_sak.key_len);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_zeroize(iv, sizeof(iv));
         return ret;
     }
 
-    ret = math_gcm_crypt_and_tag(&ctx->gcm,
-                                 MATH_GCM_ENCRYPT,
-                                 secure_len,
-                                 iv,
-                                 sizeof(iv),
-                                 secure_eth,
-                                 MACSEC_FRAME_AAD_LEN,
-                                 secure_data,
-                                 ciphertext,
-                                 MACSEC_FRAME_ICV_LEN,
-                                 icv);
+    ret = math_gcm_crypt_and_tag(&ctx->gcm, MATH_GCM_ENCRYPT, secure_len, iv, sizeof(iv),
+                                 secure_eth, MACSEC_FRAME_AAD_LEN, secure_data, ciphertext,
+                                 MACSEC_FRAME_ICV_LEN, icv);
 
     macsec_zeroize(iv, sizeof(iv));
 
@@ -289,18 +255,14 @@ int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx,
     ctx->tx_sak.next_pn++;
     *secure_eth_len = out_len;
 
-    MACSEC_INFO(("Frame encrypt OK: tx_len=%lu next_pn=%lu\n",
-                 (unsigned long)*secure_eth_len,
-                 (unsigned long)ctx->tx_sak.next_pn));
+    MACSEC_INFO(("Frame encrypt OK: tx_len=%lu next_pn=%lu\n", (unsigned long) *secure_eth_len,
+                 (unsigned long) ctx->tx_sak.next_pn));
 
     return MACSEC_ERR_OK;
 }
 
-int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx,
-                         const uint8_t *secure_eth,
-                         size_t secure_eth_len,
-                         uint8_t *plain_eth,
-                         size_t *plain_eth_len,
+int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_eth,
+                         size_t secure_eth_len, uint8_t *plain_eth, size_t *plain_eth_len,
                          size_t plain_eth_max_len)
 {
     uint8_t iv[12];
@@ -334,14 +296,12 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx,
 
     an = sectag[0] & 0x03u;
 
-    MACSEC_INFO(("Frame RX SecTAG: tci_an=0x%02X an=%u pn=%lu ready=%u%u%u%u\n",
-              sectag[0],
-              an,
-              (unsigned long)macsec_rd_be32(&sectag[2]),
-              macsec_frame_crypto_ready_rx(ctx, 0u) ? 1u : 0u,
-              macsec_frame_crypto_ready_rx(ctx, 1u) ? 1u : 0u,
-              macsec_frame_crypto_ready_rx(ctx, 2u) ? 1u : 0u,
-              macsec_frame_crypto_ready_rx(ctx, 3u) ? 1u : 0u));
+    MACSEC_INFO(("Frame RX SecTAG: tci_an=0x%02X an=%u pn=%lu ready=%u%u%u%u\n", sectag[0], an,
+                 (unsigned long) macsec_rd_be32(&sectag[2]),
+                 macsec_frame_crypto_ready_rx(ctx, 0u) ? 1u : 0u,
+                 macsec_frame_crypto_ready_rx(ctx, 1u) ? 1u : 0u,
+                 macsec_frame_crypto_ready_rx(ctx, 2u) ? 1u : 0u,
+                 macsec_frame_crypto_ready_rx(ctx, 3u) ? 1u : 0u));
 
     macsec_check(macsec_frame_crypto_ready_rx(ctx, an), MACSEC_ERR_STATE);
 
@@ -349,11 +309,8 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx,
     pn = macsec_rd_be32(&sectag[2]);
 
     MACSEC_INFO(("Frame decrypt: secure_len=%lu an=%u pn=%lu lowest_pn=%lu replay=%u\n",
-                 (unsigned long)secure_eth_len,
-                 an,
-                 (unsigned long)pn,
-                 (unsigned long)sak->lowest_acceptable_pn,
-                 ctx->replay_protect ? 1u : 0u));
+                 (unsigned long) secure_eth_len, an, (unsigned long) pn,
+                 (unsigned long) sak->lowest_acceptable_pn, ctx->replay_protect ? 1u : 0u));
 
     macsec_check(pn != 0u, MACSEC_ERR_REPLAY);
 
@@ -361,9 +318,8 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx,
     {
         if (pn < sak->lowest_acceptable_pn)
         {
-            MACSEC_ERROR(("Frame replay rejected: pn=%lu lowest=%lu\n",
-                          (unsigned long)pn,
-                          (unsigned long)sak->lowest_acceptable_pn));
+            MACSEC_ERROR(("Frame replay rejected: pn=%lu lowest=%lu\n", (unsigned long) pn,
+                          (unsigned long) sak->lowest_acceptable_pn));
             return MACSEC_ERR_REPLAY;
         }
     }
@@ -385,34 +341,23 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx,
     MACSEC_INFO_HEX(("Frame decrypt AAD", aad, MACSEC_FRAME_AAD_LEN));
     MACSEC_INFO_HEX(("Frame decrypt ICV", icv, MACSEC_FRAME_ICV_LEN));
 
-    ret = macsec_frame_gcm_setkey(ctx,
-                                  sak->key,
-                                  sak->key_len);
+    ret = macsec_frame_gcm_setkey(ctx, sak->key, sak->key_len);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_zeroize(iv, sizeof(iv));
         return ret;
     }
 
-    ret = math_gcm_auth_decrypt(&ctx->gcm,
-                                ciphertext_len,
-                                iv,
-                                sizeof(iv),
-                                aad,
-                                MACSEC_FRAME_AAD_LEN,
-                                icv,
-                                MACSEC_FRAME_ICV_LEN,
-                                ciphertext,
-                                plain_eth + 12u);
+    ret =
+        math_gcm_auth_decrypt(&ctx->gcm, ciphertext_len, iv, sizeof(iv), aad, MACSEC_FRAME_AAD_LEN,
+                              icv, MACSEC_FRAME_ICV_LEN, ciphertext, plain_eth + 12u);
 
     macsec_zeroize(iv, sizeof(iv));
 
     if (ret != 0)
     {
-        MACSEC_ERROR(("Frame decrypt GCM/auth failed ret=%d an=%u pn=%lu\n",
-                      ret,
-                      an,
-                      (unsigned long)pn));
+        MACSEC_ERROR(
+            ("Frame decrypt GCM/auth failed ret=%d an=%u pn=%lu\n", ret, an, (unsigned long) pn));
 
         /*
          * The GCM backend reports authentication failure using its
@@ -452,22 +397,19 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx,
         }
 
         MACSEC_INFO(("Frame replay update: new_lowest_pn=%lu\n",
-                     (unsigned long)sak->lowest_acceptable_pn));
+                     (unsigned long) sak->lowest_acceptable_pn));
     }
 
     *plain_eth_len = 12u + ciphertext_len;
 
-    MACSEC_INFO(("Frame decrypt OK: plain_len=%lu\n",
-                 (unsigned long)*plain_eth_len));
+    MACSEC_INFO(("Frame decrypt OK: plain_len=%lu\n", (unsigned long) *plain_eth_len));
 
     return MACSEC_ERR_OK;
 }
 
 #if (MACSEC_SELF_TEST != 0)
 
-static void macsec_frame_self_test_fill_packet(uint8_t *packet,
-                                               size_t len,
-                                               uint8_t seed)
+static void macsec_frame_self_test_fill_packet(uint8_t *packet, size_t len, uint8_t seed)
 {
     size_t i;
 
@@ -492,13 +434,12 @@ static void macsec_frame_self_test_fill_packet(uint8_t *packet,
 
     for (i = MACSEC_FRAME_ETH_HDR_LEN; i < len; i++)
     {
-        packet[i] = (uint8_t)(seed + (uint8_t)i);
+        packet[i] = (uint8_t) (seed + (uint8_t) i);
     }
 }
 
 static int macsec_frame_self_test_one(macsec_frame_crypto_self_test_ctx_t *test_ctx,
-                                      size_t plain_len,
-                                      uint8_t seed)
+                                      size_t plain_len, uint8_t seed)
 {
     macsec_frame_sci_t sci;
     macsec_frame_sak_t sak;
@@ -506,13 +447,8 @@ static int macsec_frame_self_test_one(macsec_frame_crypto_self_test_ctx_t *test_
     size_t decrypted_len;
     int ret;
 
-    static const uint8_t test_key[16] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu
-    };
+    static const uint8_t test_key[16] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                         0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu};
 
     macsec_assert(test_ctx != NULL);
     macsec_check(plain_len <= sizeof(test_ctx->plain), MACSEC_ERR_BUFFER);
@@ -568,23 +504,15 @@ static int macsec_frame_self_test_one(macsec_frame_crypto_self_test_ctx_t *test_
     secure_len = 0u;
     decrypted_len = 0u;
 
-    ret = macsec_frame_encrypt(&test_ctx->tx_ctx,
-                               test_ctx->plain,
-                               plain_len,
-                               test_ctx->secure,
-                               &secure_len,
-                               sizeof(test_ctx->secure));
+    ret = macsec_frame_encrypt(&test_ctx->tx_ctx, test_ctx->plain, plain_len, test_ctx->secure,
+                               &secure_len, sizeof(test_ctx->secure));
     if (ret != MACSEC_ERR_OK)
     {
         goto cleanup;
     }
 
-    ret = macsec_frame_decrypt(&test_ctx->rx_ctx,
-                               test_ctx->secure,
-                               secure_len,
-                               test_ctx->decrypted,
-                               &decrypted_len,
-                               sizeof(test_ctx->decrypted));
+    ret = macsec_frame_decrypt(&test_ctx->rx_ctx, test_ctx->secure, secure_len, test_ctx->decrypted,
+                               &decrypted_len, sizeof(test_ctx->decrypted));
     if (ret != MACSEC_ERR_OK)
     {
         goto cleanup;
@@ -611,8 +539,7 @@ cleanup:
     return ret;
 }
 
-int macsec_frame_crypto_self_test(macsec_frame_crypto_self_test_ctx_t *test_ctx,
-                                  int verbose)
+int macsec_frame_crypto_self_test(macsec_frame_crypto_self_test_ctx_t *test_ctx, int verbose)
 {
     int ret;
 
@@ -684,4 +611,3 @@ int macsec_frame_crypto_self_test(macsec_frame_crypto_self_test_ctx_t *test_ctx,
 }
 
 #endif /* MACSEC_SELF_TEST */
-

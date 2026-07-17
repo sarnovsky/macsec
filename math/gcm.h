@@ -4,7 +4,7 @@
  * Lightweight MACsec stack
  * Minimal AES-GCM interface for the embedded MACsec stack
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -22,21 +22,22 @@
 
 #include "aes.h"
 
-#define MATH_GCM_ENCRYPT     1
-#define MATH_GCM_DECRYPT     0
+#define MATH_GCM_ENCRYPT 1
+#define MATH_GCM_DECRYPT 0
 
-#define MATH_ERR_GCM_BAD_INPUT    -1
-#define MATH_ERR_GCM_AUTH_FAILED  -2
+#define MATH_ERR_GCM_BAD_INPUT -1
+#define MATH_ERR_GCM_AUTH_FAILED -2
 
-#define GCM_BLOCK_SIZE          16u
-#define GCM_NIBBLE_TABLE_SIZE   16u
+#define GCM_BLOCK_SIZE 16u
+#define GCM_NIBBLE_TABLE_SIZE 16u
 
 #if defined(MATH_SELF_TEST)
 #define GCM_BUF_SIZE 256u
 #endif
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 typedef struct
@@ -56,39 +57,23 @@ typedef struct
     int mode;
 } math_gcm_context;
 
+void math_gcm_init(math_gcm_context *ctx);
+void math_gcm_free(math_gcm_context *ctx);
 
-void math_gcm_init( math_gcm_context *ctx );
-void math_gcm_free( math_gcm_context *ctx );
+int math_gcm_setkey(math_gcm_context *ctx, const unsigned char *key, unsigned int keybits);
 
-int math_gcm_setkey( math_gcm_context *ctx,
-                     const unsigned char *key,
-                     unsigned int keybits );
+int math_gcm_crypt_and_tag(math_gcm_context *ctx, int mode, size_t length, const unsigned char *iv,
+                           size_t iv_len, const unsigned char *add, size_t add_len,
+                           const unsigned char *input, unsigned char *output, size_t tag_len,
+                           unsigned char *tag);
 
-int math_gcm_crypt_and_tag( math_gcm_context *ctx,
-                            int mode,
-                            size_t length,
-                            const unsigned char *iv,
-                            size_t iv_len,
-                            const unsigned char *add,
-                            size_t add_len,
-                            const unsigned char *input,
-                            unsigned char *output,
-                            size_t tag_len,
-                            unsigned char *tag );
-
-int math_gcm_auth_decrypt( math_gcm_context *ctx,
-                           size_t length,
-                           const unsigned char *iv,
-                           size_t iv_len,
-                           const unsigned char *add,
-                           size_t add_len,
-                           const unsigned char *tag,
-                           size_t tag_len,
-                           const unsigned char *input,
-                           unsigned char *output );
+int math_gcm_auth_decrypt(math_gcm_context *ctx, size_t length, const unsigned char *iv,
+                          size_t iv_len, const unsigned char *add, size_t add_len,
+                          const unsigned char *tag, size_t tag_len, const unsigned char *input,
+                          unsigned char *output);
 
 #if defined(MATH_SELF_TEST)
-int math_gcm_self_test( math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], int verbose );
+int math_gcm_self_test(math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], int verbose);
 #endif
 
 #ifdef __cplusplus

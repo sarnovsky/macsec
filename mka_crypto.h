@@ -7,7 +7,7 @@
  * derivation, integrity calculation and other helpers built on top of the
  * selected cryptographic backend.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -23,20 +23,21 @@
 #include "math/cmac.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-#define MACSEC_MKA_CAK_MAX_LEN       32u
-#define MACSEC_MKA_CKN_MAX_LEN       32u
+#define MACSEC_MKA_CAK_MAX_LEN 32u
+#define MACSEC_MKA_CKN_MAX_LEN 32u
 
-#define MACSEC_MKA_ICK_MAX_LEN       32u
-#define MACSEC_MKA_KEK_MAX_LEN       32u
-#define MACSEC_MKA_MIC_LEN           16u
+#define MACSEC_MKA_ICK_MAX_LEN 32u
+#define MACSEC_MKA_KEK_MAX_LEN 32u
+#define MACSEC_MKA_MIC_LEN 16u
 
-#define MACSEC_MKA_SAK_MAX_LEN       32u
-#define MACSEC_MKA_WRAPPED_MAX_LEN   (MACSEC_MKA_SAK_MAX_LEN + 8u)
+#define MACSEC_MKA_SAK_MAX_LEN 32u
+#define MACSEC_MKA_WRAPPED_MAX_LEN (MACSEC_MKA_SAK_MAX_LEN + 8u)
 
-#define MACSEC_MKA_SELFTEST_BUF_LEN  256u
+#define MACSEC_MKA_SELFTEST_BUF_LEN 256u
 
 typedef struct
 {
@@ -88,36 +89,23 @@ typedef struct
 int macsec_mka_crypto_init(macsec_mka_crypto_ctx_t *ctx);
 void macsec_mka_crypto_clear(macsec_mka_crypto_ctx_t *ctx);
 
-int macsec_mka_crypto_set_psk(macsec_mka_crypto_ctx_t *ctx,
-                              const uint8_t *cak,
-                              size_t cak_len,
-                              const uint8_t *ckn,
-                              size_t ckn_len);
+int macsec_mka_crypto_set_psk(macsec_mka_crypto_ctx_t *ctx, const uint8_t *cak, size_t cak_len,
+                              const uint8_t *ckn, size_t ckn_len);
 
 int macsec_mka_crypto_derive_ick_kek(macsec_mka_crypto_ctx_t *ctx);
 
-int macsec_mka_crypto_calc_mic(macsec_mka_crypto_ctx_t *ctx,
-                               const uint8_t *pdu,
-                               size_t pdu_len,
+int macsec_mka_crypto_calc_mic(macsec_mka_crypto_ctx_t *ctx, const uint8_t *pdu, size_t pdu_len,
                                uint8_t mic[MACSEC_MKA_MIC_LEN]);
 
-int macsec_mka_crypto_verify_mic(macsec_mka_crypto_ctx_t *ctx,
-                                 const uint8_t *pdu,
-                                 size_t pdu_len,
+int macsec_mka_crypto_verify_mic(macsec_mka_crypto_ctx_t *ctx, const uint8_t *pdu, size_t pdu_len,
                                  const uint8_t mic[MACSEC_MKA_MIC_LEN]);
 
-int macsec_mka_crypto_wrap_sak(macsec_mka_crypto_ctx_t *ctx,
-                               const uint8_t *sak,
-                               size_t sak_len,
-                               uint8_t *wrapped_sak,
-                               size_t *wrapped_sak_len,
+int macsec_mka_crypto_wrap_sak(macsec_mka_crypto_ctx_t *ctx, const uint8_t *sak, size_t sak_len,
+                               uint8_t *wrapped_sak, size_t *wrapped_sak_len,
                                size_t wrapped_sak_max_len);
 
-int macsec_mka_crypto_unwrap_sak(macsec_mka_crypto_ctx_t *ctx,
-                                 const uint8_t *wrapped_sak,
-                                 size_t wrapped_sak_len,
-                                 uint8_t *sak,
-                                 size_t *sak_len,
+int macsec_mka_crypto_unwrap_sak(macsec_mka_crypto_ctx_t *ctx, const uint8_t *wrapped_sak,
+                                 size_t wrapped_sak_len, uint8_t *sak, size_t *sak_len,
                                  size_t sak_max_len);
 
 /*
@@ -125,8 +113,7 @@ int macsec_mka_crypto_unwrap_sak(macsec_mka_crypto_ctx_t *ctx,
  *   0 = self-test OK
  *   1 = self-test failed
  */
-int macsec_mka_crypto_self_test(macsec_mka_crypto_self_test_ctx_t *test_ctx,
-                                int verbose);
+int macsec_mka_crypto_self_test(macsec_mka_crypto_self_test_ctx_t *test_ctx, int verbose);
 
 #ifdef __cplusplus
 }

@@ -6,7 +6,7 @@
  * This file verifies correct interaction between the MACsec, MKA and
  * cryptographic modules under realistic operating conditions.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,9 +21,7 @@
 
 #if (MACSEC_SELF_TEST != 0)
 
-static void macsec_test_fill_plain_frame(uint8_t *frame,
-                                         size_t len,
-                                         uint16_t ethertype,
+static void macsec_test_fill_plain_frame(uint8_t *frame, size_t len, uint16_t ethertype,
                                          uint8_t seed)
 {
     size_t i;
@@ -49,20 +47,14 @@ static void macsec_test_fill_plain_frame(uint8_t *frame,
 
     for (i = 14u; i < len; i++)
     {
-        frame[i] = (uint8_t)(seed + (uint8_t)i);
+        frame[i] = (uint8_t) (seed + (uint8_t) i);
     }
 }
 
-static void macsec_test_fill_static_config(macsec_config_t *cfg,
-                                           const uint8_t local_mac[6])
+static void macsec_test_fill_static_config(macsec_config_t *cfg, const uint8_t local_mac[6])
 {
-    static const uint8_t static_sak[16] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu
-    };
+    static const uint8_t static_sak[16] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                           0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu};
 
     macsec_assert(cfg != NULL);
     macsec_assert(local_mac != NULL);
@@ -82,11 +74,8 @@ static void macsec_test_fill_static_config(macsec_config_t *cfg,
     cfg->replay_window = 0u;
 }
 
-static void macsec_test_fill_mka_config(macsec_config_t *cfg,
-                                        const uint8_t local_mac[6],
-                                        const uint8_t *cak,
-                                        size_t cak_len,
-                                        const uint8_t *ckn,
+static void macsec_test_fill_mka_config(macsec_config_t *cfg, const uint8_t local_mac[6],
+                                        const uint8_t *cak, size_t cak_len, const uint8_t *ckn,
                                         size_t ckn_len)
 {
     macsec_assert(cfg != NULL);
@@ -114,18 +103,11 @@ static void macsec_test_fill_mka_config(macsec_config_t *cfg,
 }
 
 static int macsec_test_integration_static_sak_ping_like(
-    macsec_test_integration_static_sak_ping_like_data_t *data,
-    int verbose)
+    macsec_test_integration_static_sak_ping_like_data_t *data, int verbose)
 {
-    static const uint8_t mac_a[6] =
-    {
-        0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u
-    };
+    static const uint8_t mac_a[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u};
 
-    static const uint8_t mac_b[6] =
-    {
-        0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x02u
-    };
+    static const uint8_t mac_b[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x02u};
 
     size_t plain_tx_len = 96u;
     size_t secure_len = 0u;
@@ -156,16 +138,9 @@ static int macsec_test_integration_static_sak_ping_like(
     TEST_TRUE(macsec_is_secured(&data->a));
     TEST_TRUE(macsec_is_secured(&data->b));
 
-    macsec_test_fill_plain_frame(data->plain_tx,
-                                 plain_tx_len,
-                                 0x0800u,
-                                 0x33u);
+    macsec_test_fill_plain_frame(data->plain_tx, plain_tx_len, 0x0800u, 0x33u);
 
-    ret = macsec_output(&data->a,
-                        data->plain_tx,
-                        plain_tx_len,
-                        data->secure_frame,
-                        &secure_len,
+    ret = macsec_output(&data->a, data->plain_tx, plain_tx_len, data->secure_frame, &secure_len,
                         sizeof(data->secure_frame));
     if (ret != MACSEC_ERR_OK)
     {
@@ -176,13 +151,8 @@ static int macsec_test_integration_static_sak_ping_like(
 
     TEST_TRUE(macsec_frame_is_macsec(data->secure_frame, secure_len));
 
-    ret = macsec_input(&data->b,
-                       data->secure_frame,
-                       secure_len,
-                       data->plain_rx,
-                       &plain_rx_len,
-                       sizeof(data->plain_rx),
-                       &pass_to_stack);
+    ret = macsec_input(&data->b, data->secure_frame, secure_len, data->plain_rx, &plain_rx_len,
+                       sizeof(data->plain_rx), &pass_to_stack);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_clear(&data->a);
@@ -192,9 +162,7 @@ static int macsec_test_integration_static_sak_ping_like(
 
     TEST_TRUE(pass_to_stack);
     TEST_TRUE(plain_rx_len == plain_tx_len);
-    TEST_TRUE(memcmp(data->plain_tx,
-                     data->plain_rx,
-                     plain_tx_len) == 0);
+    TEST_TRUE(memcmp(data->plain_tx, data->plain_rx, plain_tx_len) == 0);
 
     macsec_clear(&data->a);
     macsec_clear(&data->b);
@@ -203,13 +171,9 @@ static int macsec_test_integration_static_sak_ping_like(
 }
 
 static int macsec_test_integration_disabled_passthrough(
-    macsec_test_integration_disabled_passthrough_data_t *data,
-    int verbose)
+    macsec_test_integration_disabled_passthrough_data_t *data, int verbose)
 {
-    static const uint8_t mac_a[6] =
-    {
-        0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u
-    };
+    static const uint8_t mac_a[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u};
 
     size_t plain_tx_len = 80u;
     size_t tx_len = 0u;
@@ -235,16 +199,9 @@ static int macsec_test_integration_disabled_passthrough(
 
     TEST_TRUE(macsec_is_secured(&data->ctx));
 
-    macsec_test_fill_plain_frame(data->plain_tx,
-                                 plain_tx_len,
-                                 0x0800u,
-                                 0x44u);
+    macsec_test_fill_plain_frame(data->plain_tx, plain_tx_len, 0x0800u, 0x44u);
 
-    ret = macsec_output(&data->ctx,
-                        data->plain_tx,
-                        plain_tx_len,
-                        data->tx_frame,
-                        &tx_len,
+    ret = macsec_output(&data->ctx, data->plain_tx, plain_tx_len, data->tx_frame, &tx_len,
                         sizeof(data->tx_frame));
     if (ret != MACSEC_ERR_OK)
     {
@@ -253,17 +210,10 @@ static int macsec_test_integration_disabled_passthrough(
     }
 
     TEST_TRUE(tx_len == plain_tx_len);
-    TEST_TRUE(memcmp(data->plain_tx,
-                     data->tx_frame,
-                     plain_tx_len) == 0);
+    TEST_TRUE(memcmp(data->plain_tx, data->tx_frame, plain_tx_len) == 0);
 
-    ret = macsec_input(&data->ctx,
-                       data->tx_frame,
-                       tx_len,
-                       data->rx_frame,
-                       &rx_len,
-                       sizeof(data->rx_frame),
-                       &pass_to_stack);
+    ret = macsec_input(&data->ctx, data->tx_frame, tx_len, data->rx_frame, &rx_len,
+                       sizeof(data->rx_frame), &pass_to_stack);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_clear(&data->ctx);
@@ -272,9 +222,7 @@ static int macsec_test_integration_disabled_passthrough(
 
     TEST_TRUE(pass_to_stack);
     TEST_TRUE(rx_len == plain_tx_len);
-    TEST_TRUE(memcmp(data->plain_tx,
-                     data->rx_frame,
-                     plain_tx_len) == 0);
+    TEST_TRUE(memcmp(data->plain_tx, data->rx_frame, plain_tx_len) == 0);
 
     macsec_clear(&data->ctx);
 
@@ -282,13 +230,9 @@ static int macsec_test_integration_disabled_passthrough(
 }
 
 static int macsec_test_integration_protected_drops_plain(
-    macsec_test_integration_protected_drops_plain_data_t *data,
-    int verbose)
+    macsec_test_integration_protected_drops_plain_data_t *data, int verbose)
 {
-    static const uint8_t mac_a[6] =
-    {
-        0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u
-    };
+    static const uint8_t mac_a[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u};
 
     size_t plain_len = 80u;
     size_t out_len = 0u;
@@ -299,8 +243,7 @@ static int macsec_test_integration_protected_drops_plain(
 
     if (verbose)
     {
-        MACSEC_PRINT((
-            "  Integration protected mode drops plain frame test\n"));
+        MACSEC_PRINT(("  Integration protected mode drops plain frame test\n"));
     }
 
     macsec_test_fill_static_config(&data->cfg, mac_a);
@@ -308,17 +251,9 @@ static int macsec_test_integration_protected_drops_plain(
     ret = macsec_init(&data->ctx, &data->cfg);
     TEST_OK(ret);
 
-    macsec_test_fill_plain_frame(data->plain,
-                                 plain_len,
-                                 0x0800u,
-                                 0x55u);
+    macsec_test_fill_plain_frame(data->plain, plain_len, 0x0800u, 0x55u);
 
-    ret = macsec_input(&data->ctx,
-                       data->plain,
-                       plain_len,
-                       data->out,
-                       &out_len,
-                       sizeof(data->out),
+    ret = macsec_input(&data->ctx, data->plain, plain_len, data->out, &out_len, sizeof(data->out),
                        &pass_to_stack);
 
     TEST_TRUE(ret == MACSEC_ERR_AUTH);
@@ -331,31 +266,16 @@ static int macsec_test_integration_protected_drops_plain(
 }
 
 static int macsec_test_integration_output_not_ready_mka_cak_16(
-    macsec_test_integration_output_not_ready_mka_data_t *data,
-    int verbose)
+    macsec_test_integration_output_not_ready_mka_data_t *data, int verbose)
 {
-    static const uint8_t mac_a[6] =
-    {
-        0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u
-    };
+    static const uint8_t mac_a[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u};
 
-    static const uint8_t cak[16] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu
-    };
+    static const uint8_t cak[16] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu};
 
-    static const uint8_t ckn[24] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu,
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u
-    };
+    static const uint8_t ckn[24] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu,
+                                    0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
 
     size_t plain_len = 80u;
     size_t secure_len = 0u;
@@ -364,16 +284,10 @@ static int macsec_test_integration_output_not_ready_mka_cak_16(
 
     if (verbose)
     {
-        MACSEC_PRINT((
-            "  Integration MKA output not ready test, 16-byte CAK\n"));
+        MACSEC_PRINT(("  Integration MKA output not ready test, 16-byte CAK\n"));
     }
 
-    macsec_test_fill_mka_config(&data->cfg,
-                                mac_a,
-                                cak,
-                                sizeof(cak),
-                                ckn,
-                                sizeof(ckn));
+    macsec_test_fill_mka_config(&data->cfg, mac_a, cak, sizeof(cak), ckn, sizeof(ckn));
 
     ret = macsec_init(&data->ctx, &data->cfg);
     TEST_OK(ret);
@@ -381,16 +295,9 @@ static int macsec_test_integration_output_not_ready_mka_cak_16(
     TEST_TRUE(data->cfg.cak_len == 16u);
     TEST_TRUE(macsec_get_state(&data->ctx) == MACSEC_STATE_WAIT_MKA);
 
-    macsec_test_fill_plain_frame(data->plain,
-                                 plain_len,
-                                 0x0800u,
-                                 0x66u);
+    macsec_test_fill_plain_frame(data->plain, plain_len, 0x0800u, 0x66u);
 
-    ret = macsec_output(&data->ctx,
-                        data->plain,
-                        plain_len,
-                        data->secure,
-                        &secure_len,
+    ret = macsec_output(&data->ctx, data->plain, plain_len, data->secure, &secure_len,
                         sizeof(data->secure));
 
     TEST_TRUE(ret == MACSEC_ERR_NOT_READY);
@@ -402,35 +309,18 @@ static int macsec_test_integration_output_not_ready_mka_cak_16(
 }
 
 static int macsec_test_integration_output_not_ready_mka_cak_32(
-    macsec_test_integration_output_not_ready_mka_data_t *data,
-    int verbose)
+    macsec_test_integration_output_not_ready_mka_data_t *data, int verbose)
 {
-    static const uint8_t mac_a[6] =
-    {
-        0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u
-    };
+    static const uint8_t mac_a[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u};
 
-    static const uint8_t cak[32] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu,
-        0x10u, 0x21u, 0x32u, 0x43u,
-        0x54u, 0x65u, 0x76u, 0x87u,
-        0x98u, 0xA9u, 0xBAu, 0xCBu,
-        0xDCu, 0xEDu, 0xFEu, 0x0Fu
-    };
+    static const uint8_t cak[32] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu,
+                                    0x10u, 0x21u, 0x32u, 0x43u, 0x54u, 0x65u, 0x76u, 0x87u,
+                                    0x98u, 0xA9u, 0xBAu, 0xCBu, 0xDCu, 0xEDu, 0xFEu, 0x0Fu};
 
-    static const uint8_t ckn[24] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u,
-        0x88u, 0x99u, 0xAAu, 0xBBu,
-        0xCCu, 0xDDu, 0xEEu, 0xFFu,
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0x44u, 0x55u, 0x66u, 0x77u
-    };
+    static const uint8_t ckn[24] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu,
+                                    0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
 
     size_t plain_len = 80u;
     size_t secure_len = 0u;
@@ -439,16 +329,10 @@ static int macsec_test_integration_output_not_ready_mka_cak_32(
 
     if (verbose)
     {
-        MACSEC_PRINT((
-            "  Integration MKA output not ready test, 32-byte CAK\n"));
+        MACSEC_PRINT(("  Integration MKA output not ready test, 32-byte CAK\n"));
     }
 
-    macsec_test_fill_mka_config(&data->cfg,
-                                mac_a,
-                                cak,
-                                sizeof(cak),
-                                ckn,
-                                sizeof(ckn));
+    macsec_test_fill_mka_config(&data->cfg, mac_a, cak, sizeof(cak), ckn, sizeof(ckn));
 
     TEST_TRUE(data->cfg.cak_len == 32u);
     TEST_TRUE(memcmp(data->cfg.cak, cak, sizeof(cak)) == 0);
@@ -458,25 +342,16 @@ static int macsec_test_integration_output_not_ready_mka_cak_32(
      * This detects implementations that silently truncate a 32-byte
      * CAK to the first 16 bytes.
      */
-    TEST_TRUE(memcmp(&data->cfg.cak[16],
-                     &cak[16],
-                     16u) == 0);
+    TEST_TRUE(memcmp(&data->cfg.cak[16], &cak[16], 16u) == 0);
 
     ret = macsec_init(&data->ctx, &data->cfg);
     TEST_OK(ret);
 
     TEST_TRUE(macsec_get_state(&data->ctx) == MACSEC_STATE_WAIT_MKA);
 
-    macsec_test_fill_plain_frame(data->plain,
-                                 plain_len,
-                                 0x0800u,
-                                 0x77u);
+    macsec_test_fill_plain_frame(data->plain, plain_len, 0x0800u, 0x77u);
 
-    ret = macsec_output(&data->ctx,
-                        data->plain,
-                        plain_len,
-                        data->secure,
-                        &secure_len,
+    ret = macsec_output(&data->ctx, data->plain, plain_len, data->secure, &secure_len,
                         sizeof(data->secure));
 
     TEST_TRUE(ret == MACSEC_ERR_NOT_READY);
@@ -487,8 +362,7 @@ static int macsec_test_integration_output_not_ready_mka_cak_32(
     return 0;
 }
 
-int macsec_test_integration(macsec_test_integration_data_t *data,
-                            int verbose)
+int macsec_test_integration(macsec_test_integration_data_t *data, int verbose)
 {
     if (verbose)
     {
@@ -496,24 +370,19 @@ int macsec_test_integration(macsec_test_integration_data_t *data,
     }
 
     TEST_OK(macsec_test_integration_disabled_passthrough(
-        &data->test_integration_disabled_passthrough_data,
-        verbose));
+        &data->test_integration_disabled_passthrough_data, verbose));
 
     TEST_OK(macsec_test_integration_static_sak_ping_like(
-        &data->test_integration_static_sak_ping_like_data,
-        verbose));
+        &data->test_integration_static_sak_ping_like_data, verbose));
 
     TEST_OK(macsec_test_integration_protected_drops_plain(
-        &data->test_integration_protected_drops_plain_data,
-        verbose));
+        &data->test_integration_protected_drops_plain_data, verbose));
 
     TEST_OK(macsec_test_integration_output_not_ready_mka_cak_16(
-        &data->test_integration_output_not_ready_mka_data,
-        verbose));
+        &data->test_integration_output_not_ready_mka_data, verbose));
 
     TEST_OK(macsec_test_integration_output_not_ready_mka_cak_32(
-        &data->test_integration_output_not_ready_mka_data,
-        verbose));
+        &data->test_integration_output_not_ready_mka_data, verbose));
 
     return 0;
 }

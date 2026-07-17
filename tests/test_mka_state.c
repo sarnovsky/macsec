@@ -6,7 +6,7 @@
  * This file verifies event consumption, SAK installation handoff,
  * data-plane installation confirmation and SAK retirement.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,120 +21,85 @@
 #include <stdint.h>
 #include <string.h>
 
-
 #if (MACSEC_SELF_TEST != 0)
 
 /******************************************************************************
  * Test constants
  *****************************************************************************/
 
-#define MACSEC_TEST_MKA_KEY_NUMBER        1u
-#define MACSEC_TEST_MKA_OTHER_KEY_NUMBER  2u
+#define MACSEC_TEST_MKA_KEY_NUMBER 1u
+#define MACSEC_TEST_MKA_OTHER_KEY_NUMBER 2u
 
-#define MACSEC_TEST_MKA_AN                0u
-#define MACSEC_TEST_MKA_OTHER_AN          1u
+#define MACSEC_TEST_MKA_AN 0u
+#define MACSEC_TEST_MKA_OTHER_AN 1u
 
-#define MACSEC_TEST_MKA_LOWEST_PN         123u
+#define MACSEC_TEST_MKA_LOWEST_PN 123u
 
-
-static const uint8_t s_macsec_test_mka_sak[16] =
-{
-    0x00u, 0x01u, 0x02u, 0x03u,
-    0x04u, 0x05u, 0x06u, 0x07u,
-    0x08u, 0x09u, 0x0Au, 0x0Bu,
-    0x0Cu, 0x0Du, 0x0Eu, 0x0Fu
-};
-
+static const uint8_t s_macsec_test_mka_sak[16] = {0x00u, 0x01u, 0x02u, 0x03u, 0x04u, 0x05u,
+                                                  0x06u, 0x07u, 0x08u, 0x09u, 0x0Au, 0x0Bu,
+                                                  0x0Cu, 0x0Du, 0x0Eu, 0x0Fu};
 
 /******************************************************************************
  * Test helpers
  *****************************************************************************/
 
-static void macsec_test_mka_state_clear_context(
-    macsec_mka_ctx_t *mka)
+static void macsec_test_mka_state_clear_context(macsec_mka_ctx_t *mka)
 {
     macsec_assert(mka != NULL);
 
     memset(mka, 0, sizeof(*mka));
 
-    mka->state =
-        MACSEC_MKA_STATE_INIT;
+    mka->state = MACSEC_MKA_STATE_INIT;
 
-    mka->latest_sak.lifecycle_state =
-        MACSEC_MKA_SAK_STATE_NONE;
+    mka->latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_NONE;
 
-    mka->latest_sak.origin =
-        MACSEC_MKA_SAK_ORIGIN_NONE;
+    mka->latest_sak.origin = MACSEC_MKA_SAK_ORIGIN_NONE;
 }
 
-
-static void macsec_test_mka_state_prepare_sak(
-    macsec_mka_ctx_t *mka,
-    macsec_mka_sak_origin_t origin,
-    macsec_mka_sak_state_t lifecycle_state)
+static void macsec_test_mka_state_prepare_sak(macsec_mka_ctx_t *mka, macsec_mka_sak_origin_t origin,
+                                              macsec_mka_sak_state_t lifecycle_state)
 {
     macsec_assert(mka != NULL);
 
-    memset(&mka->latest_sak,
-           0,
-           sizeof(mka->latest_sak));
+    memset(&mka->latest_sak, 0, sizeof(mka->latest_sak));
 
-    memcpy(mka->latest_sak.sak,
-           s_macsec_test_mka_sak,
-           sizeof(s_macsec_test_mka_sak));
+    memcpy(mka->latest_sak.sak, s_macsec_test_mka_sak, sizeof(s_macsec_test_mka_sak));
 
-    mka->latest_sak.sak_len =
-        sizeof(s_macsec_test_mka_sak);
+    mka->latest_sak.sak_len = sizeof(s_macsec_test_mka_sak);
 
-    mka->latest_sak.an =
-        MACSEC_TEST_MKA_AN;
+    mka->latest_sak.an = MACSEC_TEST_MKA_AN;
 
-    mka->latest_sak.key_number =
-        MACSEC_TEST_MKA_KEY_NUMBER;
+    mka->latest_sak.key_number = MACSEC_TEST_MKA_KEY_NUMBER;
 
-    mka->latest_sak.lowest_pn =
-        1u;
+    mka->latest_sak.lowest_pn = 1u;
 
-    mka->latest_sak.origin =
-        origin;
+    mka->latest_sak.origin = origin;
 
-    mka->latest_sak.lifecycle_state =
-        lifecycle_state;
+    mka->latest_sak.lifecycle_state = lifecycle_state;
 
-    mka->latest_sak.valid =
-        MACSEC_TRUE;
+    mka->latest_sak.valid = MACSEC_TRUE;
 
-    mka->latest_sak.rx_installed =
-        MACSEC_FALSE;
+    mka->latest_sak.rx_installed = MACSEC_FALSE;
 
-    mka->latest_sak.tx_installed =
-        MACSEC_FALSE;
+    mka->latest_sak.tx_installed = MACSEC_FALSE;
 
-    mka->latest_sak.peer_rx_confirmed =
-        MACSEC_FALSE;
+    mka->latest_sak.peer_rx_confirmed = MACSEC_FALSE;
 
-    mka->latest_sak.peer_tx_confirmed =
-        MACSEC_FALSE;
+    mka->latest_sak.peer_tx_confirmed = MACSEC_FALSE;
 }
 
-
-static void macsec_test_mka_state_prepare_remote_candidate(
-    macsec_mka_ctx_t *mka)
+static void macsec_test_mka_state_prepare_remote_candidate(macsec_mka_ctx_t *mka)
 {
     macsec_assert(mka != NULL);
 
     macsec_test_mka_state_clear_context(mka);
 
-    macsec_test_mka_state_prepare_sak(
-        mka,
-        MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
-        MACSEC_MKA_SAK_STATE_CANDIDATE);
+    macsec_test_mka_state_prepare_sak(mka, MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_CANDIDATE);
 }
 
-
-static int macsec_test_mka_state_prepare_install_pending(
-    macsec_mka_ctx_t *mka,
-    macsec_mka_sak_t *sak)
+static int macsec_test_mka_state_prepare_install_pending(macsec_mka_ctx_t *mka,
+                                                         macsec_mka_sak_t *sak)
 {
     macsec_assert(mka != NULL);
     macsec_assert(sak != NULL);
@@ -143,15 +108,10 @@ static int macsec_test_mka_state_prepare_install_pending(
 
     memset(sak, 0, sizeof(*sak));
 
-    return macsec_mka_take_sak_for_install(
-        mka,
-        sak);
+    return macsec_mka_take_sak_for_install(mka, sak);
 }
 
-
-static macsec_bool_t macsec_test_mka_state_buffer_is_zero(
-    const uint8_t *buffer,
-    size_t buffer_len)
+static macsec_bool_t macsec_test_mka_state_buffer_is_zero(const uint8_t *buffer, size_t buffer_len)
 {
     size_t i;
 
@@ -168,14 +128,11 @@ static macsec_bool_t macsec_test_mka_state_buffer_is_zero(
     return MACSEC_TRUE;
 }
 
-
 /******************************************************************************
  * Event tests
  *****************************************************************************/
 
-static int macsec_test_mka_state_events_take(
-    macsec_test_mka_state_events_data_t *data,
-    int verbose)
+static int macsec_test_mka_state_events_take(macsec_test_mka_state_events_data_t *data, int verbose)
 {
     macsec_mka_event_flags_t events;
 
@@ -188,29 +145,21 @@ static int macsec_test_mka_state_events_take(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    data->mka.pending_events =
-        MACSEC_MKA_EVENT_PEER_LIVE |
-        MACSEC_MKA_EVENT_SAK_AVAILABLE;
+    data->mka.pending_events = MACSEC_MKA_EVENT_PEER_LIVE | MACSEC_MKA_EVENT_SAK_AVAILABLE;
 
     events = macsec_mka_take_events(&data->mka);
 
-    TEST_TRUE(
-        (events & MACSEC_MKA_EVENT_PEER_LIVE) != 0u);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_PEER_LIVE) != 0u);
 
-    TEST_TRUE(
-        (events & MACSEC_MKA_EVENT_SAK_AVAILABLE) != 0u);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_SAK_AVAILABLE) != 0u);
 
-    TEST_EQ_U32(
-        data->mka.pending_events,
-        MACSEC_MKA_EVENT_NONE);
+    TEST_EQ_U32(data->mka.pending_events, MACSEC_MKA_EVENT_NONE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_events_second_take_empty(
-    macsec_test_mka_state_events_data_t *data,
-    int verbose)
+static int macsec_test_mka_state_events_second_take_empty(macsec_test_mka_state_events_data_t *data,
+                                                          int verbose)
 {
     macsec_mka_event_flags_t events;
 
@@ -223,28 +172,21 @@ static int macsec_test_mka_state_events_second_take_empty(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    data->mka.pending_events =
-        MACSEC_MKA_EVENT_SAK_AVAILABLE;
+    data->mka.pending_events = MACSEC_MKA_EVENT_SAK_AVAILABLE;
 
     events = macsec_mka_take_events(&data->mka);
 
-    TEST_EQ_U32(
-        events,
-        MACSEC_MKA_EVENT_SAK_AVAILABLE);
+    TEST_EQ_U32(events, MACSEC_MKA_EVENT_SAK_AVAILABLE);
 
     events = macsec_mka_take_events(&data->mka);
 
-    TEST_EQ_U32(
-        events,
-        MACSEC_MKA_EVENT_NONE);
+    TEST_EQ_U32(events, MACSEC_MKA_EVENT_NONE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_events_preserve_tx(
-    macsec_test_mka_state_events_data_t *data,
-    int verbose)
+static int macsec_test_mka_state_events_preserve_tx(macsec_test_mka_state_events_data_t *data,
+                                                    int verbose)
 {
     macsec_mka_tx_reason_flags_t reasons_before;
 
@@ -257,37 +199,27 @@ static int macsec_test_mka_state_events_preserve_tx(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    data->mka.pending_events =
-        MACSEC_MKA_EVENT_PEER_LIVE;
+    data->mka.pending_events = MACSEC_MKA_EVENT_PEER_LIVE;
 
-    data->mka.tx_reasons =
-        MACSEC_MKA_TX_REASON_INITIAL |
-        MACSEC_MKA_TX_REASON_PERIODIC;
+    data->mka.tx_reasons = MACSEC_MKA_TX_REASON_INITIAL | MACSEC_MKA_TX_REASON_PERIODIC;
 
-    reasons_before =
-        data->mka.tx_reasons;
+    reasons_before = data->mka.tx_reasons;
 
-    (void)macsec_mka_take_events(&data->mka);
+    (void) macsec_mka_take_events(&data->mka);
 
-    TEST_EQ_U32(
-        data->mka.pending_events,
-        MACSEC_MKA_EVENT_NONE);
+    TEST_EQ_U32(data->mka.pending_events, MACSEC_MKA_EVENT_NONE);
 
-    TEST_EQ_U32(
-        data->mka.tx_reasons,
-        reasons_before);
+    TEST_EQ_U32(data->mka.tx_reasons, reasons_before);
 
     return 0;
 }
-
 
 /******************************************************************************
  * SAK handoff tests
  *****************************************************************************/
 
-static int macsec_test_mka_state_sak_take_no_sak(
-    macsec_test_mka_state_sak_take_data_t *data,
-    int verbose)
+static int macsec_test_mka_state_sak_take_no_sak(macsec_test_mka_state_sak_take_data_t *data,
+                                                 int verbose)
 {
     int ret;
 
@@ -300,29 +232,21 @@ static int macsec_test_mka_state_sak_take_no_sak(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    memset(&data->sak,
-           0xA5,
-           sizeof(data->sak));
+    memset(&data->sak, 0xA5, sizeof(data->sak));
 
-    ret = macsec_mka_take_sak_for_install(
-        &data->mka,
-        &data->sak);
+    ret = macsec_mka_take_sak_for_install(&data->mka, &data->sak);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_NOT_READY);
+    TEST_TRUE(ret == MACSEC_ERR_NOT_READY);
 
-    TEST_TRUE(
-        macsec_test_mka_state_buffer_is_zero(
-            (const uint8_t *)&data->sak,
-            sizeof(data->sak)) == MACSEC_TRUE);
+    TEST_TRUE(macsec_test_mka_state_buffer_is_zero((const uint8_t *) &data->sak,
+                                                   sizeof(data->sak)) == MACSEC_TRUE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_take_remote_candidate(
-    macsec_test_mka_state_sak_take_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_take_remote_candidate(macsec_test_mka_state_sak_take_data_t *data,
+                                                int verbose)
 {
     int ret;
 
@@ -333,177 +257,112 @@ static int macsec_test_mka_state_sak_take_remote_candidate(
         MACSEC_PRINT(("  MKA remote candidate SAK take test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(
-        &data->mka);
+    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
 
-    memset(&data->sak,
-           0,
-           sizeof(data->sak));
+    memset(&data->sak, 0, sizeof(data->sak));
 
-    ret = macsec_mka_take_sak_for_install(
-        &data->mka,
-        &data->sak);
+    ret = macsec_mka_take_sak_for_install(&data->mka, &data->sak);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_OK);
+    TEST_TRUE(ret == MACSEC_ERR_OK);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_EQ_U32(
-        data->sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_TRUE(
-        data->sak.valid == MACSEC_TRUE);
+    TEST_TRUE(data->sak.valid == MACSEC_TRUE);
 
-    TEST_EQ_U32(
-        data->sak.origin,
-        MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER);
+    TEST_EQ_U32(data->sak.origin, MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER);
 
-    TEST_EQ_U32(
-        data->sak.sak_len,
-        sizeof(s_macsec_test_mka_sak));
+    TEST_EQ_U32(data->sak.sak_len, sizeof(s_macsec_test_mka_sak));
 
-    TEST_EQ_U32(
-        data->sak.an,
-        MACSEC_TEST_MKA_AN);
+    TEST_EQ_U32(data->sak.an, MACSEC_TEST_MKA_AN);
 
-    TEST_EQ_U32(
-        data->sak.key_number,
-        MACSEC_TEST_MKA_KEY_NUMBER);
+    TEST_EQ_U32(data->sak.key_number, MACSEC_TEST_MKA_KEY_NUMBER);
 
-    TEST_MEM_EQ(
-        data->sak.sak,
-        s_macsec_test_mka_sak,
-        sizeof(s_macsec_test_mka_sak));
+    TEST_MEM_EQ(data->sak.sak, s_macsec_test_mka_sak, sizeof(s_macsec_test_mka_sak));
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_take_install_pending_retry(
-    macsec_test_mka_state_sak_take_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_take_install_pending_retry(macsec_test_mka_state_sak_take_data_t *data,
+                                                     int verbose)
 {
     macsec_assert(data != NULL);
 
     if (verbose)
     {
-        MACSEC_PRINT((
-            "  MKA INSTALL_PENDING SAK retry test\n"));
+        MACSEC_PRINT(("  MKA INSTALL_PENDING SAK retry test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(
-        &data->mka);
+    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
 
-    memset(&data->sak,
-           0,
-           sizeof(data->sak));
+    memset(&data->sak, 0, sizeof(data->sak));
 
-    memset(&data->second_sak,
-           0,
-           sizeof(data->second_sak));
+    memset(&data->second_sak, 0, sizeof(data->second_sak));
 
     /*
      * First handoff moves the SAK to INSTALL_PENDING.
      */
-    TEST_OK(macsec_mka_take_sak_for_install(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_mka_take_sak_for_install(&data->mka, &data->sak));
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_EQ_U32(
-        data->sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_TRUE(
-        data->sak.rx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->sak.rx_installed == MACSEC_FALSE);
 
-    TEST_TRUE(
-        data->sak.tx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->sak.tx_installed == MACSEC_FALSE);
 
     /*
      * Confirm only RX installation.
      */
-    TEST_OK(macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        MACSEC_MKA_INSTALL_RX,
-        MACSEC_TEST_MKA_LOWEST_PN));
+    TEST_OK(macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                            MACSEC_TEST_MKA_AN, MACSEC_MKA_INSTALL_RX,
+                                            MACSEC_TEST_MKA_LOWEST_PN));
 
-    TEST_TRUE(
-        data->mka.latest_sak.rx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.rx_installed == MACSEC_TRUE);
 
-    TEST_TRUE(
-        data->mka.latest_sak.tx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.tx_installed == MACSEC_FALSE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
     /*
      * The pending SAK must be returned again for the missing TX direction.
      */
-    TEST_OK(macsec_mka_take_sak_for_install(
-        &data->mka,
-        &data->second_sak));
+    TEST_OK(macsec_mka_take_sak_for_install(&data->mka, &data->second_sak));
 
-    TEST_EQ_U32(
-        data->second_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->second_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_TRUE(
-        data->second_sak.rx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->second_sak.rx_installed == MACSEC_TRUE);
 
-    TEST_TRUE(
-        data->second_sak.tx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->second_sak.tx_installed == MACSEC_FALSE);
 
-    TEST_EQ_U32(
-        data->second_sak.key_number,
-        MACSEC_TEST_MKA_KEY_NUMBER);
+    TEST_EQ_U32(data->second_sak.key_number, MACSEC_TEST_MKA_KEY_NUMBER);
 
-    TEST_EQ_U32(
-        data->second_sak.an,
-        MACSEC_TEST_MKA_AN);
+    TEST_EQ_U32(data->second_sak.an, MACSEC_TEST_MKA_AN);
 
-    TEST_MEM_EQ(
-        data->second_sak.sak,
-        s_macsec_test_mka_sak,
-        sizeof(s_macsec_test_mka_sak));
+    TEST_MEM_EQ(data->second_sak.sak, s_macsec_test_mka_sak, sizeof(s_macsec_test_mka_sak));
 
     /*
      * Confirm TX and complete the lifecycle.
      */
-    TEST_OK(macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        MACSEC_MKA_INSTALL_TX,
-        MACSEC_TEST_MKA_LOWEST_PN));
+    TEST_OK(macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                            MACSEC_TEST_MKA_AN, MACSEC_MKA_INSTALL_TX,
+                                            MACSEC_TEST_MKA_LOWEST_PN));
 
-    TEST_TRUE(
-        data->mka.latest_sak.rx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.rx_installed == MACSEC_TRUE);
 
-    TEST_TRUE(
-        data->mka.latest_sak.tx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.tx_installed == MACSEC_TRUE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_take_local_candidate_rejected(
-    macsec_test_mka_state_sak_take_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_take_local_candidate_rejected(macsec_test_mka_state_sak_take_data_t *data,
+                                                        int verbose)
 {
     int ret;
 
@@ -516,29 +375,20 @@ static int macsec_test_mka_state_sak_take_local_candidate_rejected(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    macsec_test_mka_state_prepare_sak(
-        &data->mka,
-        MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER,
-        MACSEC_MKA_SAK_STATE_CANDIDATE);
+    macsec_test_mka_state_prepare_sak(&data->mka, MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_CANDIDATE);
 
-    ret = macsec_mka_take_sak_for_install(
-        &data->mka,
-        &data->sak);
+    ret = macsec_mka_take_sak_for_install(&data->mka, &data->sak);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_NOT_READY);
+    TEST_TRUE(ret == MACSEC_ERR_NOT_READY);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_CANDIDATE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_CANDIDATE);
 
     return 0;
 }
 
-
 static int macsec_test_mka_state_sak_take_distribution_pending_rejected(
-    macsec_test_mka_state_sak_take_data_t *data,
-    int verbose)
+    macsec_test_mka_state_sak_take_data_t *data, int verbose)
 {
     int ret;
 
@@ -546,35 +396,26 @@ static int macsec_test_mka_state_sak_take_distribution_pending_rejected(
 
     if (verbose)
     {
-        MACSEC_PRINT((
-            "  MKA local distribution-pending SAK rejection test\n"));
+        MACSEC_PRINT(("  MKA local distribution-pending SAK rejection test\n"));
     }
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    macsec_test_mka_state_prepare_sak(
-        &data->mka,
-        MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER,
-        MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING);
+    macsec_test_mka_state_prepare_sak(&data->mka, MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING);
 
-    ret = macsec_mka_take_sak_for_install(
-        &data->mka,
-        &data->sak);
+    ret = macsec_mka_take_sak_for_install(&data->mka, &data->sak);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_NOT_READY);
+    TEST_TRUE(ret == MACSEC_ERR_NOT_READY);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_take_local_distributed(
-    macsec_test_mka_state_sak_take_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_take_local_distributed(macsec_test_mka_state_sak_take_data_t *data,
+                                                 int verbose)
 {
     int ret;
 
@@ -587,37 +428,25 @@ static int macsec_test_mka_state_sak_take_local_distributed(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    macsec_test_mka_state_prepare_sak(
-        &data->mka,
-        MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER,
-        MACSEC_MKA_SAK_STATE_DISTRIBUTED);
+    macsec_test_mka_state_prepare_sak(&data->mka, MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_DISTRIBUTED);
 
-    ret = macsec_mka_take_sak_for_install(
-        &data->mka,
-        &data->sak);
+    ret = macsec_mka_take_sak_for_install(&data->mka, &data->sak);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_OK);
+    TEST_TRUE(ret == MACSEC_ERR_OK);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_EQ_U32(
-        data->sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_EQ_U32(
-        data->sak.origin,
-        MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER);
+    TEST_EQ_U32(data->sak.origin, MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_take_invalid_length(
-    macsec_test_mka_state_sak_take_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_take_invalid_length(macsec_test_mka_state_sak_take_data_t *data,
+                                              int verbose)
 {
     int ret;
 
@@ -628,29 +457,21 @@ static int macsec_test_mka_state_sak_take_invalid_length(
         MACSEC_PRINT(("  MKA invalid SAK length test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(
-        &data->mka);
+    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
 
     data->mka.latest_sak.sak_len = 24u;
 
-    ret = macsec_mka_take_sak_for_install(
-        &data->mka,
-        &data->sak);
+    ret = macsec_mka_take_sak_for_install(&data->mka, &data->sak);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_STATE);
+    TEST_TRUE(ret == MACSEC_ERR_STATE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_CANDIDATE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_CANDIDATE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_take_invalid_an(
-    macsec_test_mka_state_sak_take_data_t *data,
-    int verbose)
+static int macsec_test_mka_state_sak_take_invalid_an(macsec_test_mka_state_sak_take_data_t *data,
+                                                     int verbose)
 {
     int ret;
 
@@ -661,29 +482,22 @@ static int macsec_test_mka_state_sak_take_invalid_an(
         MACSEC_PRINT(("  MKA invalid SAK AN test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(
-        &data->mka);
+    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
 
     data->mka.latest_sak.an = 4u;
 
-    ret = macsec_mka_take_sak_for_install(
-        &data->mka,
-        &data->sak);
+    ret = macsec_mka_take_sak_for_install(&data->mka, &data->sak);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_STATE);
+    TEST_TRUE(ret == MACSEC_ERR_STATE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_CANDIDATE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_CANDIDATE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_take_invalid_key_number(
-    macsec_test_mka_state_sak_take_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_take_invalid_key_number(macsec_test_mka_state_sak_take_data_t *data,
+                                                  int verbose)
 {
     int ret;
 
@@ -694,33 +508,26 @@ static int macsec_test_mka_state_sak_take_invalid_key_number(
         MACSEC_PRINT(("  MKA invalid SAK key number test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(
-        &data->mka);
+    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
 
     data->mka.latest_sak.key_number = 0u;
 
-    ret = macsec_mka_take_sak_for_install(
-        &data->mka,
-        &data->sak);
+    ret = macsec_mka_take_sak_for_install(&data->mka, &data->sak);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_STATE);
+    TEST_TRUE(ret == MACSEC_ERR_STATE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_CANDIDATE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_CANDIDATE);
 
     return 0;
 }
-
 
 /******************************************************************************
  * SAK installation tests
  *****************************************************************************/
 
-static int macsec_test_mka_state_sak_install_wrong_key_number(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_install_wrong_key_number(macsec_test_mka_state_sak_install_data_t *data,
+                                                   int verbose)
 {
     int ret;
 
@@ -731,37 +538,25 @@ static int macsec_test_mka_state_sak_install_wrong_key_number(
         MACSEC_PRINT(("  MKA SAK install wrong key number test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    ret = macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_OTHER_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        MACSEC_MKA_INSTALL_RX,
-        1u);
+    ret = macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_OTHER_KEY_NUMBER,
+                                          MACSEC_TEST_MKA_AN, MACSEC_MKA_INSTALL_RX, 1u);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_PARAM);
+    TEST_TRUE(ret == MACSEC_ERR_PARAM);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_TRUE(
-        data->mka.latest_sak.rx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.rx_installed == MACSEC_FALSE);
 
-    TEST_TRUE(
-        data->mka.latest_sak.tx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.tx_installed == MACSEC_FALSE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_install_wrong_an(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_install_wrong_an(macsec_test_mka_state_sak_install_data_t *data,
+                                           int verbose)
 {
     int ret;
 
@@ -772,33 +567,23 @@ static int macsec_test_mka_state_sak_install_wrong_an(
         MACSEC_PRINT(("  MKA SAK install wrong AN test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    ret = macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_OTHER_AN,
-        MACSEC_MKA_INSTALL_RX,
-        1u);
+    ret = macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                          MACSEC_TEST_MKA_OTHER_AN, MACSEC_MKA_INSTALL_RX, 1u);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_PARAM);
+    TEST_TRUE(ret == MACSEC_ERR_PARAM);
 
-    TEST_TRUE(
-        data->mka.latest_sak.rx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.rx_installed == MACSEC_FALSE);
 
-    TEST_TRUE(
-        data->mka.latest_sak.tx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.tx_installed == MACSEC_FALSE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_install_invalid_direction(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_install_invalid_direction(macsec_test_mka_state_sak_install_data_t *data,
+                                                    int verbose)
 {
     int ret;
 
@@ -809,43 +594,28 @@ static int macsec_test_mka_state_sak_install_invalid_direction(
         MACSEC_PRINT(("  MKA SAK install invalid direction test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    ret = macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        MACSEC_MKA_INSTALL_NONE,
-        1u);
+    ret = macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                          MACSEC_TEST_MKA_AN, MACSEC_MKA_INSTALL_NONE, 1u);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_PARAM);
+    TEST_TRUE(ret == MACSEC_ERR_PARAM);
 
-    ret = macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        (macsec_mka_install_directions_t)0x80u,
-        1u);
+    ret =
+        macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER, MACSEC_TEST_MKA_AN,
+                                        (macsec_mka_install_directions_t) 0x80u, 1u);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_PARAM);
+    TEST_TRUE(ret == MACSEC_ERR_PARAM);
 
-    TEST_TRUE(
-        data->mka.latest_sak.rx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.rx_installed == MACSEC_FALSE);
 
-    TEST_TRUE(
-        data->mka.latest_sak.tx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.tx_installed == MACSEC_FALSE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_install_rx_only(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int macsec_test_mka_state_sak_install_rx_only(macsec_test_mka_state_sak_install_data_t *data,
+                                                     int verbose)
 {
     int ret;
 
@@ -856,51 +626,33 @@ static int macsec_test_mka_state_sak_install_rx_only(
         MACSEC_PRINT(("  MKA SAK RX-only install test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    ret = macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        MACSEC_MKA_INSTALL_RX,
-        MACSEC_TEST_MKA_LOWEST_PN);
+    ret =
+        macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER, MACSEC_TEST_MKA_AN,
+                                        MACSEC_MKA_INSTALL_RX, MACSEC_TEST_MKA_LOWEST_PN);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_OK);
+    TEST_TRUE(ret == MACSEC_ERR_OK);
 
-    TEST_TRUE(
-        data->mka.latest_sak.rx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.rx_installed == MACSEC_TRUE);
 
-    TEST_TRUE(
-        data->mka.latest_sak.tx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.tx_installed == MACSEC_FALSE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_TRUE(
-        data->mka.latest_key_rx == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_key_rx == MACSEC_TRUE);
 
-    TEST_TRUE(
-        data->mka.latest_key_tx == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_key_tx == MACSEC_FALSE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lowest_pn,
-        MACSEC_TEST_MKA_LOWEST_PN);
+    TEST_EQ_U32(data->mka.latest_sak.lowest_pn, MACSEC_TEST_MKA_LOWEST_PN);
 
-    TEST_EQ_U32(
-        data->mka.latest_lowest_pn,
-        MACSEC_TEST_MKA_LOWEST_PN);
+    TEST_EQ_U32(data->mka.latest_lowest_pn, MACSEC_TEST_MKA_LOWEST_PN);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_install_tx_only(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int macsec_test_mka_state_sak_install_tx_only(macsec_test_mka_state_sak_install_data_t *data,
+                                                     int verbose)
 {
     int ret;
 
@@ -911,43 +663,30 @@ static int macsec_test_mka_state_sak_install_tx_only(
         MACSEC_PRINT(("  MKA SAK TX-only install test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    ret = macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        MACSEC_MKA_INSTALL_TX,
-        MACSEC_TEST_MKA_LOWEST_PN);
+    ret =
+        macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER, MACSEC_TEST_MKA_AN,
+                                        MACSEC_MKA_INSTALL_TX, MACSEC_TEST_MKA_LOWEST_PN);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_OK);
+    TEST_TRUE(ret == MACSEC_ERR_OK);
 
-    TEST_TRUE(
-        data->mka.latest_sak.rx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.rx_installed == MACSEC_FALSE);
 
-    TEST_TRUE(
-        data->mka.latest_sak.tx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.tx_installed == MACSEC_TRUE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_TRUE(
-        data->mka.latest_key_rx == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_key_rx == MACSEC_FALSE);
 
-    TEST_TRUE(
-        data->mka.latest_key_tx == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_key_tx == MACSEC_TRUE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_install_rx_then_tx(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_install_rx_then_tx(macsec_test_mka_state_sak_install_data_t *data,
+                                             int verbose)
 {
     macsec_mka_event_flags_t events;
 
@@ -958,59 +697,37 @@ static int macsec_test_mka_state_sak_install_rx_then_tx(
         MACSEC_PRINT(("  MKA SAK RX-then-TX install test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    TEST_OK(macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        MACSEC_MKA_INSTALL_RX,
-        MACSEC_TEST_MKA_LOWEST_PN));
+    TEST_OK(macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                            MACSEC_TEST_MKA_AN, MACSEC_MKA_INSTALL_RX,
+                                            MACSEC_TEST_MKA_LOWEST_PN));
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_OK(macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        MACSEC_MKA_INSTALL_TX,
-        MACSEC_TEST_MKA_LOWEST_PN));
+    TEST_OK(macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                            MACSEC_TEST_MKA_AN, MACSEC_MKA_INSTALL_TX,
+                                            MACSEC_TEST_MKA_LOWEST_PN));
 
-    TEST_TRUE(
-        data->mka.latest_sak.rx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.rx_installed == MACSEC_TRUE);
 
-    TEST_TRUE(
-        data->mka.latest_sak.tx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.tx_installed == MACSEC_TRUE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
 
-    TEST_TRUE(
-        (data->mka.tx_reasons &
-         MACSEC_MKA_TX_REASON_SAK_USE) != 0u);
+    TEST_TRUE((data->mka.tx_reasons & MACSEC_MKA_TX_REASON_SAK_USE) != 0u);
 
     events = macsec_mka_take_events(&data->mka);
 
-    TEST_TRUE(
-        (events &
-         MACSEC_MKA_EVENT_SAK_ACTIVE) != 0u);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_SAK_ACTIVE) != 0u);
 
-    TEST_TRUE(
-        (events &
-         MACSEC_MKA_EVENT_TX_SAK_USE) != 0u);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_TX_SAK_USE) != 0u);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_install_both(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int macsec_test_mka_state_sak_install_both(macsec_test_mka_state_sak_install_data_t *data,
+                                                  int verbose)
 {
     macsec_mka_install_directions_t directions;
 
@@ -1021,39 +738,26 @@ static int macsec_test_mka_state_sak_install_both(
         MACSEC_PRINT(("  MKA combined RX/TX SAK install test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    directions =
-        (macsec_mka_install_directions_t)
-        (MACSEC_MKA_INSTALL_RX |
-         MACSEC_MKA_INSTALL_TX);
+    directions = (macsec_mka_install_directions_t) (MACSEC_MKA_INSTALL_RX | MACSEC_MKA_INSTALL_TX);
 
-    TEST_OK(macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        directions,
-        MACSEC_TEST_MKA_LOWEST_PN));
+    TEST_OK(macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                            MACSEC_TEST_MKA_AN, directions,
+                                            MACSEC_TEST_MKA_LOWEST_PN));
 
-    TEST_TRUE(
-        data->mka.latest_sak.rx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.rx_installed == MACSEC_TRUE);
 
-    TEST_TRUE(
-        data->mka.latest_sak.tx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.tx_installed == MACSEC_TRUE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_install_lowest_pn(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_install_lowest_pn(macsec_test_mka_state_sak_install_data_t *data,
+                                            int verbose)
 {
     int ret;
 
@@ -1064,57 +768,35 @@ static int macsec_test_mka_state_sak_install_lowest_pn(
         MACSEC_PRINT(("  MKA SAK lowest PN handling test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    ret = macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        MACSEC_MKA_INSTALL_RX,
-        0u);
+    ret = macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                          MACSEC_TEST_MKA_AN, MACSEC_MKA_INSTALL_RX, 0u);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_OK);
+    TEST_TRUE(ret == MACSEC_ERR_OK);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lowest_pn,
-        1u);
+    TEST_EQ_U32(data->mka.latest_sak.lowest_pn, 1u);
 
-    TEST_EQ_U32(
-        data->mka.latest_lowest_pn,
-        1u);
+    TEST_EQ_U32(data->mka.latest_lowest_pn, 1u);
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    ret = macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        MACSEC_MKA_INSTALL_RX,
-        MACSEC_TEST_MKA_LOWEST_PN);
+    ret =
+        macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER, MACSEC_TEST_MKA_AN,
+                                        MACSEC_MKA_INSTALL_RX, MACSEC_TEST_MKA_LOWEST_PN);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_OK);
+    TEST_TRUE(ret == MACSEC_ERR_OK);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lowest_pn,
-        MACSEC_TEST_MKA_LOWEST_PN);
+    TEST_EQ_U32(data->mka.latest_sak.lowest_pn, MACSEC_TEST_MKA_LOWEST_PN);
 
-    TEST_EQ_U32(
-        data->mka.latest_lowest_pn,
-        MACSEC_TEST_MKA_LOWEST_PN);
+    TEST_EQ_U32(data->mka.latest_lowest_pn, MACSEC_TEST_MKA_LOWEST_PN);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_install_active_rejected(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_install_active_rejected(macsec_test_mka_state_sak_install_data_t *data,
+                                                  int verbose)
 {
     macsec_mka_install_directions_t directions;
     macsec_mka_event_flags_t events;
@@ -1127,50 +809,32 @@ static int macsec_test_mka_state_sak_install_active_rejected(
         MACSEC_PRINT(("  MKA active SAK reinstall rejection test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    directions =
-        (macsec_mka_install_directions_t)
-        (MACSEC_MKA_INSTALL_RX |
-         MACSEC_MKA_INSTALL_TX);
+    directions = (macsec_mka_install_directions_t) (MACSEC_MKA_INSTALL_RX | MACSEC_MKA_INSTALL_TX);
 
-    TEST_OK(macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        directions,
-        1u));
+    TEST_OK(macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                            MACSEC_TEST_MKA_AN, directions, 1u));
 
     events = macsec_mka_take_events(&data->mka);
 
-    TEST_TRUE(
-        (events & MACSEC_MKA_EVENT_SAK_ACTIVE) != 0u);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_SAK_ACTIVE) != 0u);
 
-    ret = macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        directions,
-        1u);
+    ret = macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                          MACSEC_TEST_MKA_AN, directions, 1u);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_STATE);
+    TEST_TRUE(ret == MACSEC_ERR_STATE);
 
     events = macsec_mka_take_events(&data->mka);
 
-    TEST_EQ_U32(
-        events,
-        MACSEC_MKA_EVENT_NONE);
+    TEST_EQ_U32(events, MACSEC_MKA_EVENT_NONE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_install_operational(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_install_operational(macsec_test_mka_state_sak_install_data_t *data,
+                                              int verbose)
 {
     macsec_mka_install_directions_t directions;
 
@@ -1181,46 +845,29 @@ static int macsec_test_mka_state_sak_install_operational(
         MACSEC_PRINT(("  MKA SAK operational transition test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    data->mka.peer.valid =
-        MACSEC_TRUE;
+    data->mka.peer.valid = MACSEC_TRUE;
 
-    data->mka.peer.live =
-        MACSEC_TRUE;
+    data->mka.peer.live = MACSEC_TRUE;
 
-    data->mka.state =
-        MACSEC_MKA_STATE_PEER_LIVE;
+    data->mka.state = MACSEC_MKA_STATE_PEER_LIVE;
 
-    directions =
-        (macsec_mka_install_directions_t)
-        (MACSEC_MKA_INSTALL_RX |
-         MACSEC_MKA_INSTALL_TX);
+    directions = (macsec_mka_install_directions_t) (MACSEC_MKA_INSTALL_RX | MACSEC_MKA_INSTALL_TX);
 
-    TEST_OK(macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        directions,
-        1u));
+    TEST_OK(macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                            MACSEC_TEST_MKA_AN, directions, 1u));
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
 
-    TEST_EQ_U32(
-        data->mka.state,
-        MACSEC_MKA_STATE_OPERATIONAL);
+    TEST_EQ_U32(data->mka.state, MACSEC_MKA_STATE_OPERATIONAL);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_install_without_live_peer(
-    macsec_test_mka_state_sak_install_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_install_without_live_peer(macsec_test_mka_state_sak_install_data_t *data,
+                                                    int verbose)
 {
     macsec_mka_install_directions_t directions;
 
@@ -1231,50 +878,32 @@ static int macsec_test_mka_state_sak_install_without_live_peer(
         MACSEC_PRINT(("  MKA SAK install without live peer test\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_prepare_install_pending(
-        &data->mka,
-        &data->sak));
+    TEST_OK(macsec_test_mka_state_prepare_install_pending(&data->mka, &data->sak));
 
-    data->mka.peer.valid =
-        MACSEC_TRUE;
+    data->mka.peer.valid = MACSEC_TRUE;
 
-    data->mka.peer.live =
-        MACSEC_FALSE;
+    data->mka.peer.live = MACSEC_FALSE;
 
-    data->mka.state =
-        MACSEC_MKA_STATE_PEER_DISCOVERED;
+    data->mka.state = MACSEC_MKA_STATE_PEER_DISCOVERED;
 
-    directions =
-        (macsec_mka_install_directions_t)
-        (MACSEC_MKA_INSTALL_RX |
-         MACSEC_MKA_INSTALL_TX);
+    directions = (macsec_mka_install_directions_t) (MACSEC_MKA_INSTALL_RX | MACSEC_MKA_INSTALL_TX);
 
-    TEST_OK(macsec_mka_notify_sak_installed(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN,
-        directions,
-        1u));
+    TEST_OK(macsec_mka_notify_sak_installed(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                            MACSEC_TEST_MKA_AN, directions, 1u));
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
 
-    TEST_EQ_U32(
-        data->mka.state,
-        MACSEC_MKA_STATE_PEER_DISCOVERED);
+    TEST_EQ_U32(data->mka.state, MACSEC_MKA_STATE_PEER_DISCOVERED);
 
     return 0;
 }
-
 
 /******************************************************************************
  * SAK retirement tests
  *****************************************************************************/
 
-static int macsec_test_mka_state_sak_retire_no_sak(
-    macsec_test_mka_state_sak_retire_data_t *data,
-    int verbose)
+static int macsec_test_mka_state_sak_retire_no_sak(macsec_test_mka_state_sak_retire_data_t *data,
+                                                   int verbose)
 {
     int ret;
 
@@ -1287,21 +916,16 @@ static int macsec_test_mka_state_sak_retire_no_sak(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    ret = macsec_mka_notify_sak_retired(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN);
+    ret = macsec_mka_notify_sak_retired(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER, MACSEC_TEST_MKA_AN);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_NOT_READY);
+    TEST_TRUE(ret == MACSEC_ERR_NOT_READY);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_retire_invalid_identity(
-    macsec_test_mka_state_sak_retire_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_retire_invalid_identity(macsec_test_mka_state_sak_retire_data_t *data,
+                                                  int verbose)
 {
     int ret;
 
@@ -1314,44 +938,31 @@ static int macsec_test_mka_state_sak_retire_invalid_identity(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    macsec_test_mka_state_prepare_sak(
-        &data->mka,
-        MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
-        MACSEC_MKA_SAK_STATE_RETIRING);
+    macsec_test_mka_state_prepare_sak(&data->mka, MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_RETIRING);
 
-    ret = macsec_mka_notify_sak_retired(
-        &data->mka,
-        MACSEC_TEST_MKA_OTHER_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN);
+    ret = macsec_mka_notify_sak_retired(&data->mka, MACSEC_TEST_MKA_OTHER_KEY_NUMBER,
+                                        MACSEC_TEST_MKA_AN);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_PARAM);
+    TEST_TRUE(ret == MACSEC_ERR_PARAM);
 
-    TEST_TRUE(
-        data->mka.latest_sak.valid == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.valid == MACSEC_TRUE);
 
-    ret = macsec_mka_notify_sak_retired(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_OTHER_AN);
+    ret = macsec_mka_notify_sak_retired(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
+                                        MACSEC_TEST_MKA_OTHER_AN);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_PARAM);
+    TEST_TRUE(ret == MACSEC_ERR_PARAM);
 
-    TEST_TRUE(
-        data->mka.latest_sak.valid == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.valid == MACSEC_TRUE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_RETIRING);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_RETIRING);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_retire_invalid_state(
-    macsec_test_mka_state_sak_retire_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_retire_invalid_state(macsec_test_mka_state_sak_retire_data_t *data,
+                                               int verbose)
 {
     int ret;
 
@@ -1364,33 +975,23 @@ static int macsec_test_mka_state_sak_retire_invalid_state(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    macsec_test_mka_state_prepare_sak(
-        &data->mka,
-        MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
-        MACSEC_MKA_SAK_STATE_ACTIVE);
+    macsec_test_mka_state_prepare_sak(&data->mka, MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_ACTIVE);
 
-    ret = macsec_mka_notify_sak_retired(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN);
+    ret = macsec_mka_notify_sak_retired(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER, MACSEC_TEST_MKA_AN);
 
-    TEST_TRUE(
-        ret == MACSEC_ERR_STATE);
+    TEST_TRUE(ret == MACSEC_ERR_STATE);
 
-    TEST_TRUE(
-        data->mka.latest_sak.valid == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.valid == MACSEC_TRUE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_retire_clears_key(
-    macsec_test_mka_state_sak_retire_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_retire_clears_key(macsec_test_mka_state_sak_retire_data_t *data,
+                                            int verbose)
 {
     macsec_mka_event_flags_t events;
 
@@ -1403,80 +1004,51 @@ static int macsec_test_mka_state_sak_retire_clears_key(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    macsec_test_mka_state_prepare_sak(
-        &data->mka,
-        MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
-        MACSEC_MKA_SAK_STATE_RETIRING);
+    macsec_test_mka_state_prepare_sak(&data->mka, MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_RETIRING);
 
-    data->mka.latest_key_rx =
-        MACSEC_TRUE;
+    data->mka.latest_key_rx = MACSEC_TRUE;
 
-    data->mka.latest_key_tx =
-        MACSEC_TRUE;
+    data->mka.latest_key_tx = MACSEC_TRUE;
 
-    data->mka.latest_lowest_pn =
-        MACSEC_TEST_MKA_LOWEST_PN;
+    data->mka.latest_lowest_pn = MACSEC_TEST_MKA_LOWEST_PN;
 
-    TEST_OK(macsec_mka_notify_sak_retired(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN));
+    TEST_OK(
+        macsec_mka_notify_sak_retired(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER, MACSEC_TEST_MKA_AN));
 
-    TEST_TRUE(
-        data->mka.latest_sak.valid == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.valid == MACSEC_FALSE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lifecycle_state,
-        MACSEC_MKA_SAK_STATE_NONE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_NONE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.origin,
-        MACSEC_MKA_SAK_ORIGIN_NONE);
+    TEST_EQ_U32(data->mka.latest_sak.origin, MACSEC_MKA_SAK_ORIGIN_NONE);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.sak_len,
-        0u);
+    TEST_EQ_U32(data->mka.latest_sak.sak_len, 0u);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.key_number,
-        0u);
+    TEST_EQ_U32(data->mka.latest_sak.key_number, 0u);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.an,
-        0u);
+    TEST_EQ_U32(data->mka.latest_sak.an, 0u);
 
-    TEST_EQ_U32(
-        data->mka.latest_sak.lowest_pn,
-        0u);
+    TEST_EQ_U32(data->mka.latest_sak.lowest_pn, 0u);
 
-    TEST_TRUE(
-        data->mka.latest_key_rx == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_key_rx == MACSEC_FALSE);
 
-    TEST_TRUE(
-        data->mka.latest_key_tx == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_key_tx == MACSEC_FALSE);
 
-    TEST_EQ_U32(
-        data->mka.latest_lowest_pn,
-        0u);
+    TEST_EQ_U32(data->mka.latest_lowest_pn, 0u);
 
-    TEST_TRUE(
-        macsec_test_mka_state_buffer_is_zero(
-            data->mka.latest_sak.sak,
-            sizeof(data->mka.latest_sak.sak)) ==
-        MACSEC_TRUE);
+    TEST_TRUE(macsec_test_mka_state_buffer_is_zero(
+                  data->mka.latest_sak.sak, sizeof(data->mka.latest_sak.sak)) == MACSEC_TRUE);
 
     events = macsec_mka_take_events(&data->mka);
 
-    TEST_TRUE(
-        (events & MACSEC_MKA_EVENT_SAK_RETIRED) != 0u);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_SAK_RETIRED) != 0u);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_retire_to_peer_live(
-    macsec_test_mka_state_sak_retire_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_retire_to_peer_live(macsec_test_mka_state_sak_retire_data_t *data,
+                                              int verbose)
 {
     macsec_assert(data != NULL);
 
@@ -1487,36 +1059,26 @@ static int macsec_test_mka_state_sak_retire_to_peer_live(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    macsec_test_mka_state_prepare_sak(
-        &data->mka,
-        MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
-        MACSEC_MKA_SAK_STATE_RETIRING);
+    macsec_test_mka_state_prepare_sak(&data->mka, MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_RETIRING);
 
-    data->mka.peer.valid =
-        MACSEC_TRUE;
+    data->mka.peer.valid = MACSEC_TRUE;
 
-    data->mka.peer.live =
-        MACSEC_TRUE;
+    data->mka.peer.live = MACSEC_TRUE;
 
-    data->mka.state =
-        MACSEC_MKA_STATE_OPERATIONAL;
+    data->mka.state = MACSEC_MKA_STATE_OPERATIONAL;
 
-    TEST_OK(macsec_mka_notify_sak_retired(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN));
+    TEST_OK(
+        macsec_mka_notify_sak_retired(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER, MACSEC_TEST_MKA_AN));
 
-    TEST_EQ_U32(
-        data->mka.state,
-        MACSEC_MKA_STATE_PEER_LIVE);
+    TEST_EQ_U32(data->mka.state, MACSEC_MKA_STATE_PEER_LIVE);
 
     return 0;
 }
 
-
-static int macsec_test_mka_state_sak_retire_to_wait_peer(
-    macsec_test_mka_state_sak_retire_data_t *data,
-    int verbose)
+static int
+macsec_test_mka_state_sak_retire_to_wait_peer(macsec_test_mka_state_sak_retire_data_t *data,
+                                              int verbose)
 {
     macsec_assert(data != NULL);
 
@@ -1527,39 +1089,28 @@ static int macsec_test_mka_state_sak_retire_to_wait_peer(
 
     macsec_test_mka_state_clear_context(&data->mka);
 
-    macsec_test_mka_state_prepare_sak(
-        &data->mka,
-        MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
-        MACSEC_MKA_SAK_STATE_RETIRING);
+    macsec_test_mka_state_prepare_sak(&data->mka, MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_RETIRING);
 
-    data->mka.peer.valid =
-        MACSEC_FALSE;
+    data->mka.peer.valid = MACSEC_FALSE;
 
-    data->mka.peer.live =
-        MACSEC_FALSE;
+    data->mka.peer.live = MACSEC_FALSE;
 
-    data->mka.state =
-        MACSEC_MKA_STATE_OPERATIONAL;
+    data->mka.state = MACSEC_MKA_STATE_OPERATIONAL;
 
-    TEST_OK(macsec_mka_notify_sak_retired(
-        &data->mka,
-        MACSEC_TEST_MKA_KEY_NUMBER,
-        MACSEC_TEST_MKA_AN));
+    TEST_OK(
+        macsec_mka_notify_sak_retired(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER, MACSEC_TEST_MKA_AN));
 
-    TEST_EQ_U32(
-        data->mka.state,
-        MACSEC_MKA_STATE_WAIT_PEER);
+    TEST_EQ_U32(data->mka.state, MACSEC_MKA_STATE_WAIT_PEER);
 
     return 0;
 }
-
 
 /******************************************************************************
  * Public test entry point
  *****************************************************************************/
 
-int macsec_test_mka_state(macsec_test_mka_state_data_t *data,
-                          int verbose)
+int macsec_test_mka_state(macsec_test_mka_state_data_t *data, int verbose)
 {
     macsec_assert(data != NULL);
 
@@ -1568,127 +1119,93 @@ int macsec_test_mka_state(macsec_test_mka_state_data_t *data,
         MACSEC_PRINT(("MACsec MKA state and SAK lifecycle tests\n"));
     }
 
-    TEST_OK(macsec_test_mka_state_events_take(
-        &data->test_mka_state_events_data,
-        verbose));
-
-    TEST_OK(macsec_test_mka_state_events_second_take_empty(
-        &data->test_mka_state_events_data,
-        verbose));
-
-    TEST_OK(macsec_test_mka_state_events_preserve_tx(
-        &data->test_mka_state_events_data,
-        verbose));
-
-    TEST_OK(macsec_test_mka_state_sak_take_no_sak(
-        &data->test_mka_state_sak_take_data,
-        verbose));
-
-    TEST_OK(macsec_test_mka_state_sak_take_remote_candidate(
-        &data->test_mka_state_sak_take_data,
-        verbose));
-
-    TEST_OK(macsec_test_mka_state_sak_take_install_pending_retry(
-        &data->test_mka_state_sak_take_data,
-        verbose));
-
-    TEST_OK(macsec_test_mka_state_sak_take_local_candidate_rejected(
-        &data->test_mka_state_sak_take_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_events_take(&data->test_mka_state_events_data, verbose));
 
     TEST_OK(
-        macsec_test_mka_state_sak_take_distribution_pending_rejected(
-            &data->test_mka_state_sak_take_data,
-            verbose));
+        macsec_test_mka_state_events_second_take_empty(&data->test_mka_state_events_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_take_local_distributed(
-        &data->test_mka_state_sak_take_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_events_preserve_tx(&data->test_mka_state_events_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_take_invalid_length(
-        &data->test_mka_state_sak_take_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_take_no_sak(&data->test_mka_state_sak_take_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_take_invalid_an(
-        &data->test_mka_state_sak_take_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_take_remote_candidate(&data->test_mka_state_sak_take_data,
+                                                            verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_take_invalid_key_number(
-        &data->test_mka_state_sak_take_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_take_install_pending_retry(
+        &data->test_mka_state_sak_take_data, verbose));
+
+    TEST_OK(macsec_test_mka_state_sak_take_local_candidate_rejected(
+        &data->test_mka_state_sak_take_data, verbose));
+
+    TEST_OK(macsec_test_mka_state_sak_take_distribution_pending_rejected(
+        &data->test_mka_state_sak_take_data, verbose));
+
+    TEST_OK(macsec_test_mka_state_sak_take_local_distributed(&data->test_mka_state_sak_take_data,
+                                                             verbose));
+
+    TEST_OK(macsec_test_mka_state_sak_take_invalid_length(&data->test_mka_state_sak_take_data,
+                                                          verbose));
+
+    TEST_OK(
+        macsec_test_mka_state_sak_take_invalid_an(&data->test_mka_state_sak_take_data, verbose));
+
+    TEST_OK(macsec_test_mka_state_sak_take_invalid_key_number(&data->test_mka_state_sak_take_data,
+                                                              verbose));
 
     TEST_OK(macsec_test_mka_state_sak_install_wrong_key_number(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+        &data->test_mka_state_sak_install_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_install_wrong_an(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_install_wrong_an(&data->test_mka_state_sak_install_data,
+                                                       verbose));
 
     TEST_OK(macsec_test_mka_state_sak_install_invalid_direction(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+        &data->test_mka_state_sak_install_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_install_rx_only(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+    TEST_OK(
+        macsec_test_mka_state_sak_install_rx_only(&data->test_mka_state_sak_install_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_install_tx_only(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+    TEST_OK(
+        macsec_test_mka_state_sak_install_tx_only(&data->test_mka_state_sak_install_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_install_rx_then_tx(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_install_rx_then_tx(&data->test_mka_state_sak_install_data,
+                                                         verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_install_both(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+    TEST_OK(
+        macsec_test_mka_state_sak_install_both(&data->test_mka_state_sak_install_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_install_lowest_pn(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_install_lowest_pn(&data->test_mka_state_sak_install_data,
+                                                        verbose));
 
     TEST_OK(macsec_test_mka_state_sak_install_active_rejected(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+        &data->test_mka_state_sak_install_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_install_operational(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_install_operational(&data->test_mka_state_sak_install_data,
+                                                          verbose));
 
     TEST_OK(macsec_test_mka_state_sak_install_without_live_peer(
-        &data->test_mka_state_sak_install_data,
-        verbose));
+        &data->test_mka_state_sak_install_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_retire_no_sak(
-        &data->test_mka_state_sak_retire_data,
-        verbose));
+    TEST_OK(
+        macsec_test_mka_state_sak_retire_no_sak(&data->test_mka_state_sak_retire_data, verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_retire_invalid_identity(
-        &data->test_mka_state_sak_retire_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_retire_invalid_identity(&data->test_mka_state_sak_retire_data,
+                                                              verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_retire_invalid_state(
-        &data->test_mka_state_sak_retire_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_retire_invalid_state(&data->test_mka_state_sak_retire_data,
+                                                           verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_retire_clears_key(
-        &data->test_mka_state_sak_retire_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_retire_clears_key(&data->test_mka_state_sak_retire_data,
+                                                        verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_retire_to_peer_live(
-        &data->test_mka_state_sak_retire_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_retire_to_peer_live(&data->test_mka_state_sak_retire_data,
+                                                          verbose));
 
-    TEST_OK(macsec_test_mka_state_sak_retire_to_wait_peer(
-        &data->test_mka_state_sak_retire_data,
-        verbose));
+    TEST_OK(macsec_test_mka_state_sak_retire_to_wait_peer(&data->test_mka_state_sak_retire_data,
+                                                          verbose));
 
     if (verbose)
     {
-        MACSEC_PRINT((
-            "MACsec MKA state and SAK lifecycle tests PASSED\n"));
+        MACSEC_PRINT(("MACsec MKA state and SAK lifecycle tests PASSED\n"));
     }
 
     return 0;

@@ -7,7 +7,7 @@
  * MACsec stack, such as memory allocation, debug output, timing and
  * other operating system or hardware specific functionality.
  *
- * Copyright (c) 2026 Michal Sarnovskı
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,14 +21,13 @@
 #include "xprintf.h"
 #endif
 
-
-void macsec_sysPanic(void) {
-	while(1);
+void macsec_sysPanic(void)
+{
+    while (1)
+        ;
 }
 
-
 //--------------------------------------------------------------------
-
 
 #if (MACSEC_DEBUG_LEVEL > 0)
 
@@ -57,9 +56,7 @@ void macsec_printf(const char *format, ...)
 
 #endif
 
-
 //--------------------------------------------------------------------
-
 
 static uint32_t g_macsec_random_seed = 0x12345678u;
 
@@ -98,12 +95,8 @@ void macsec_random(uint8_t *bytes, size_t count)
             lfsr >>= 1;
         }
 
-        *bytes++ = (uint8_t)((lfsr >> 24) ^
-                             (lfsr >> 16) ^
-                             (lfsr >> 8)  ^
-                              lfsr);
+        *bytes++ = (uint8_t) ((lfsr >> 24) ^ (lfsr >> 16) ^ (lfsr >> 8) ^ lfsr);
     }
 
     g_macsec_random_seed = lfsr;
 }
-

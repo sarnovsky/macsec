@@ -8,7 +8,7 @@
  * measurement. It does not provide production-quality random generation
  * or actual debug output.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -22,14 +22,12 @@
 #include <stdarg.h>
 #endif
 
-
 void macsec_sysPanic(void)
 {
     for (;;)
     {
     }
 }
-
 
 /* ------------------------------------------------------------------------- */
 /* Debug output                                                              */
@@ -50,18 +48,16 @@ void macsec_printf(const char *format, ...)
      * The calls and format strings remain referenced by the linked image,
      * but no UART driver or formatting library is included.
      */
-    (void)format;
+    (void) format;
 }
 
 #endif
-
 
 /* ------------------------------------------------------------------------- */
 /* Deterministic pseudo-random generator                                     */
 /* ------------------------------------------------------------------------- */
 
 static uint32_t g_macsec_random_seed = 0x12345678u;
-
 
 void macsec_randomInit(uint32_t seed)
 {
@@ -72,7 +68,6 @@ void macsec_randomInit(uint32_t seed)
 
     g_macsec_random_seed = seed;
 }
-
 
 void macsec_random(uint8_t *bytes, size_t count)
 {
@@ -99,10 +94,7 @@ void macsec_random(uint8_t *bytes, size_t count)
             lfsr >>= 1;
         }
 
-        *bytes++ = (uint8_t)((lfsr >> 24u) ^
-                             (lfsr >> 16u) ^
-                             (lfsr >> 8u) ^
-                             lfsr);
+        *bytes++ = (uint8_t) ((lfsr >> 24u) ^ (lfsr >> 16u) ^ (lfsr >> 8u) ^ lfsr);
     }
 
     g_macsec_random_seed = lfsr;

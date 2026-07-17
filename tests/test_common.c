@@ -6,7 +6,7 @@
  * This file verifies the behavior of shared helper routines, including
  * byte-order conversion, buffer manipulation and other common utilities.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -26,7 +26,7 @@ static int macsec_test_common_be16(int verbose)
     uint8_t buf[2];
     uint16_t v;
 
-    (void)verbose;
+    (void) verbose;
 
     memset(buf, 0, sizeof(buf));
 
@@ -45,7 +45,7 @@ static int macsec_test_common_be32(int verbose)
     uint8_t buf[4];
     uint32_t v;
 
-    (void)verbose;
+    (void) verbose;
 
     memset(buf, 0, sizeof(buf));
 
@@ -66,7 +66,7 @@ static int macsec_test_common_be64(int verbose)
     uint8_t buf[8];
     uint64_t v;
 
-    (void)verbose;
+    (void) verbose;
 
     memset(buf, 0, sizeof(buf));
 
@@ -93,7 +93,7 @@ static int macsec_test_common_zeroize(int verbose)
     uint8_t buf[16];
     size_t i;
 
-    (void)verbose;
+    (void) verbose;
 
     memset(buf, 0xA5, sizeof(buf));
     macsec_zeroize(buf, sizeof(buf));
@@ -109,17 +109,13 @@ static int macsec_test_common_zeroize(int verbose)
 static int macsec_test_common_hex_to_bin_basic(int verbose)
 {
     static const char hex[] = "00112233AABBccdd";
-    static const uint8_t expected[] =
-    {
-        0x00u, 0x11u, 0x22u, 0x33u,
-        0xAAu, 0xBBu, 0xCCu, 0xDDu
-    };
+    static const uint8_t expected[] = {0x00u, 0x11u, 0x22u, 0x33u, 0xAAu, 0xBBu, 0xCCu, 0xDDu};
 
     uint8_t out[16];
     size_t out_len;
     int ret;
 
-    (void)verbose;
+    (void) verbose;
 
     memset(out, 0, sizeof(out));
     out_len = 0u;
@@ -141,7 +137,7 @@ static int macsec_test_common_hex_to_bin_too_small(int verbose)
     size_t out_len;
     int ret;
 
-    (void)verbose;
+    (void) verbose;
 
     memset(out, 0, sizeof(out));
     out_len = 0u;
@@ -161,7 +157,7 @@ static int macsec_test_common_hex_to_bin_invalid(int verbose)
     size_t out_len;
     int ret;
 
-    (void)verbose;
+    (void) verbose;
 
     memset(out, 0, sizeof(out));
     out_len = 0u;

@@ -6,7 +6,7 @@
  * This file verifies generation, parsing and validation of MKA protocol
  * frames and their individual parameter sets.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -21,7 +21,8 @@
 #include "mka.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #if (MACSEC_SELF_TEST != 0)
@@ -102,23 +103,17 @@ typedef struct
 
 typedef union
 {
-    macsec_test_mka_frames_linux_basic_icv_data_t
-        test_mka_frames_linux_basic_icv_data;
+    macsec_test_mka_frames_linux_basic_icv_data_t test_mka_frames_linux_basic_icv_data;
 
-    macsec_test_mka_frames_build_parse_basic_data_t
-        test_mka_frames_build_parse_basic_data;
+    macsec_test_mka_frames_build_parse_basic_data_t test_mka_frames_build_parse_basic_data;
 
-    macsec_test_mka_frames_generated_icv_ok_data_t
-        test_mka_frames_generated_icv_ok_data;
+    macsec_test_mka_frames_generated_icv_ok_data_t test_mka_frames_generated_icv_ok_data;
 
-    macsec_test_mka_frames_generated_icv_bad_data_t
-        test_mka_frames_generated_icv_bad_data;
+    macsec_test_mka_frames_generated_icv_bad_data_t test_mka_frames_generated_icv_bad_data;
 
-    macsec_test_mka_frames_two_peer_exchange_data_t
-        test_mka_frames_two_peer_exchange_data;
+    macsec_test_mka_frames_two_peer_exchange_data_t test_mka_frames_two_peer_exchange_data;
 
-    macsec_test_mka_frames_tx_pending_timing_data_t
-        test_mka_frames_tx_pending_timing_data;
+    macsec_test_mka_frames_tx_pending_timing_data_t test_mka_frames_tx_pending_timing_data;
 
     macsec_test_mka_frames_distributed_sak_layout_data_t
         test_mka_frames_distributed_sak_layout_data;
@@ -126,15 +121,12 @@ typedef union
     macsec_test_mka_frames_stm32_key_server_distributes_sak_data_t
         test_mka_frames_stm32_key_server_distributes_sak_data;
 
-    macsec_test_mka_frames_sak_use_key_server_mi_data_t
-        test_mka_frames_sak_use_key_server_mi_data;
+    macsec_test_mka_frames_sak_use_key_server_mi_data_t test_mka_frames_sak_use_key_server_mi_data;
 
-    macsec_test_mka_frames_sak_use_tx_rx_flags_data_t
-        test_mka_frames_sak_use_tx_rx_flags_data;
+    macsec_test_mka_frames_sak_use_tx_rx_flags_data_t test_mka_frames_sak_use_tx_rx_flags_data;
 } macsec_test_mka_frames_data_t;
 
-int macsec_test_mka_frames(macsec_test_mka_frames_data_t *data,
-                           int verbose);
+int macsec_test_mka_frames(macsec_test_mka_frames_data_t *data, int verbose);
 
 #endif /* MACSEC_SELF_TEST */
 

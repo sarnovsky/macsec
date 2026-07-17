@@ -6,7 +6,7 @@
  * This file executes the built-in math self-tests to verify that the
  * underlying cryptographic library operates correctly on the target platform.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -19,11 +19,12 @@
 
 #include "macsec_common.h"
 #include "math/aes.h"
-#include "math/gcm.h"
 #include "math/cmac.h"
+#include "math/gcm.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #if (MACSEC_SELF_TEST != 0)
@@ -50,7 +51,6 @@ typedef union
     macsec_test_math_gcm_selftest_data_t test_math_gcm_selftest_data;
     macsec_test_math_cmac_selftest_data_t test_math_cmac_selftest_data;
 } macsec_test_math_selftest_data_t;
-
 
 int macsec_test_math_selftests(macsec_test_math_selftest_data_t *data, int verbose);
 

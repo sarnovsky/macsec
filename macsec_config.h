@@ -8,7 +8,7 @@
  * lightweight MACsec stack. Configuration values may be changed here or
  * overridden by definitions supplied by the integrating build system.
  *
- * Copyright (c) 2026 Michal Sarnovský
+ * Copyright (c) 2026 Michal Sarnovsky
  *
  * SPDX-License-Identifier: MIT
  *
@@ -18,7 +18,6 @@
 
 #ifndef MACSEC_CONFIG_H
 #define MACSEC_CONFIG_H
-
 
 /* =========================================================================
  * AES lookup-table configuration
@@ -66,7 +65,6 @@
  *   -DMATH_AES_FEWER_TABLES
  */
 
-
 /* =========================================================================
  * Self-test configuration
  * ========================================================================= */
@@ -85,7 +83,6 @@
 #ifndef MACSEC_SELF_TEST
 #define MACSEC_SELF_TEST 1
 #endif
-
 
 /* =========================================================================
  * Debug configuration
@@ -110,11 +107,10 @@
 #define MACSEC_DEBUG_LEVEL 1
 #endif
 
-#define MACSEC_DEBUG_LEVEL_NONE       0u
-#define MACSEC_DEBUG_LEVEL_ERROR      1u
-#define MACSEC_DEBUG_LEVEL_MEDIUM     2u
-#define MACSEC_DEBUG_LEVEL_INFO       3u
-
+#define MACSEC_DEBUG_LEVEL_NONE 0u
+#define MACSEC_DEBUG_LEVEL_ERROR 1u
+#define MACSEC_DEBUG_LEVEL_MEDIUM 2u
+#define MACSEC_DEBUG_LEVEL_INFO 3u
 
 /* =========================================================================
  * Configuration validation
@@ -124,10 +120,8 @@
 #error "MACSEC_SELF_TEST must be 0 or 1"
 #endif
 
-#if (MACSEC_DEBUG_LEVEL < MACSEC_DEBUG_LEVEL_NONE) || \
-    (MACSEC_DEBUG_LEVEL > MACSEC_DEBUG_LEVEL_INFO)
+#if (MACSEC_DEBUG_LEVEL < MACSEC_DEBUG_LEVEL_NONE) || (MACSEC_DEBUG_LEVEL > MACSEC_DEBUG_LEVEL_INFO)
 #error "MACSEC_DEBUG_LEVEL must be in range 0..3"
 #endif
-
 
 #endif /* MACSEC_CONFIG_H */
