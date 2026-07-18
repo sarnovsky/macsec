@@ -20,9 +20,6 @@
 #define MATH_SELF_TEST
 #endif
 
-#define MATH_AES_ENCRYPT 1
-#define MATH_AES_DECRYPT 0
-
 typedef struct
 {
     uint32_t *round_keys;
@@ -38,12 +35,15 @@ extern "C"
 void math_aes_init(math_aes_context *ctx);
 void math_aes_free(math_aes_context *ctx);
 
-int math_aes_setkey_enc(math_aes_context *ctx, const unsigned char *key, unsigned int keybits);
+int math_aes_setenckey(math_aes_context *ctx, const unsigned char *key, unsigned int keybits);
 
-int math_aes_setkey_dec(math_aes_context *ctx, const unsigned char *key, unsigned int keybits);
+int math_aes_setdeckey(math_aes_context *ctx, const unsigned char *key, unsigned int keybits);
 
-int math_aes_crypt_ecb(math_aes_context *ctx, int mode, const unsigned char input[16],
-                       unsigned char output[16]);
+int math_aes_encrypt(math_aes_context *ctx, const unsigned char input[16],
+                     unsigned char output[16]);
+
+int math_aes_decrypt(math_aes_context *ctx, const unsigned char input[16],
+                     unsigned char output[16]);
 
 #if defined(MATH_SELF_TEST)
 int math_aes_self_test(math_aes_context *ctx, int verbose);

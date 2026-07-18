@@ -466,259 +466,322 @@ void math_aes_free(math_aes_context *ctx)
 /*
  * AES key schedule (encryption)
  */
-int math_aes_setkey_enc(math_aes_context *ctx, const unsigned char *key, unsigned int keybits)
+int math_aes_setenckey(math_aes_context *ctx, const unsigned char *key, unsigned int keybits)
 {
     unsigned int i;
-    uint32_t *RK;
+    unsigned int key_words;
+    unsigned int total_words;
+    uint32_t temp;
+    uint32_t *round_keys;
 
 #if !defined(MATH_AES_ROM_TABLES)
-    if (aes_init_done == MACSEC_FALSE)
+    if (aes_init_done != MACSEC_TRUE)
     {
         aes_gen_tables();
         aes_init_done = MACSEC_TRUE;
     }
 #endif
 
-    switch (keybits)
+    if (keybits == 128u)
     {
-    case 128:
+        key_words = 4u;
         ctx->number_of_rounds = 10;
-        break;
-    case 192:
+    }
+    else if (keybits == 192u)
+    {
+        key_words = 6u;
         ctx->number_of_rounds = 12;
-        break;
-    case 256:
+    }
+    else if (keybits == 256u)
+    {
+        key_words = 8u;
         ctx->number_of_rounds = 14;
-        break;
-    default:
-        return (-1);
     }
-
-    ctx->round_keys = RK = ctx->buf;
-
-    for (i = 0; i < (keybits >> 5); i++)
+    else
     {
-        RK[i] = AES_GET_LE32(key, i << 2);
+        return -1;
     }
 
-    switch (ctx->number_of_rounds)
+    round_keys = ctx->buf;
+    ctx->round_keys = round_keys;
+
+    /*
+     * Copy the original cipher key into the beginning
+     * of the expanded round-key buffer.
+     */
+    i = 0u;
+
+    while (i < key_words)
     {
-    case 10:
-
-        for (i = 0; i < 10; i++, RK += 4)
-        {
-            RK[4] = RK[0] ^ RCON[i] ^ AES_SUBWORD_ROT(RK[3]);
-
-            RK[5] = RK[1] ^ RK[4];
-            RK[6] = RK[2] ^ RK[5];
-            RK[7] = RK[3] ^ RK[6];
-        }
-        break;
-
-    case 12:
-
-        for (i = 0; i < 8; i++, RK += 6)
-        {
-            RK[6] = RK[0] ^ RCON[i] ^ AES_SUBWORD_ROT(RK[5]);
-
-            RK[7] = RK[1] ^ RK[6];
-            RK[8] = RK[2] ^ RK[7];
-            RK[9] = RK[3] ^ RK[8];
-            RK[10] = RK[4] ^ RK[9];
-            RK[11] = RK[5] ^ RK[10];
-        }
-        break;
-
-    case 14:
-
-        for (i = 0; i < 7; i++, RK += 8)
-        {
-            RK[8] = RK[0] ^ RCON[i] ^ AES_SUBWORD_ROT(RK[7]);
-
-            RK[9] = RK[1] ^ RK[8];
-            RK[10] = RK[2] ^ RK[9];
-            RK[11] = RK[3] ^ RK[10];
-
-            RK[12] = RK[4] ^ AES_SUBWORD(RK[11]);
-
-            RK[13] = RK[5] ^ RK[12];
-            RK[14] = RK[6] ^ RK[13];
-            RK[15] = RK[7] ^ RK[14];
-        }
-        break;
+        round_keys[i] = AES_GET_LE32(key, i * 4u);
+        ++i;
     }
 
-    return (0);
+    /*
+     * AES requires one 128-bit round key for the initial
+     * AddRoundKey operation and one for every round.
+     */
+    total_words = 4u * ((unsigned int) ctx->number_of_rounds + 1u);
+
+    /*
+     * Expand the key word by word.
+     */
+    while (i < total_words)
+    {
+        temp = round_keys[i - 1u];
+
+        if ((i % key_words) == 0u)
+        {
+            temp = AES_SUBWORD_ROT(temp) ^ RCON[(i / key_words) - 1u];
+        }
+        else if ((key_words == 8u) && ((i % key_words) == 4u))
+        {
+            temp = AES_SUBWORD(temp);
+        }
+
+        round_keys[i] = round_keys[i - key_words] ^ temp;
+        ++i;
+    }
+
+    return 0;
 }
 
-int math_aes_setkey_dec(math_aes_context *ctx, const unsigned char *key, unsigned int keybits)
+int math_aes_setdeckey(math_aes_context *ctx, const unsigned char *key, unsigned int keybits)
 {
-    int i, j, ret;
-    math_aes_context cty;
-    uint32_t *RK;
-    uint32_t *SK;
+    int ret;
+    unsigned int round;
+    unsigned int word;
+    unsigned int source_index;
+    unsigned int destination_index;
+    math_aes_context encryption_ctx;
 
-    math_aes_init(&cty);
+    math_aes_init(&encryption_ctx);
 
-    ctx->round_keys = RK = ctx->buf;
+    ctx->round_keys = ctx->buf;
 
-    /* Also checks keybits */
-    if ((ret = math_aes_setkey_enc(&cty, key, keybits)) != 0)
+    /*
+     * Generate the encryption key schedule first.
+     * This also validates keybits.
+     */
+    ret = math_aes_setenckey(&encryption_ctx, key, keybits);
+
+    if (ret == 0)
     {
-        goto exit;
-    }
+        ctx->number_of_rounds = encryption_ctx.number_of_rounds;
 
-    ctx->number_of_rounds = cty.number_of_rounds;
+        /*
+         * The first decryption round key is the final
+         * encryption round key, without InvMixColumns.
+         */
+        source_index = (unsigned int) ctx->number_of_rounds * 4u;
 
-    SK = cty.round_keys + cty.number_of_rounds * 4;
-
-    *RK++ = *SK++;
-    *RK++ = *SK++;
-    *RK++ = *SK++;
-    *RK++ = *SK++;
-
-    for (i = ctx->number_of_rounds - 1, SK -= 8; i > 0; i--, SK -= 8)
-    {
-        for (j = 0; j < 4; j++, SK++)
+        for (word = 0u; word < 4u; ++word)
         {
-            *RK++ = AES_INV_MIX_KEY(*SK);
+            ctx->buf[word] = encryption_ctx.round_keys[source_index + word];
+        }
+
+        destination_index = 4u;
+
+        /*
+         * Copy the intermediate encryption round keys
+         * in reverse order and apply InvMixColumns.
+         */
+        round = (unsigned int) ctx->number_of_rounds - 1u;
+
+        while (round > 0u)
+        {
+            source_index = round * 4u;
+
+            for (word = 0u; word < 4u; ++word)
+            {
+                ctx->buf[destination_index + word] =
+                    AES_INV_MIX_KEY(encryption_ctx.round_keys[source_index + word]);
+            }
+
+            destination_index += 4u;
+            --round;
+        }
+
+        /*
+         * The final decryption round key is the original
+         * cipher key, also without InvMixColumns.
+         */
+        for (word = 0u; word < 4u; ++word)
+        {
+            ctx->buf[destination_index + word] = encryption_ctx.round_keys[word];
         }
     }
 
-    *RK++ = *SK++;
-    *RK++ = *SK++;
-    *RK++ = *SK++;
-    *RK++ = *SK++;
+    math_aes_free(&encryption_ctx);
 
-exit:
-    math_aes_free(&cty);
-
-    return (ret);
+    return ret;
 }
 
-#define AES_FORWARD_ROUND_WORD(RKP, A, B, C, D)                                                    \
-    (*((RKP)++) ^ AES_FORWARD_TABLE_0(AES_BYTE0(A)) ^ AES_FORWARD_TABLE_1(AES_BYTE1(B)) ^          \
+#define AES_FORWARD_ROUND_WORD(RK, A, B, C, D)                                                     \
+    ((RK) ^ AES_FORWARD_TABLE_0(AES_BYTE0(A)) ^ AES_FORWARD_TABLE_1(AES_BYTE1(B)) ^                \
      AES_FORWARD_TABLE_2(AES_BYTE2(C)) ^ AES_FORWARD_TABLE_3(AES_BYTE3(D)))
 
-#define AES_FORWARD_FINAL_WORD(RKP, A, B, C, D)                                                    \
-    (*((RKP)++) ^ AES_U32_LE(FORWARD_S_BOX[AES_BYTE0(A)], FORWARD_S_BOX[AES_BYTE1(B)],             \
-                             FORWARD_S_BOX[AES_BYTE2(C)], FORWARD_S_BOX[AES_BYTE3(D)]))
+#define AES_FORWARD_FINAL_WORD(RK, A, B, C, D)                                                     \
+    ((RK) ^ AES_U32_LE(FORWARD_S_BOX[AES_BYTE0(A)], FORWARD_S_BOX[AES_BYTE1(B)],                   \
+                       FORWARD_S_BOX[AES_BYTE2(C)], FORWARD_S_BOX[AES_BYTE3(D)]))
 
-int math_internal_aes_encrypt(math_aes_context *ctx, const unsigned char input[16],
-                              unsigned char output[16])
+int math_aes_encrypt(math_aes_context *ctx, const unsigned char input[16], unsigned char output[16])
 {
-    int i;
-    uint32_t *round_keys;
-    uint32_t X0, X1, X2, X3, Y0, Y1, Y2, Y3;
+    unsigned int round;
+    unsigned int column;
+    unsigned int next1;
+    unsigned int next2;
+    unsigned int next3;
+    unsigned int key_index;
+    uint32_t state[4];
+    uint32_t transformed[4];
+    const uint32_t *round_keys;
 
     round_keys = ctx->round_keys;
 
-    X0 = AES_GET_LE32(input, 0);
-    X0 ^= *round_keys++;
-    X1 = AES_GET_LE32(input, 4);
-    X1 ^= *round_keys++;
-    X2 = AES_GET_LE32(input, 8);
-    X2 ^= *round_keys++;
-    X3 = AES_GET_LE32(input, 12);
-    X3 ^= *round_keys++;
-
-    for (i = (ctx->number_of_rounds >> 1) - 1; i > 0; i--)
+    /*
+     * Load the input state and apply the initial AddRoundKey.
+     */
+    for (column = 0u; column < 4u; ++column)
     {
-        Y0 = AES_FORWARD_ROUND_WORD(round_keys, X0, X1, X2, X3);
-        Y1 = AES_FORWARD_ROUND_WORD(round_keys, X1, X2, X3, X0);
-        Y2 = AES_FORWARD_ROUND_WORD(round_keys, X2, X3, X0, X1);
-        Y3 = AES_FORWARD_ROUND_WORD(round_keys, X3, X0, X1, X2);
-
-        X0 = AES_FORWARD_ROUND_WORD(round_keys, Y0, Y1, Y2, Y3);
-        X1 = AES_FORWARD_ROUND_WORD(round_keys, Y1, Y2, Y3, Y0);
-        X2 = AES_FORWARD_ROUND_WORD(round_keys, Y2, Y3, Y0, Y1);
-        X3 = AES_FORWARD_ROUND_WORD(round_keys, Y3, Y0, Y1, Y2);
+        state[column] = AES_GET_LE32(input, column * 4u) ^ round_keys[column];
     }
 
-    Y0 = AES_FORWARD_ROUND_WORD(round_keys, X0, X1, X2, X3);
-    Y1 = AES_FORWARD_ROUND_WORD(round_keys, X1, X2, X3, X0);
-    Y2 = AES_FORWARD_ROUND_WORD(round_keys, X2, X3, X0, X1);
-    Y3 = AES_FORWARD_ROUND_WORD(round_keys, X3, X0, X1, X2);
+    key_index = 4u;
 
-    X0 = AES_FORWARD_FINAL_WORD(round_keys, Y0, Y1, Y2, Y3);
-    X1 = AES_FORWARD_FINAL_WORD(round_keys, Y1, Y2, Y3, Y0);
-    X2 = AES_FORWARD_FINAL_WORD(round_keys, Y2, Y3, Y0, Y1);
-    X3 = AES_FORWARD_FINAL_WORD(round_keys, Y3, Y0, Y1, Y2);
+    /*
+     * Process all regular AES rounds.
+     */
+    round = 1u;
 
-    AES_PUT_LE32(output, X0, 0);
-    AES_PUT_LE32(output, X1, 4);
-    AES_PUT_LE32(output, X2, 8);
-    AES_PUT_LE32(output, X3, 12);
+    while (round < (unsigned int) ctx->number_of_rounds)
+    {
+        for (column = 0u; column < 4u; ++column)
+        {
+            next1 = (column + 1u) & 3u;
+            next2 = (column + 2u) & 3u;
+            next3 = (column + 3u) & 3u;
 
-    return (0);
+            transformed[column] =
+                AES_FORWARD_ROUND_WORD(round_keys[key_index + column], state[column], state[next1],
+                                       state[next2], state[next3]);
+        }
+
+        for (column = 0u; column < 4u; ++column)
+        {
+            state[column] = transformed[column];
+        }
+
+        key_index += 4u;
+        ++round;
+    }
+
+    /*
+     * The final AES round omits MixColumns.
+     */
+    for (column = 0u; column < 4u; ++column)
+    {
+        next1 = (column + 1u) & 3u;
+        next2 = (column + 2u) & 3u;
+        next3 = (column + 3u) & 3u;
+
+        transformed[column] = AES_FORWARD_FINAL_WORD(round_keys[key_index + column], state[column],
+                                                     state[next1], state[next2], state[next3]);
+    }
+
+    /*
+     * Store the resulting ciphertext.
+     */
+    for (column = 0u; column < 4u; ++column)
+    {
+        AES_PUT_LE32(output, transformed[column], column * 4u);
+    }
+
+    return 0;
 }
 
-#define AES_REVERSE_ROUND_WORD(RKP, A, B, C, D)                                                    \
-    (*((RKP)++) ^ AES_REVERSE_TABLE_0(AES_BYTE0(A)) ^ AES_REVERSE_TABLE_1(AES_BYTE1(B)) ^          \
+#define AES_REVERSE_ROUND_WORD(RK, A, B, C, D)                                                     \
+    ((RK) ^ AES_REVERSE_TABLE_0(AES_BYTE0(A)) ^ AES_REVERSE_TABLE_1(AES_BYTE1(B)) ^                \
      AES_REVERSE_TABLE_2(AES_BYTE2(C)) ^ AES_REVERSE_TABLE_3(AES_BYTE3(D)))
 
-#define AES_REVERSE_FINAL_WORD(RKP, A, B, C, D)                                                    \
-    (*((RKP)++) ^ AES_U32_LE(REVERSE_S_BOX[AES_BYTE0(A)], REVERSE_S_BOX[AES_BYTE1(B)],             \
-                             REVERSE_S_BOX[AES_BYTE2(C)], REVERSE_S_BOX[AES_BYTE3(D)]))
+#define AES_REVERSE_FINAL_WORD(RK, A, B, C, D)                                                     \
+    ((RK) ^ AES_U32_LE(REVERSE_S_BOX[AES_BYTE0(A)], REVERSE_S_BOX[AES_BYTE1(B)],                   \
+                       REVERSE_S_BOX[AES_BYTE2(C)], REVERSE_S_BOX[AES_BYTE3(D)]))
 
-int math_internal_aes_decrypt(math_aes_context *ctx, const unsigned char input[16],
-                              unsigned char output[16])
+int math_aes_decrypt(math_aes_context *ctx, const unsigned char input[16], unsigned char output[16])
 {
-    int i;
-    uint32_t *round_keys;
-    uint32_t X0, X1, X2, X3, Y0, Y1, Y2, Y3;
+    unsigned int round;
+    unsigned int column;
+    unsigned int prev1;
+    unsigned int prev2;
+    unsigned int prev3;
+    unsigned int key_index;
+    uint32_t state[4];
+    uint32_t transformed[4];
+    const uint32_t *round_keys;
 
     round_keys = ctx->round_keys;
 
-    X0 = AES_GET_LE32(input, 0);
-    X0 ^= *round_keys++;
-    X1 = AES_GET_LE32(input, 4);
-    X1 ^= *round_keys++;
-    X2 = AES_GET_LE32(input, 8);
-    X2 ^= *round_keys++;
-    X3 = AES_GET_LE32(input, 12);
-    X3 ^= *round_keys++;
-
-    for (i = (ctx->number_of_rounds >> 1) - 1; i > 0; i--)
+    /*
+     * Load the ciphertext state and apply the initial
+     * decryption round key.
+     */
+    for (column = 0u; column < 4u; ++column)
     {
-        Y0 = AES_REVERSE_ROUND_WORD(round_keys, X0, X3, X2, X1);
-        Y1 = AES_REVERSE_ROUND_WORD(round_keys, X1, X0, X3, X2);
-        Y2 = AES_REVERSE_ROUND_WORD(round_keys, X2, X1, X0, X3);
-        Y3 = AES_REVERSE_ROUND_WORD(round_keys, X3, X2, X1, X0);
-
-        X0 = AES_REVERSE_ROUND_WORD(round_keys, Y0, Y3, Y2, Y1);
-        X1 = AES_REVERSE_ROUND_WORD(round_keys, Y1, Y0, Y3, Y2);
-        X2 = AES_REVERSE_ROUND_WORD(round_keys, Y2, Y1, Y0, Y3);
-        X3 = AES_REVERSE_ROUND_WORD(round_keys, Y3, Y2, Y1, Y0);
+        state[column] = AES_GET_LE32(input, column * 4u) ^ round_keys[column];
     }
 
-    Y0 = AES_REVERSE_ROUND_WORD(round_keys, X0, X3, X2, X1);
-    Y1 = AES_REVERSE_ROUND_WORD(round_keys, X1, X0, X3, X2);
-    Y2 = AES_REVERSE_ROUND_WORD(round_keys, X2, X1, X0, X3);
-    Y3 = AES_REVERSE_ROUND_WORD(round_keys, X3, X2, X1, X0);
+    key_index = 4u;
 
-    X0 = AES_REVERSE_FINAL_WORD(round_keys, Y0, Y3, Y2, Y1);
-    X1 = AES_REVERSE_FINAL_WORD(round_keys, Y1, Y0, Y3, Y2);
-    X2 = AES_REVERSE_FINAL_WORD(round_keys, Y2, Y1, Y0, Y3);
-    X3 = AES_REVERSE_FINAL_WORD(round_keys, Y3, Y2, Y1, Y0);
+    /*
+     * Process all regular inverse AES rounds.
+     */
+    round = 1u;
 
-    AES_PUT_LE32(output, X0, 0);
-    AES_PUT_LE32(output, X1, 4);
-    AES_PUT_LE32(output, X2, 8);
-    AES_PUT_LE32(output, X3, 12);
-
-    return (0);
-}
-
-int math_aes_crypt_ecb(math_aes_context *ctx, int mode, const unsigned char input[16],
-                       unsigned char output[16])
-{
-    if (mode == MATH_AES_ENCRYPT)
+    while (round < (unsigned int) ctx->number_of_rounds)
     {
-        return (math_internal_aes_encrypt(ctx, input, output));
+        for (column = 0u; column < 4u; ++column)
+        {
+            prev1 = (column + 3u) & 3u;
+            prev2 = (column + 2u) & 3u;
+            prev3 = (column + 1u) & 3u;
+
+            transformed[column] =
+                AES_REVERSE_ROUND_WORD(round_keys[key_index + column], state[column], state[prev1],
+                                       state[prev2], state[prev3]);
+        }
+
+        for (column = 0u; column < 4u; ++column)
+        {
+            state[column] = transformed[column];
+        }
+
+        key_index += 4u;
+        ++round;
     }
 
-    return (math_internal_aes_decrypt(ctx, input, output));
+    /*
+     * The final inverse AES round omits InvMixColumns.
+     */
+    for (column = 0u; column < 4u; ++column)
+    {
+        prev1 = (column + 3u) & 3u;
+        prev2 = (column + 2u) & 3u;
+        prev3 = (column + 1u) & 3u;
+
+        transformed[column] = AES_REVERSE_FINAL_WORD(round_keys[key_index + column], state[column],
+                                                     state[prev1], state[prev2], state[prev3]);
+    }
+
+    /*
+     * Store the recovered plaintext.
+     */
+    for (column = 0u; column < 4u; ++column)
+    {
+        AES_PUT_LE32(output, transformed[column], column * 4u);
+    }
+
+    return 0;
 }
 
 #if defined(MATH_SELF_TEST)
@@ -760,7 +823,7 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
 
         memcpy(buf, aes_test_ecb_enc[array_index], 16);
 
-        ret = math_aes_setkey_dec(ctx, key, key_size);
+        ret = math_aes_setdeckey(ctx, key, key_size);
         if (ret != 0)
         {
             goto exit;
@@ -768,7 +831,7 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
 
         for (j = 0; j < 10000; j++)
         {
-            (void) math_aes_crypt_ecb(ctx, MATH_AES_DECRYPT, buf, buf);
+            (void) math_aes_decrypt(ctx, buf, buf);
         }
 
         if (memcmp(buf, aes_test_ecb_dec[array_index], 16) != 0)
@@ -789,7 +852,7 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
 
         memcpy(buf, aes_test_ecb_dec[array_index], 16);
 
-        ret = math_aes_setkey_enc(ctx, key, key_size);
+        ret = math_aes_setenckey(ctx, key, key_size);
         if (ret != 0)
         {
             goto exit;
@@ -797,7 +860,7 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
 
         for (j = 0; j < 10000; j++)
         {
-            (void) math_aes_crypt_ecb(ctx, MATH_AES_ENCRYPT, buf, buf);
+            (void) math_aes_encrypt(ctx, buf, buf);
         }
 
         if (memcmp(buf, aes_test_ecb_enc[array_index], 16) != 0)

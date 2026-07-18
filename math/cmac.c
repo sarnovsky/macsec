@@ -58,7 +58,7 @@ static void cmac_generate_subkeys(math_cmac_context_t *ctx, unsigned char k1[16]
 
     memset(zero, 0, sizeof(zero));
 
-    (void) math_aes_crypt_ecb(&ctx->aes_ctx, MATH_AES_ENCRYPT, zero, l);
+    (void) math_aes_encrypt(&ctx->aes_ctx, zero, l);
 
     cmac_left_shift_one_bit(k1, l);
     if ((l[0] & 0x80u) != 0u)
@@ -108,7 +108,7 @@ static int cmac_starts(math_cmac_context_t *ctx, const unsigned char *key, size_
     memset(ctx->unprocessed_block, 0, sizeof(ctx->unprocessed_block));
     ctx->unprocessed_len = 0u;
 
-    ret = math_aes_setkey_enc(&ctx->aes_ctx, key, (unsigned int) keybits);
+    ret = math_aes_setenckey(&ctx->aes_ctx, key, (unsigned int) keybits);
     if (ret != 0)
     {
         return ret;
@@ -158,7 +158,7 @@ static int cmac_update(math_cmac_context_t *ctx, const unsigned char *input, siz
 
         cmac_xor_block(temp, ctx->state, ctx->unprocessed_block);
 
-        ret = math_aes_crypt_ecb(&ctx->aes_ctx, MATH_AES_ENCRYPT, temp, ctx->state);
+        ret = math_aes_encrypt(&ctx->aes_ctx, temp, ctx->state);
         if (ret != 0)
         {
             cmac_zeroize(temp, sizeof(temp));
@@ -173,7 +173,7 @@ static int cmac_update(math_cmac_context_t *ctx, const unsigned char *input, siz
     {
         cmac_xor_block(temp, ctx->state, input);
 
-        ret = math_aes_crypt_ecb(&ctx->aes_ctx, MATH_AES_ENCRYPT, temp, ctx->state);
+        ret = math_aes_encrypt(&ctx->aes_ctx, temp, ctx->state);
         if (ret != 0)
         {
             cmac_zeroize(temp, sizeof(temp));
@@ -227,7 +227,7 @@ static int cmac_finish(math_cmac_context_t *ctx, unsigned char output[16])
 
     cmac_xor_block(temp, ctx->state, last_block);
 
-    ret = math_aes_crypt_ecb(&ctx->aes_ctx, MATH_AES_ENCRYPT, temp, output);
+    ret = math_aes_encrypt(&ctx->aes_ctx, temp, output);
 
     cmac_zeroize(k1, sizeof(k1));
     cmac_zeroize(k2, sizeof(k2));

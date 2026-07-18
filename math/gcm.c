@@ -77,7 +77,7 @@ void math_gcm_init(math_gcm_context *ctx)
 static int gcm_aes_encrypt_block(math_gcm_context *ctx, const unsigned char input[GCM_BLOCK_SIZE],
                                  unsigned char output[GCM_BLOCK_SIZE])
 {
-    return math_aes_crypt_ecb(&ctx->aes_ctx, MATH_AES_ENCRYPT, input, output);
+    return math_aes_encrypt(&ctx->aes_ctx, input, output);
 }
 
 static void gcm_mult(math_gcm_context *ctx, const unsigned char x[GCM_BLOCK_SIZE],
@@ -149,7 +149,7 @@ int math_gcm_setkey(math_gcm_context *ctx, const unsigned char *key, unsigned in
     math_aes_free(&ctx->aes_ctx);
     math_aes_init(&ctx->aes_ctx);
 
-    ret = math_aes_setkey_enc(&ctx->aes_ctx, key, keybits);
+    ret = math_aes_setenckey(&ctx->aes_ctx, key, keybits);
     if (ret != 0)
     {
         return ret;
