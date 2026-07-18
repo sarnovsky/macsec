@@ -129,7 +129,7 @@ static void gcm_increment_counter(unsigned char counter[GCM_BLOCK_SIZE])
     }
 }
 
-int math_gcm_setkey(math_gcm_context *ctx, const unsigned char *key, unsigned int keybits)
+int math_gcm_setkey(math_gcm_context *ctx, const uint8_t *key, uint32_t keybits)
 {
     int ret;
     int i;
@@ -694,7 +694,7 @@ int math_gcm_self_test(math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], i
 
             math_gcm_init(ctx);
 
-            ret = math_gcm_setkey(ctx, key[key_index[i]], (unsigned int) key_size);
+            ret = math_gcm_setkey(ctx, key[key_index[i]], (uint32_t) key_size);
             if (ret == 0)
             {
                 ret = math_gcm_crypt_and_tag(ctx, MATH_GCM_ENCRYPT, pt_len[i], iv[iv_index[i]],
@@ -728,7 +728,7 @@ int math_gcm_self_test(math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], i
 
             math_gcm_init(ctx);
 
-            ret = math_gcm_setkey(ctx, key[key_index[i]], (unsigned int) key_size);
+            ret = math_gcm_setkey(ctx, key[key_index[i]], (uint32_t) key_size);
             if (ret == 0)
             {
                 ret = math_gcm_auth_decrypt(ctx, pt_len[i], iv[iv_index[i]], iv_len[i],

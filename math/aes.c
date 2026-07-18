@@ -466,11 +466,11 @@ void math_aes_free(math_aes_context *ctx)
 /*
  * AES key schedule (encryption)
  */
-int math_aes_setenckey(math_aes_context *ctx, const unsigned char *key, unsigned int keybits)
+int math_aes_setenckey(math_aes_context *ctx, const uint8_t *key, uint32_t keybits)
 {
-    unsigned int i;
-    unsigned int key_words;
-    unsigned int total_words;
+    uint32_t i;
+    uint32_t key_words;
+    uint32_t total_words;
     uint32_t temp;
     uint32_t *round_keys;
 
@@ -521,7 +521,7 @@ int math_aes_setenckey(math_aes_context *ctx, const unsigned char *key, unsigned
      * AES requires one 128-bit round key for the initial
      * AddRoundKey operation and one for every round.
      */
-    total_words = 4u * ((unsigned int) ctx->number_of_rounds + 1u);
+    total_words = 4u * ((uint32_t) ctx->number_of_rounds + 1u);
 
     /*
      * Expand the key word by word.
@@ -546,13 +546,13 @@ int math_aes_setenckey(math_aes_context *ctx, const unsigned char *key, unsigned
     return 0;
 }
 
-int math_aes_setdeckey(math_aes_context *ctx, const unsigned char *key, unsigned int keybits)
+int math_aes_setdeckey(math_aes_context *ctx, const uint8_t *key, uint32_t keybits)
 {
     int ret;
-    unsigned int round;
-    unsigned int word;
-    unsigned int source_index;
-    unsigned int destination_index;
+    uint32_t round;
+    uint32_t word;
+    uint32_t source_index;
+    uint32_t destination_index;
     math_aes_context encryption_ctx;
 
     math_aes_init(&encryption_ctx);
@@ -573,7 +573,7 @@ int math_aes_setdeckey(math_aes_context *ctx, const unsigned char *key, unsigned
          * The first decryption round key is the final
          * encryption round key, without InvMixColumns.
          */
-        source_index = (unsigned int) ctx->number_of_rounds * 4u;
+        source_index = (uint32_t) ctx->number_of_rounds * 4u;
 
         for (word = 0u; word < 4u; ++word)
         {
@@ -586,7 +586,7 @@ int math_aes_setdeckey(math_aes_context *ctx, const unsigned char *key, unsigned
          * Copy the intermediate encryption round keys
          * in reverse order and apply InvMixColumns.
          */
-        round = (unsigned int) ctx->number_of_rounds - 1u;
+        round = (uint32_t) ctx->number_of_rounds - 1u;
 
         while (round > 0u)
         {
@@ -625,14 +625,14 @@ int math_aes_setdeckey(math_aes_context *ctx, const unsigned char *key, unsigned
     ((RK) ^ AES_U32_LE(FORWARD_S_BOX[AES_BYTE0(A)], FORWARD_S_BOX[AES_BYTE1(B)],                   \
                        FORWARD_S_BOX[AES_BYTE2(C)], FORWARD_S_BOX[AES_BYTE3(D)]))
 
-int math_aes_encrypt(math_aes_context *ctx, const unsigned char input[16], unsigned char output[16])
+int math_aes_encrypt(math_aes_context *ctx, const uint8_t input[16], uint8_t output[16])
 {
-    unsigned int round;
-    unsigned int column;
-    unsigned int next1;
-    unsigned int next2;
-    unsigned int next3;
-    unsigned int key_index;
+    uint32_t round;
+    uint32_t column;
+    uint32_t next1;
+    uint32_t next2;
+    uint32_t next3;
+    uint32_t key_index;
     uint32_t state[4];
     uint32_t transformed[4];
     const uint32_t *round_keys;
@@ -654,7 +654,7 @@ int math_aes_encrypt(math_aes_context *ctx, const unsigned char input[16], unsig
      */
     round = 1u;
 
-    while (round < (unsigned int) ctx->number_of_rounds)
+    while (round < (uint32_t) ctx->number_of_rounds)
     {
         for (column = 0u; column < 4u; ++column)
         {
@@ -708,14 +708,14 @@ int math_aes_encrypt(math_aes_context *ctx, const unsigned char input[16], unsig
     ((RK) ^ AES_U32_LE(REVERSE_S_BOX[AES_BYTE0(A)], REVERSE_S_BOX[AES_BYTE1(B)],                   \
                        REVERSE_S_BOX[AES_BYTE2(C)], REVERSE_S_BOX[AES_BYTE3(D)]))
 
-int math_aes_decrypt(math_aes_context *ctx, const unsigned char input[16], unsigned char output[16])
+int math_aes_decrypt(math_aes_context *ctx, const uint8_t input[16], uint8_t output[16])
 {
-    unsigned int round;
-    unsigned int column;
-    unsigned int prev1;
-    unsigned int prev2;
-    unsigned int prev3;
-    unsigned int key_index;
+    uint32_t round;
+    uint32_t column;
+    uint32_t prev1;
+    uint32_t prev2;
+    uint32_t prev3;
+    uint32_t key_index;
     uint32_t state[4];
     uint32_t transformed[4];
     const uint32_t *round_keys;
@@ -738,7 +738,7 @@ int math_aes_decrypt(math_aes_context *ctx, const unsigned char input[16], unsig
      */
     round = 1u;
 
-    while (round < (unsigned int) ctx->number_of_rounds)
+    while (round < (uint32_t) ctx->number_of_rounds)
     {
         for (column = 0u; column < 4u; ++column)
         {

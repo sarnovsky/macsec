@@ -60,7 +60,7 @@ typedef struct
 void math_gcm_init(math_gcm_context *ctx);
 void math_gcm_free(math_gcm_context *ctx);
 
-int math_gcm_setkey(math_gcm_context *ctx, const unsigned char *key, unsigned int keybits);
+int math_gcm_setkey(math_gcm_context *ctx, const uint8_t *key, uint32_t keybits);
 
 int math_gcm_crypt_and_tag(math_gcm_context *ctx, int mode, size_t length, const unsigned char *iv,
                            size_t iv_len, const unsigned char *add, size_t add_len,

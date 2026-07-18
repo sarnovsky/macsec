@@ -36,7 +36,7 @@ static int macsec_mka_cmac(macsec_mka_crypto_ctx_t *ctx, const uint8_t *key, siz
     macsec_assert(out != NULL);
     macsec_check(macsec_mka_key_len_valid(key_len), MACSEC_ERR_PARAM);
 
-    ret = math_cmac_aes(&ctx->cmac_ctx, key, (unsigned int) (key_len * 8u), input, input_len, out);
+    ret = math_cmac_aes(&ctx->cmac_ctx, key, (uint32_t) (key_len * 8u), input, input_len, out);
 
     if (ret != 0)
     {
@@ -211,7 +211,7 @@ static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t *k
         ctx->aes_initialized = MACSEC_TRUE;
     }
 
-    ret = math_aes_setenckey(&ctx->aes_ctx, kek, (unsigned int) (kek_len * 8u));
+    ret = math_aes_setenckey(&ctx->aes_ctx, kek, (uint32_t) (kek_len * 8u));
     if (ret != 0)
     {
         MACSEC_ERROR(("MKA AES-KW setkey enc failed ret=%d\n", ret));
@@ -312,7 +312,7 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t 
         ctx->aes_initialized = MACSEC_TRUE;
     }
 
-    ret = math_aes_setdeckey(&ctx->aes_ctx, kek, (unsigned int) (kek_len * 8u));
+    ret = math_aes_setdeckey(&ctx->aes_ctx, kek, (uint32_t) (kek_len * 8u));
     if (ret != 0)
     {
         MACSEC_ERROR(("MKA AES-KW setkey dec failed ret=%d\n", ret));

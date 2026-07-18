@@ -212,7 +212,7 @@ static int linux_tap_parse_hex(const char *text, uint8_t *output, size_t output_
 static int linux_tap_parse_priority(const char *text, uint8_t *priority)
 {
     char *end;
-    unsigned long value;
+    uint32_t value;
 
     if ((text == NULL) || (priority == NULL))
     {
@@ -222,9 +222,9 @@ static int linux_tap_parse_priority(const char *text, uint8_t *priority)
     errno = 0;
     end = NULL;
 
-    value = strtoul(text, &end, 10);
+    value = (uint32_t) strtoul(text, &end, 10);
 
-    if ((errno != 0) || (end == text) || (*end != '\0') || (value > 255ul))
+    if ((errno != 0) || (end == text) || (*end != '\0') || (value > 255u))
     {
         return -1;
     }
@@ -238,7 +238,7 @@ static int linux_tap_load_config(const char *path, linux_tap_config_t *config)
 {
     FILE *file;
     char line[LINUX_TAP_CONFIG_LINE_MAX];
-    unsigned long line_number = 0ul;
+    uint32_t line_number = 0u;
 
     if ((path == NULL) || (config == NULL))
     {
@@ -265,7 +265,8 @@ static int linux_tap_load_config(const char *path, linux_tap_config_t *config)
 
         if ((strchr(line, '\n') == NULL) && !feof(file))
         {
-            fprintf(stderr, "%s:%lu: configuration line is too long\n", path, line_number);
+            fprintf(stderr, "%s:%lu: configuration line is too long\n", path,
+                    (unsigned long) line_number);
 
             fclose(file);
             return -1;

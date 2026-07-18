@@ -35,15 +35,13 @@ extern "C"
 void math_aes_init(math_aes_context *ctx);
 void math_aes_free(math_aes_context *ctx);
 
-int math_aes_setenckey(math_aes_context *ctx, const unsigned char *key, unsigned int keybits);
+int math_aes_setenckey(math_aes_context *ctx, const uint8_t *key, uint32_t keybits);
 
-int math_aes_setdeckey(math_aes_context *ctx, const unsigned char *key, unsigned int keybits);
+int math_aes_setdeckey(math_aes_context *ctx, const uint8_t *key, uint32_t keybits);
 
-int math_aes_encrypt(math_aes_context *ctx, const unsigned char input[16],
-                     unsigned char output[16]);
+int math_aes_encrypt(math_aes_context *ctx, const uint8_t input[16], uint8_t output[16]);
 
-int math_aes_decrypt(math_aes_context *ctx, const unsigned char input[16],
-                     unsigned char output[16]);
+int math_aes_decrypt(math_aes_context *ctx, const uint8_t input[16], uint8_t output[16]);
 
 #if defined(MATH_SELF_TEST)
 int math_aes_self_test(math_aes_context *ctx, int verbose);

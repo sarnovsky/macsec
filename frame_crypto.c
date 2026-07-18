@@ -42,7 +42,7 @@ static int macsec_frame_gcm_setkey(macsec_frame_crypto_ctx_t *ctx, const uint8_t
     math_gcm_init(&ctx->gcm);
     ctx->gcm_initialized = MACSEC_TRUE;
 
-    ret = math_gcm_setkey(&ctx->gcm, key, (unsigned int) key_len * 8u);
+    ret = math_gcm_setkey(&ctx->gcm, key, (uint32_t) key_len * 8u);
 
     if (ret != 0)
     {
