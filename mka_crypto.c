@@ -25,6 +25,22 @@ static macsec_bool_t macsec_mka_key_len_valid(size_t key_len)
     return (key_len == 16u) || (key_len == 32u);
 }
 
+static macsec_bool_t macsec_mka_ick_ready(const macsec_mka_crypto_ctx_t *ctx)
+{
+    macsec_assert(ctx != NULL);
+
+    return (ctx->keys.valid && macsec_mka_key_len_valid(ctx->keys.ick_len)) ? MACSEC_TRUE
+                                                                            : MACSEC_FALSE;
+}
+
+static macsec_bool_t macsec_mka_kek_ready(const macsec_mka_crypto_ctx_t *ctx)
+{
+    macsec_assert(ctx != NULL);
+
+    return (ctx->keys.valid && macsec_mka_key_len_valid(ctx->keys.kek_len)) ? MACSEC_TRUE
+                                                                            : MACSEC_FALSE;
+}
+
 static int macsec_mka_cmac(macsec_mka_crypto_ctx_t *ctx, const uint8_t *key, size_t key_len,
                            const uint8_t *input, size_t input_len, uint8_t out[16])
 {
@@ -110,6 +126,7 @@ static int macsec_mka_kdf(macsec_mka_crypto_ctx_t *ctx, const uint8_t *key, size
         if (ret != MACSEC_ERR_OK)
         {
             MACSEC_ERROR(("MKA KDF CMAC failed ret=%d\n", ret));
+            macsec_zeroize(out, out_len);
             macsec_zeroize(buf, sizeof(buf));
             macsec_zeroize(cmac_out, sizeof(cmac_out));
             return ret;
@@ -196,6 +213,8 @@ static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t *k
     macsec_assert(wrapped != NULL);
     macsec_assert(wrapped_len != NULL);
 
+    *wrapped_len = 0u;
+
     macsec_check((kek_len == 16u) || (kek_len == 32u), MACSEC_ERR_PARAM);
     macsec_check((plain_len >= 16u) && ((plain_len % 8u) == 0u), MACSEC_ERR_PARAM);
     macsec_check((plain_len + 8u) <= wrapped_max_len, MACSEC_ERR_BUFFER);
@@ -215,6 +234,7 @@ static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t *k
     if (ret != 0)
     {
         MACSEC_ERROR(("MKA AES-KW setkey enc failed ret=%d\n", ret));
+        macsec_zeroize(wrapped, plain_len + 8u);
         return MACSEC_ERR_CRYPTO;
     }
 
@@ -238,6 +258,8 @@ static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t *k
             if (ret != 0)
             {
                 MACSEC_ERROR(("MKA AES-KW encrypt failed ret=%d\n", ret));
+                macsec_zeroize(wrapped, plain_len + 8u);
+                *wrapped_len = 0u;
                 macsec_zeroize(block, sizeof(block));
                 macsec_zeroize(b, sizeof(b));
                 macsec_zeroize(a, sizeof(a));
@@ -293,6 +315,8 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t 
     macsec_assert(plain != NULL);
     macsec_assert(plain_len != NULL);
 
+    *plain_len = 0u;
+
     macsec_check((kek_len == 16u) || (kek_len == 32u), MACSEC_ERR_PARAM);
 
     macsec_check((wrapped_len >= 24u) && ((wrapped_len % 8u) == 0u), MACSEC_ERR_PARAM);
@@ -316,6 +340,7 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t 
     if (ret != 0)
     {
         MACSEC_ERROR(("MKA AES-KW setkey dec failed ret=%d\n", ret));
+        macsec_zeroize(plain, n * 8u);
         return MACSEC_ERR_CRYPTO;
     }
 
@@ -351,6 +376,8 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t 
             if (ret != 0)
             {
                 MACSEC_ERROR(("MKA AES-KW decrypt failed ret=%d\n", ret));
+                macsec_zeroize(plain, n * 8u);
+                *plain_len = 0u;
                 macsec_zeroize(block, sizeof(block));
                 macsec_zeroize(b, sizeof(b));
                 macsec_zeroize(a, sizeof(a));
@@ -364,14 +391,17 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t 
 
     memset(expected_a, MACSEC_MKA_AES_KW_IV_BYTE, sizeof(expected_a));
 
-    if (memcmp(a, expected_a, sizeof(a)) != 0)
+    if (macsec_compare(a, expected_a, sizeof(a)) != 0)
     {
         MACSEC_ERROR(("MKA AES-KW unwrap authentication failed\n"));
         MACSEC_ERROR_HEX(("MKA AES-KW unwrap A", a, sizeof(a)));
 
+        macsec_zeroize(plain, n * 8u);
+        *plain_len = 0u;
         macsec_zeroize(block, sizeof(block));
         macsec_zeroize(b, sizeof(b));
         macsec_zeroize(a, sizeof(a));
+        macsec_zeroize(expected_a, sizeof(expected_a));
         return MACSEC_ERR_AUTH;
     }
 
@@ -384,6 +414,7 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t 
     macsec_zeroize(block, sizeof(block));
     macsec_zeroize(b, sizeof(b));
     macsec_zeroize(a, sizeof(a));
+    macsec_zeroize(expected_a, sizeof(expected_a));
 
     return MACSEC_ERR_OK;
 }
@@ -435,8 +466,8 @@ int macsec_mka_crypto_set_psk(macsec_mka_crypto_ctx_t *ctx, const uint8_t *cak, 
     macsec_check(macsec_mka_key_len_valid(cak_len), MACSEC_ERR_PARAM);
     macsec_check((ckn_len > 0u) && (ckn_len <= MACSEC_MKA_CKN_MAX_LEN), MACSEC_ERR_PARAM);
 
-    memset(&ctx->psk, 0, sizeof(ctx->psk));
-    memset(&ctx->keys, 0, sizeof(ctx->keys));
+    macsec_zeroize(&ctx->psk, sizeof(ctx->psk));
+    macsec_zeroize(&ctx->keys, sizeof(ctx->keys));
 
     memcpy(ctx->psk.cak, cak, cak_len);
     ctx->psk.cak_len = (uint8_t) cak_len;
@@ -467,7 +498,7 @@ int macsec_mka_crypto_derive_ick_kek(macsec_mka_crypto_ctx_t *ctx)
 
     macsec_check((derived_len == 16u) || (derived_len == 32u), MACSEC_ERR_PARAM);
 
-    memset(&ctx->keys, 0, sizeof(ctx->keys));
+    macsec_zeroize(&ctx->keys, sizeof(ctx->keys));
 
     ret = macsec_mka_derive_one(ctx, "IEEE8021 ICK", ctx->keys.ick, derived_len);
     if (ret != MACSEC_ERR_OK)
@@ -500,7 +531,7 @@ int macsec_mka_crypto_calc_mic(macsec_mka_crypto_ctx_t *ctx, const uint8_t *pdu,
     macsec_assert(ctx != NULL);
     macsec_assert(pdu != NULL);
     macsec_assert(mic != NULL);
-    macsec_check(ctx->keys.valid, MACSEC_ERR_STATE);
+    macsec_check(macsec_mka_ick_ready(ctx), MACSEC_ERR_STATE);
 
     MACSEC_INFO(("MKA calc MIC: pdu_len=%lu\n", (unsigned long) pdu_len));
 
@@ -527,7 +558,7 @@ int macsec_mka_crypto_verify_mic(macsec_mka_crypto_ctx_t *ctx, const uint8_t *pd
         return ret;
     }
 
-    if (memcmp(calc_mic, mic, MACSEC_MKA_MIC_LEN) != 0)
+    if (macsec_compare(calc_mic, mic, MACSEC_MKA_MIC_LEN) != 0)
     {
         MACSEC_ERROR(("MKA verify MIC failed\n"));
         MACSEC_ERROR_HEX(("MKA calculated MIC", calc_mic, MACSEC_MKA_MIC_LEN));
@@ -552,7 +583,9 @@ int macsec_mka_crypto_wrap_sak(macsec_mka_crypto_ctx_t *ctx, const uint8_t *sak,
     macsec_assert(sak != NULL);
     macsec_assert(wrapped_sak != NULL);
     macsec_assert(wrapped_sak_len != NULL);
-    macsec_check(ctx->keys.valid, MACSEC_ERR_STATE);
+    macsec_check(macsec_mka_kek_ready(ctx), MACSEC_ERR_STATE);
+
+    *wrapped_sak_len = 0u;
 
     macsec_check((sak_len == 16u) || (sak_len == 32u), MACSEC_ERR_PARAM);
 
@@ -573,7 +606,13 @@ int macsec_mka_crypto_unwrap_sak(macsec_mka_crypto_ctx_t *ctx, const uint8_t *wr
     macsec_assert(wrapped_sak != NULL);
     macsec_assert(sak != NULL);
     macsec_assert(sak_len != NULL);
-    macsec_check(ctx->keys.valid, MACSEC_ERR_STATE);
+    macsec_check(macsec_mka_kek_ready(ctx), MACSEC_ERR_STATE);
+
+    *sak_len = 0u;
+
+    macsec_check((wrapped_sak_len == MACSEC_MKA_WRAPPED_SAK_128_LEN) ||
+                     (wrapped_sak_len == MACSEC_MKA_WRAPPED_SAK_256_LEN),
+                 MACSEC_ERR_PARAM);
 
     MACSEC_MEDIUM(("MKA unwrap SAK: wrapped_len=%lu\n", (unsigned long) wrapped_sak_len));
 
@@ -585,7 +624,16 @@ int macsec_mka_crypto_unwrap_sak(macsec_mka_crypto_ctx_t *ctx, const uint8_t *wr
     if (ret != MACSEC_ERR_OK)
     {
         MACSEC_ERROR(("MKA unwrap SAK failed ret=%d\n", ret));
+        macsec_zeroize(sak, sak_max_len);
+        *sak_len = 0u;
         return ret;
+    }
+
+    if ((*sak_len != 16u) && (*sak_len != 32u))
+    {
+        macsec_zeroize(sak, sak_max_len);
+        *sak_len = 0u;
+        return MACSEC_ERR_CRYPTO;
     }
 
     MACSEC_MEDIUM(("MKA unwrap SAK OK: sak_len=%lu\n", (unsigned long) *sak_len));
@@ -666,7 +714,7 @@ int macsec_mka_crypto_self_test(macsec_mka_crypto_self_test_ctx_t *test_ctx, int
     test_ctx->mic_check[0] ^= 0x01u;
 
     ret = macsec_mka_crypto_verify_mic(&test_ctx->ctx, test_ctx->pdu, 96u, test_ctx->mic_check);
-    if (ret == MACSEC_ERR_OK)
+    if (ret != MACSEC_ERR_AUTH)
     {
         ret = MACSEC_ERR_AUTH;
         goto fail;
@@ -698,7 +746,7 @@ int macsec_mka_crypto_self_test(macsec_mka_crypto_self_test_ctx_t *test_ctx, int
         goto fail;
     }
 
-    if (memcmp(test_ctx->sak, test_ctx->unwrapped, 16u) != 0)
+    if (macsec_compare(test_ctx->sak, test_ctx->unwrapped, 16u) != 0)
     {
         ret = MACSEC_ERR_AUTH;
         goto fail;
