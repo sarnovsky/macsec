@@ -56,8 +56,8 @@ typedef struct
 
 typedef struct
 {
-    uint8_t cak[32];
-    uint8_t ckn[32];
+    uint8_t cak[MACSEC_MKA_CAK_MAX_LEN];
+    uint8_t ckn[MACSEC_MKA_CKN_MAX_LEN];
     uint8_t frame[MACSEC_MKA_MAX_FRAME_LEN];
 
     macsec_mka_ctx_t a;
@@ -68,11 +68,7 @@ typedef struct
 {
     macsec_mka_ctx_t mka;
     uint8_t frame[MACSEC_MKA_MAX_FRAME_LEN];
-} macsec_test_mka_frames_tx_pending_timing_data_t;
-
-typedef struct
-{
-} macsec_test_mka_frames_distributed_sak_layout_data_t;
+} macsec_test_mka_frames_periodic_tx_timing_data_t;
 
 typedef struct
 {
@@ -101,6 +97,12 @@ typedef struct
     uint8_t frame_b[MACSEC_MKA_MAX_FRAME_LEN];
 } macsec_test_mka_frames_sak_use_tx_rx_flags_data_t;
 
+typedef struct
+{
+    macsec_mka_ctx_t mka;
+    uint8_t frame[MACSEC_MKA_MAX_FRAME_LEN];
+} macsec_test_mka_frames_build_buffer_too_small_data_t;
+
 typedef union
 {
     macsec_test_mka_frames_linux_basic_icv_data_t test_mka_frames_linux_basic_icv_data;
@@ -113,10 +115,7 @@ typedef union
 
     macsec_test_mka_frames_two_peer_exchange_data_t test_mka_frames_two_peer_exchange_data;
 
-    macsec_test_mka_frames_tx_pending_timing_data_t test_mka_frames_tx_pending_timing_data;
-
-    macsec_test_mka_frames_distributed_sak_layout_data_t
-        test_mka_frames_distributed_sak_layout_data;
+    macsec_test_mka_frames_periodic_tx_timing_data_t test_mka_frames_periodic_tx_timing_data;
 
     macsec_test_mka_frames_stm32_key_server_distributes_sak_data_t
         test_mka_frames_stm32_key_server_distributes_sak_data;
@@ -124,6 +123,9 @@ typedef union
     macsec_test_mka_frames_sak_use_key_server_mi_data_t test_mka_frames_sak_use_key_server_mi_data;
 
     macsec_test_mka_frames_sak_use_tx_rx_flags_data_t test_mka_frames_sak_use_tx_rx_flags_data;
+
+    macsec_test_mka_frames_build_buffer_too_small_data_t
+        test_mka_frames_build_buffer_too_small_data;
 } macsec_test_mka_frames_data_t;
 
 int macsec_test_mka_frames(macsec_test_mka_frames_data_t *data, int verbose);
