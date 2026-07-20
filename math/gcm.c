@@ -702,8 +702,8 @@ int math_gcm_self_test(math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], i
                                              pt[pt_index[i]], buf, GCM_DEFAULT_TAG_SIZE, tag_buf);
             }
 
-            if (ret != 0 || memcmp(buf, ct[vector_index], pt_len[i]) != 0 ||
-                memcmp(tag_buf, tag[vector_index], GCM_DEFAULT_TAG_SIZE) != 0)
+            if (ret != 0 || macsec_compare(buf, ct[vector_index], pt_len[i]) != 0 ||
+                macsec_compare(tag_buf, tag[vector_index], GCM_DEFAULT_TAG_SIZE) != 0)
             {
                 if (verbose != 0)
                 {
@@ -736,7 +736,7 @@ int math_gcm_self_test(math_gcm_context *ctx, unsigned char buf[GCM_BUF_SIZE], i
                                             GCM_DEFAULT_TAG_SIZE, ct[vector_index], buf);
             }
 
-            if (ret != 0 || memcmp(buf, pt[pt_index[i]], pt_len[i]) != 0)
+            if (ret != 0 || macsec_compare(buf, pt[pt_index[i]], pt_len[i]) != 0)
             {
                 if (verbose != 0)
                 {

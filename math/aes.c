@@ -892,7 +892,7 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
             (void) math_aes_decrypt(ctx, buf, buf);
         }
 
-        if (memcmp(buf, aes_test_ecb_dec[array_index], 16) != 0)
+        if (macsec_compare(buf, aes_test_ecb_dec[array_index], 16) != 0)
         {
             ret = 1;
             goto exit;
@@ -921,7 +921,7 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
             (void) math_aes_encrypt(ctx, buf, buf);
         }
 
-        if (memcmp(buf, aes_test_ecb_enc[array_index], 16) != 0)
+        if (macsec_compare(buf, aes_test_ecb_enc[array_index], 16) != 0)
         {
             ret = 1;
             goto exit;

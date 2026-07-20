@@ -227,7 +227,7 @@ macsec_test_frame_crypto_encrypt_decrypt(macsec_test_frame_crypto_encrypt_decryp
     TEST_OK(ret);
 
     TEST_TRUE(decrypted_len == plain_len);
-    TEST_TRUE(memcmp(data->plain, data->decrypted, plain_len) == 0);
+    TEST_TRUE(macsec_compare(data->plain, data->decrypted, plain_len) == 0);
 
     macsec_test_frame_crypto_clear_pair(data);
     return 0;
@@ -438,7 +438,7 @@ macsec_test_frame_crypto_an_selection(macsec_test_frame_crypto_encrypt_decrypt_o
         TEST_OK(macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
                                      &decrypted_len, sizeof(data->decrypted)));
         TEST_TRUE(decrypted_len == 96u);
-        TEST_TRUE(memcmp(data->plain, data->decrypted, 96u) == 0);
+        TEST_TRUE(macsec_compare(data->plain, data->decrypted, 96u) == 0);
     }
 
     macsec_frame_crypto_clear(&data->tx_ctx);
@@ -498,7 +498,7 @@ macsec_test_frame_crypto_lengths(macsec_test_frame_crypto_encrypt_decrypt_one_da
                                      &decrypted_len, sizeof(data->decrypted)));
 
         TEST_TRUE(decrypted_len == lengths[i]);
-        TEST_TRUE(memcmp(data->plain, data->decrypted, lengths[i]) == 0);
+        TEST_TRUE(macsec_compare(data->plain, data->decrypted, lengths[i]) == 0);
 
         macsec_test_frame_crypto_clear_pair(data);
     }
@@ -878,8 +878,8 @@ static int macsec_test_frame_crypto_distinct_local_sci(
     TEST_MEM_EQ(&data->secure[MACSEC_TEST_SECTAG_OFFSET + MACSEC_TEST_SECTAG_SCI], data->sci.bytes,
                 MACSEC_FRAME_SCI_LEN);
 
-    TEST_TRUE(memcmp(&data->secure[MACSEC_TEST_SECTAG_OFFSET + MACSEC_TEST_SECTAG_SCI],
-                     rx_sci.bytes, MACSEC_FRAME_SCI_LEN) != 0);
+    TEST_TRUE(macsec_compare(&data->secure[MACSEC_TEST_SECTAG_OFFSET + MACSEC_TEST_SECTAG_SCI],
+                             rx_sci.bytes, MACSEC_FRAME_SCI_LEN) != 0);
 
     ret = macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
                                &decrypted_len, sizeof(data->decrypted));

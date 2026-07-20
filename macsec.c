@@ -35,7 +35,7 @@ static macsec_bool_t macsec_sak_equal(const macsec_frame_sak_t *sak, const uint8
     macsec_assert(sak != NULL);
     macsec_assert(key != NULL);
 
-    return sak->valid && sak->key_len == key_len && memcmp(sak->key, key, key_len) == 0;
+    return sak->valid && sak->key_len == key_len && macsec_compare(sak->key, key, key_len) == 0;
 }
 
 static int macsec_install_rx_sak(macsec_ctx_t *ctx, const uint8_t *sak_key, size_t sak_len,

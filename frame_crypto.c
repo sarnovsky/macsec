@@ -35,7 +35,7 @@ static int macsec_frame_gcm_setkey(macsec_frame_crypto_ctx_t *ctx, const uint8_t
     macsec_assert(macsec_frame_key_len_valid(key_len));
 
     if (ctx->current_gcm_key_valid && (ctx->current_gcm_key_len == key_len) &&
-        (memcmp(ctx->current_gcm_key, key, key_len) == 0))
+        (macsec_compare(ctx->current_gcm_key, key, key_len) == 0))
     {
         return MACSEC_ERR_OK;
     }
@@ -713,7 +713,7 @@ static int macsec_frame_self_test_one(macsec_frame_crypto_self_test_ctx_t *test_
         goto cleanup;
     }
 
-    if (memcmp(test_ctx->plain, test_ctx->decrypted, plain_len) != 0)
+    if (macsec_compare(test_ctx->plain, test_ctx->decrypted, plain_len) != 0)
     {
         ret = MACSEC_ERR_AUTH;
         goto cleanup;

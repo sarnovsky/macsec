@@ -347,7 +347,7 @@ static macsec_bool_t macsec_mka_local_wins_key_server(const macsec_mka_ctx_t *ct
      * Tie-breaker for early implementation.
      * Lower SCI wins.
      */
-    return memcmp(ctx->local_sci, ctx->peer.sci, MACSEC_MKA_SCI_LEN) < 0;
+    return macsec_compare(ctx->local_sci, ctx->peer.sci, MACSEC_MKA_SCI_LEN) < 0;
 }
 
 macsec_bool_t macsec_mka_is_eapol_mka(const uint8_t *frame, size_t frame_len)
@@ -981,7 +981,7 @@ static macsec_bool_t macsec_mka_frame_contains_peer_entry(const uint8_t *frame, 
             {
                 MACSEC_INFO_HEX(("MKA peer-list entry MI", &frame[body_pos], MACSEC_MKA_MI_LEN));
 
-                if (memcmp(&frame[body_pos], mi, MACSEC_MKA_MI_LEN) == 0)
+                if (macsec_compare(&frame[body_pos], mi, MACSEC_MKA_MI_LEN) == 0)
                 {
                     uint32_t listed_mn;
 
@@ -1175,7 +1175,7 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
              */
             same_sak = ctx->latest_sak.valid && (ctx->latest_sak.key_number == key_number) &&
                        (ctx->latest_sak.an == an) && (ctx->latest_sak.sak_len == sak_len) &&
-                       (memcmp(ctx->latest_sak.sak, unwrapped_sak, sak_len) == 0);
+                       (macsec_compare(ctx->latest_sak.sak, unwrapped_sak, sak_len) == 0);
 
             if (same_sak)
             {
@@ -1278,9 +1278,9 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
     /*
      * Ignore frames originating from this participant.
      */
-    if ((memcmp(basic.src_mac, ctx->local_mac, MACSEC_MKA_SRC_LEN) == 0) ||
-        (memcmp(basic.sci, ctx->local_sci, MACSEC_MKA_SCI_LEN) == 0) ||
-        (memcmp(basic.actor_mi, ctx->local_mi, MACSEC_MKA_MI_LEN) == 0))
+    if ((macsec_compare(basic.src_mac, ctx->local_mac, MACSEC_MKA_SRC_LEN) == 0) ||
+        (macsec_compare(basic.sci, ctx->local_sci, MACSEC_MKA_SCI_LEN) == 0) ||
+        (macsec_compare(basic.actor_mi, ctx->local_mi, MACSEC_MKA_MI_LEN) == 0))
     {
         MACSEC_INFO(("MKA RX ignored own frame\n"));
         return MACSEC_ERR_OK;
@@ -1326,10 +1326,11 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
      * actor_mn normally increases in every MKPDU and is deliberately not
      * treated as a peer identity change.
      */
-    peer_identity_changed = (!ctx->peer.valid) ||
-                            (memcmp(ctx->peer.mi, basic.actor_mi, MACSEC_MKA_MI_LEN) != 0) ||
-                            (memcmp(ctx->peer.sci, basic.sci, MACSEC_MKA_SCI_LEN) != 0) ||
-                            (memcmp(ctx->peer.mac, basic.src_mac, MACSEC_MKA_SRC_LEN) != 0);
+    peer_identity_changed =
+        (!ctx->peer.valid) ||
+        (macsec_compare(ctx->peer.mi, basic.actor_mi, MACSEC_MKA_MI_LEN) != 0) ||
+        (macsec_compare(ctx->peer.sci, basic.sci, MACSEC_MKA_SCI_LEN) != 0) ||
+        (macsec_compare(ctx->peer.mac, basic.src_mac, MACSEC_MKA_SRC_LEN) != 0);
 
     /*
      * Distributed SAK parsing is permitted only after successful ICV

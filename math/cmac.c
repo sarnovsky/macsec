@@ -302,7 +302,7 @@ static int cmac_run_vector_suite(math_cmac_context_t *ctx, const cmac_test_suite
             return 1;
         }
 
-        if (memcmp(out, suite->expected[i], 16u) != 0)
+        if (macsec_compare(out, suite->expected[i], 16u) != 0)
         {
             if (verbose != 0)
             {
@@ -378,7 +378,7 @@ static int cmac_run_streaming_test(math_cmac_context_t *ctx, const unsigned char
         goto fail;
     }
 
-    if (memcmp(out, expected, 16u) != 0)
+    if (macsec_compare(out, expected, 16u) != 0)
     {
         if (verbose != 0)
         {

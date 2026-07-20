@@ -71,7 +71,7 @@ extern "C"
 #define TEST_MEM_EQ(a, b, len)                                                                     \
     do                                                                                             \
     {                                                                                              \
-        if (memcmp((a), (b), (len)) != 0)                                                          \
+        if (macsec_compare((a), (b), (len)) != 0)                                                  \
         {                                                                                          \
             return -1;                                                                             \
         }                                                                                          \
