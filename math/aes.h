@@ -22,6 +22,14 @@
 
 typedef struct
 {
+#if !defined(MATH_AES_ROM_TABLES)
+    /*
+     * Lookup tables used only during runtime AES table generation.
+     */
+    uint8_t pow[256];
+    uint8_t log[256];
+#endif
+
     uint32_t *round_keys;
     int number_of_rounds;
     uint32_t buf[68]; /* round-key buffer */
