@@ -1,6 +1,8 @@
-# Ignorovat všechny adresáře .svn (včetně podadresářů)
+# Ignore folder .svn (including subfolders)
 .svn/
 
-# Ignorovat specifické build adresáře
+# Ignore specific build folders
 /examples/unit_tests/build/
 /examples/linux_tap/build/
+/examples/mem_usage_stm32/build/
+/examples/mem_usage_stm32/results/
