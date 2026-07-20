@@ -159,6 +159,8 @@ static void macsec_mka_set_state(macsec_mka_ctx_t *ctx, macsec_mka_state_t new_s
 {
     macsec_mka_state_t old_state;
 
+    (void) reason;
+
     macsec_assert(ctx != NULL);
 
     old_state = ctx->state;
@@ -248,6 +250,8 @@ static void macsec_mka_set_sak_state(macsec_mka_ctx_t *ctx, macsec_mka_sak_state
                                      const char *reason)
 {
     macsec_mka_sak_state_t old_state;
+
+    (void) reason;
 
     macsec_assert(ctx != NULL);
 
