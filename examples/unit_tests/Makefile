@@ -55,21 +55,25 @@ MACSEC_SELF_TEST   ?= 1
 MATH_AES_ROM_TABLES   ?= 1
 MATH_AES_FEWER_TABLES ?= 0
 
-ifeq ($(MATH_AES_ROM_TABLES),1)
-ifeq ($(MATH_AES_FEWER_TABLES),1)
-$(error MATH_AES_ROM_TABLES and MATH_AES_FEWER_TABLES cannot both be enabled)
-endif
-endif
-
 ###############################################################################
 # Compiler options
 ###############################################################################
 
 CPPFLAGS := \
 	-DMACSEC_DEBUG_LEVEL=$(MACSEC_DEBUG_LEVEL) \
-	-DMACSEC_SELF_TEST=$(MACSEC_SELF_TEST) \
-	-DMATH_AES_ROM_TABLES=$(MATH_AES_ROM_TABLES) \
-	-DMATH_AES_FEWER_TABLES=$(MATH_AES_FEWER_TABLES)
+	-DMACSEC_SELF_TEST=$(MACSEC_SELF_TEST)
+
+ifeq ($(MATH_AES_ROM_TABLES),1)
+CPPFLAGS += -DMATH_AES_ROM_TABLES
+else ifneq ($(MATH_AES_ROM_TABLES),0)
+$(error MATH_AES_ROM_TABLES must be 0 or 1)
+endif
+
+ifeq ($(MATH_AES_FEWER_TABLES),1)
+CPPFLAGS += -DMATH_AES_FEWER_TABLES
+else ifneq ($(MATH_AES_FEWER_TABLES),0)
+$(error MATH_AES_FEWER_TABLES must be 0 or 1)
+endif
 
 CFLAGS := \
 	-std=c99 \
