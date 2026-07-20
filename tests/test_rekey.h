@@ -17,52 +17,64 @@
 #ifndef TEST_REKEY_H
 #define TEST_REKEY_H
 
+#include "frame_crypto.h"
+#include "macsec_common.h"
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-#include "frame_crypto.h"
-#include "macsec_common.h"
-
 #if (MACSEC_SELF_TEST != 0)
+
+#define MACSEC_TEST_REKEY_PLAIN_MAX_LEN 128u
+#define MACSEC_TEST_REKEY_SECURE_MAX_LEN 256u
+#define MACSEC_TEST_REKEY_PLAIN_LEN 96u
 
 typedef struct
 {
-    uint8_t plain[128];
-    uint8_t secure[256];
-    uint8_t decrypted[128];
+    uint8_t plain[MACSEC_TEST_REKEY_PLAIN_MAX_LEN];
+    uint8_t secure[MACSEC_TEST_REKEY_SECURE_MAX_LEN];
+    uint8_t decrypted[MACSEC_TEST_REKEY_PLAIN_MAX_LEN];
 
     macsec_frame_sci_t sci;
+
     macsec_frame_crypto_ctx_t tx_ctx;
     macsec_frame_crypto_ctx_t rx_ctx;
+
     macsec_frame_sak_t sak;
 } macsec_test_rekey_an_rotation_decrypts_all_data_t;
 
 typedef struct
 {
-    uint8_t plain0[128];
-    uint8_t plain1[128];
-    uint8_t secure0[256];
-    uint8_t secure1[256];
-    uint8_t decrypted[128];
+    uint8_t plain0[MACSEC_TEST_REKEY_PLAIN_MAX_LEN];
+    uint8_t plain1[MACSEC_TEST_REKEY_PLAIN_MAX_LEN];
+
+    uint8_t secure0[MACSEC_TEST_REKEY_SECURE_MAX_LEN];
+    uint8_t secure1[MACSEC_TEST_REKEY_SECURE_MAX_LEN];
+
+    uint8_t decrypted[MACSEC_TEST_REKEY_PLAIN_MAX_LEN];
 
     macsec_frame_sci_t sci;
+
     macsec_frame_crypto_ctx_t tx_ctx;
     macsec_frame_crypto_ctx_t rx_ctx;
+
     macsec_frame_sak_t sak0;
     macsec_frame_sak_t sak1;
 } macsec_test_rekey_old_rx_sak_still_accepted_data_t;
 
 typedef struct
 {
-    uint8_t plain[128];
-    uint8_t secure[256];
-    uint8_t decrypted[128];
+    uint8_t plain[MACSEC_TEST_REKEY_PLAIN_MAX_LEN];
+    uint8_t secure[MACSEC_TEST_REKEY_SECURE_MAX_LEN];
+    uint8_t decrypted[MACSEC_TEST_REKEY_PLAIN_MAX_LEN];
 
     macsec_frame_sci_t sci;
+
     macsec_frame_crypto_ctx_t tx_ctx;
     macsec_frame_crypto_ctx_t rx_ctx;
+
     macsec_frame_sak_t tx_sak;
     macsec_frame_sak_t wrong_rx_sak;
 } macsec_test_rekey_wrong_key_same_an_fails_data_t;

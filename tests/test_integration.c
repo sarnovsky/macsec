@@ -162,7 +162,7 @@ static int macsec_test_integration_static_sak_ping_like(
 
     TEST_TRUE(pass_to_stack);
     TEST_TRUE(plain_rx_len == plain_tx_len);
-    TEST_TRUE(memcmp(data->plain_tx, data->plain_rx, plain_tx_len) == 0);
+    TEST_TRUE(macsec_compare(data->plain_tx, data->plain_rx, plain_tx_len) == 0);
 
     macsec_clear(&data->a);
     macsec_clear(&data->b);
@@ -210,7 +210,7 @@ static int macsec_test_integration_disabled_passthrough(
     }
 
     TEST_TRUE(tx_len == plain_tx_len);
-    TEST_TRUE(memcmp(data->plain_tx, data->tx_frame, plain_tx_len) == 0);
+    TEST_TRUE(macsec_compare(data->plain_tx, data->tx_frame, plain_tx_len) == 0);
 
     ret = macsec_input(&data->ctx, data->tx_frame, tx_len, data->rx_frame, &rx_len,
                        sizeof(data->rx_frame), &pass_to_stack);
@@ -222,7 +222,7 @@ static int macsec_test_integration_disabled_passthrough(
 
     TEST_TRUE(pass_to_stack);
     TEST_TRUE(rx_len == plain_tx_len);
-    TEST_TRUE(memcmp(data->plain_tx, data->rx_frame, plain_tx_len) == 0);
+    TEST_TRUE(macsec_compare(data->plain_tx, data->rx_frame, plain_tx_len) == 0);
 
     macsec_clear(&data->ctx);
 
@@ -335,14 +335,14 @@ static int macsec_test_integration_output_not_ready_mka_cak_32(
     macsec_test_fill_mka_config(&data->cfg, mac_a, cak, sizeof(cak), ckn, sizeof(ckn));
 
     TEST_TRUE(data->cfg.cak_len == 32u);
-    TEST_TRUE(memcmp(data->cfg.cak, cak, sizeof(cak)) == 0);
+    TEST_TRUE(macsec_compare(data->cfg.cak, cak, sizeof(cak)) == 0);
 
     /*
      * Verify explicitly that the second half of the CAK was copied.
      * This detects implementations that silently truncate a 32-byte
      * CAK to the first 16 bytes.
      */
-    TEST_TRUE(memcmp(&data->cfg.cak[16], &cak[16], 16u) == 0);
+    TEST_TRUE(macsec_compare(&data->cfg.cak[16], &cak[16], 16u) == 0);
 
     ret = macsec_init(&data->ctx, &data->cfg);
     TEST_OK(ret);
