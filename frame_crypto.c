@@ -483,8 +483,14 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_e
 
     macsec_check((sectag[0] & MACSEC_FRAME_TCI_MASK) == MACSEC_FRAME_TCI_BASE,
                  MACSEC_ERR_UNSUPPORTED);
-    macsec_check(memcmp(&sectag[6], ctx->local_sci.bytes, MACSEC_FRAME_SCI_LEN) == 0,
-                 MACSEC_ERR_PARAM);
+
+    /*
+     * The SCI carried in the SecTAG identifies the transmitting Secure
+     * Channel. It must not be compared with the receiver's local SCI.
+     *
+     * The received SCI is authenticated as part of the AAD and is used
+     * to construct the GCM IV.
+     */
 
     an = sectag[0] & 0x03u;
 

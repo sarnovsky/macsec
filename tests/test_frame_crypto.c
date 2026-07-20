@@ -825,42 +825,77 @@ macsec_test_frame_crypto_rx_pn_exhaustion(macsec_test_frame_crypto_encrypt_decry
     return 0;
 }
 
-static int
-macsec_test_frame_crypto_sci_validation(macsec_test_frame_crypto_encrypt_decrypt_one_data_t *data,
-                                        int verbose)
+static int macsec_test_frame_crypto_distinct_local_sci(
+    macsec_test_frame_crypto_encrypt_decrypt_one_data_t *data, int verbose)
 {
     macsec_frame_sci_t rx_sci;
+
     size_t secure_len = 0u;
-    size_t decrypted_len = 123u;
+    size_t decrypted_len = 0u;
+
     int ret;
 
     if (verbose)
     {
-        MACSEC_PRINT(("  Frame crypto SCI validation test\n"));
+        MACSEC_PRINT(("  Frame crypto distinct local SCI test\n"));
     }
 
+    /*
+     * The TX SCI identifies the transmitting Secure Channel and is written
+     * into the SecTAG. The RX context has its own different local SCI.
+     */
     macsec_test_fill_sci(&data->sci);
+
     rx_sci = data->sci;
     rx_sci.bytes[5] ^= 0x01u;
+
     macsec_test_fill_sak(&data->sak, 0u, 16u);
 
     TEST_OK(macsec_frame_crypto_init(&data->tx_ctx, &data->sci));
     TEST_OK(macsec_frame_crypto_init(&data->rx_ctx, &rx_sci));
+
+    data->tx_ctx.replay_protect = MACSEC_FALSE;
     data->rx_ctx.replay_protect = MACSEC_FALSE;
+
     TEST_OK(macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &data->sak));
     TEST_OK(macsec_frame_crypto_set_rx_sak(&data->rx_ctx, &data->sak));
 
     macsec_test_fill_plain_frame(data->plain, 96u, 0x0800u, 0xB3u);
-    TEST_OK(macsec_frame_encrypt(&data->tx_ctx, data->plain, 96u, data->secure, &secure_len,
-                                 sizeof(data->secure)));
+
+    ret = macsec_frame_encrypt(&data->tx_ctx, data->plain, 96u, data->secure, &secure_len,
+                               sizeof(data->secure));
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_frame_crypto_clear(&data->tx_ctx);
+        macsec_frame_crypto_clear(&data->rx_ctx);
+        return ret;
+    }
+
+    /*
+     * The protected frame must carry the transmitter's SCI, not the
+     * receiver's local SCI.
+     */
+    TEST_MEM_EQ(&data->secure[MACSEC_TEST_SECTAG_OFFSET + MACSEC_TEST_SECTAG_SCI], data->sci.bytes,
+                MACSEC_FRAME_SCI_LEN);
+
+    TEST_TRUE(memcmp(&data->secure[MACSEC_TEST_SECTAG_OFFSET + MACSEC_TEST_SECTAG_SCI],
+                     rx_sci.bytes, MACSEC_FRAME_SCI_LEN) != 0);
 
     ret = macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
                                &decrypted_len, sizeof(data->decrypted));
-    TEST_TRUE(ret == MACSEC_ERR_PARAM);
-    TEST_TRUE(decrypted_len == 0u);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_frame_crypto_clear(&data->tx_ctx);
+        macsec_frame_crypto_clear(&data->rx_ctx);
+        return ret;
+    }
+
+    TEST_EQ_U32(decrypted_len, 96u);
+    TEST_MEM_EQ(data->plain, data->decrypted, 96u);
 
     macsec_frame_crypto_clear(&data->tx_ctx);
     macsec_frame_crypto_clear(&data->rx_ctx);
+
     return 0;
 }
 
@@ -999,7 +1034,7 @@ int macsec_test_frame_crypto(macsec_test_frame_crypto_data_t *data, int verbose)
     TEST_OK(macsec_test_frame_crypto_rx_pn_exhaustion(
         &data->test_frame_crypto_encrypt_decrypt_one_data, verbose));
 
-    TEST_OK(macsec_test_frame_crypto_sci_validation(
+    TEST_OK(macsec_test_frame_crypto_distinct_local_sci(
         &data->test_frame_crypto_encrypt_decrypt_one_data, verbose));
     TEST_OK(macsec_test_frame_crypto_sectag_validation(
         &data->test_frame_crypto_encrypt_decrypt_one_data, verbose));
