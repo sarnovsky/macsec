@@ -261,10 +261,34 @@ void macsec_wr_be64(uint8_t *p, uint64_t value);
 /*
  * Securely erase a memory region.
  *
- * The implementation must prevent the compiler from removing the writes as
- * dead stores.
+ * The implementation uses volatile writes to prevent the compiler from
+ * removing the operation as a dead store.
  */
 void macsec_zeroize(void *buf, size_t len);
+
+/*
+ * Compare two memory regions in constant execution time with respect to
+ * their contents.
+ *
+ * Unlike memcmp(), this function does not provide lexicographical ordering.
+ * It returns zero when both regions are equal and a non-zero value when they
+ * differ.
+ *
+ * The function always examines exactly len bytes.
+ *
+ * @param buf1
+ *        First input buffer.
+ *
+ * @param buf2
+ *        Second input buffer.
+ *
+ * @param len
+ *        Number of bytes to compare.
+ *
+ * @return
+ *        Zero when the buffers are equal, or a non-zero value otherwise.
+ */
+int macsec_compare(const void *buf1, const void *buf2, size_t len);
 
 /*
  * Convert a hexadecimal text string to binary data.

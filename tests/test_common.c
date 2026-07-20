@@ -106,6 +106,155 @@ static int macsec_test_common_zeroize(int verbose)
     return 0;
 }
 
+static int macsec_test_common_zeroize_region(int verbose)
+{
+    uint8_t buf[16];
+    size_t i;
+
+    (void) verbose;
+
+    memset(buf, 0xA5, sizeof(buf));
+
+    macsec_zeroize(&buf[4], 8u);
+
+    for (i = 0u; i < 4u; i++)
+    {
+        TEST_EQ_U32(buf[i], 0xA5u);
+    }
+
+    for (i = 4u; i < 12u; i++)
+    {
+        TEST_EQ_U32(buf[i], 0u);
+    }
+
+    for (i = 12u; i < sizeof(buf); i++)
+    {
+        TEST_EQ_U32(buf[i], 0xA5u);
+    }
+
+    return 0;
+}
+
+static int macsec_test_common_zeroize_zero_length(int verbose)
+{
+    uint8_t buf[8];
+    size_t i;
+
+    (void) verbose;
+
+    memset(buf, 0x5Au, sizeof(buf));
+
+    macsec_zeroize(buf, 0u);
+
+    for (i = 0u; i < sizeof(buf); i++)
+    {
+        TEST_EQ_U32(buf[i], 0x5Au);
+    }
+
+    return 0;
+}
+
+static int macsec_test_common_compare_equal(int verbose)
+{
+    static const uint8_t buf1[] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                   0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu};
+
+    static const uint8_t buf2[] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                   0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu};
+
+    (void) verbose;
+
+    TEST_TRUE(macsec_compare(buf1, buf2, sizeof(buf1)) == 0);
+
+    return 0;
+}
+
+static int macsec_test_common_compare_different_first(int verbose)
+{
+    static const uint8_t buf1[] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
+
+    static const uint8_t buf2[] = {0xFFu, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
+
+    (void) verbose;
+
+    TEST_TRUE(macsec_compare(buf1, buf2, sizeof(buf1)) != 0);
+
+    return 0;
+}
+
+static int macsec_test_common_compare_different_middle(int verbose)
+{
+    static const uint8_t buf1[] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
+
+    static const uint8_t buf2[] = {0x00u, 0x11u, 0x22u, 0x33u, 0x45u, 0x55u, 0x66u, 0x77u};
+
+    (void) verbose;
+
+    TEST_TRUE(macsec_compare(buf1, buf2, sizeof(buf1)) != 0);
+
+    return 0;
+}
+
+static int macsec_test_common_compare_different_last(int verbose)
+{
+    static const uint8_t buf1[] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
+
+    static const uint8_t buf2[] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x76u};
+
+    (void) verbose;
+
+    TEST_TRUE(macsec_compare(buf1, buf2, sizeof(buf1)) != 0);
+
+    return 0;
+}
+
+static int macsec_test_common_compare_multiple_differences(int verbose)
+{
+    static const uint8_t buf1[] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
+
+    static const uint8_t buf2[] = {0xFFu, 0x11u, 0xDDu, 0x33u, 0x44u, 0xAAu, 0x66u, 0x88u};
+
+    (void) verbose;
+
+    TEST_TRUE(macsec_compare(buf1, buf2, sizeof(buf1)) != 0);
+
+    return 0;
+}
+
+static int macsec_test_common_compare_zero_length(int verbose)
+{
+    static const uint8_t buf1[] = {0x00u};
+    static const uint8_t buf2[] = {0xFFu};
+
+    (void) verbose;
+
+    /*
+     * With a zero length, no bytes are compared and the buffers are
+     * therefore considered equal.
+     */
+    TEST_TRUE(macsec_compare(buf1, buf2, 0u) == 0);
+
+    return 0;
+}
+
+static int macsec_test_common_compare_prefix(int verbose)
+{
+    static const uint8_t buf1[] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
+
+    static const uint8_t buf2[] = {0x00u, 0x11u, 0x22u, 0x33u, 0xFFu, 0xFFu, 0xFFu, 0xFFu};
+
+    (void) verbose;
+
+    /*
+     * Only the requested prefix is compared. Differences after len bytes
+     * must not affect the result.
+     */
+    TEST_TRUE(macsec_compare(buf1, buf2, 4u) == 0);
+    TEST_TRUE(macsec_compare(buf1, buf2, sizeof(buf1)) != 0);
+
+    return 0;
+}
+
 static int macsec_test_common_hex_to_bin_basic(int verbose)
 {
     static const char hex[] = "00112233AABBccdd";
@@ -179,7 +328,19 @@ int macsec_test_common(int verbose)
     TEST_OK(macsec_test_common_be16(verbose));
     TEST_OK(macsec_test_common_be32(verbose));
     TEST_OK(macsec_test_common_be64(verbose));
+
     TEST_OK(macsec_test_common_zeroize(verbose));
+    TEST_OK(macsec_test_common_zeroize_region(verbose));
+    TEST_OK(macsec_test_common_zeroize_zero_length(verbose));
+
+    TEST_OK(macsec_test_common_compare_equal(verbose));
+    TEST_OK(macsec_test_common_compare_different_first(verbose));
+    TEST_OK(macsec_test_common_compare_different_middle(verbose));
+    TEST_OK(macsec_test_common_compare_different_last(verbose));
+    TEST_OK(macsec_test_common_compare_multiple_differences(verbose));
+    TEST_OK(macsec_test_common_compare_zero_length(verbose));
+    TEST_OK(macsec_test_common_compare_prefix(verbose));
+
     TEST_OK(macsec_test_common_hex_to_bin_basic(verbose));
     TEST_OK(macsec_test_common_hex_to_bin_too_small(verbose));
     TEST_OK(macsec_test_common_hex_to_bin_invalid(verbose));

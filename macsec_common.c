@@ -79,8 +79,38 @@ void macsec_wr_be64(uint8_t *p, uint64_t v)
 
 void macsec_zeroize(void *buf, size_t len)
 {
+    volatile uint8_t *p;
+
     macsec_assert(buf != NULL);
-    memset(buf, 0, len);
+
+    p = (volatile uint8_t *) buf;
+
+    while (len > 0u)
+    {
+        *p++ = 0u;
+        len--;
+    }
+}
+
+int macsec_compare(const void *buf1, const void *buf2, size_t len)
+{
+    const uint8_t *p1;
+    const uint8_t *p2;
+    uint8_t diff = 0u;
+    size_t i;
+
+    macsec_assert(buf1 != NULL);
+    macsec_assert(buf2 != NULL);
+
+    p1 = (const uint8_t *) buf1;
+    p2 = (const uint8_t *) buf2;
+
+    for (i = 0u; i < len; i++)
+    {
+        diff |= (uint8_t) (p1[i] ^ p2[i]);
+    }
+
+    return (int) diff;
 }
 
 #if (MACSEC_DEBUG_LEVEL > 0)
