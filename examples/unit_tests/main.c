@@ -11,30 +11,39 @@ uint8_t DEBUGCONSOLE_readChar(void) { return 0; }
 
 int main(int argc, char *argv[])
 {
-    int verbose = 1;
-    int ret;
-    static macsec_test_data_t test_data;
-
     (void) argc;
     (void) argv;
 
     xdev_out(DEBUGCONSOLE_writeChar);
     xdev_in(DEBUGCONSOLE_readChar);
 
-    ret = macsec_test_all(&test_data, verbose);
-    if (ret != 0)
+#if (MACSEC_SELF_TEST != 0)
+
     {
-        xprintf("ALL TESTS FAILED ret=%d\n", ret);
-        return ret;
+        int verbose = 1;
+        int ret;
+        static macsec_test_data_t test_data;
+
+        ret = macsec_test_all(&test_data, verbose);
+        if (ret != 0)
+        {
+            xprintf("ALL TESTS FAILED ret=%d\n", ret);
+            return ret;
+        }
+
+        xprintf("ALL TESTS OK\n");
+        xprintf("========================================\n");
+
+        xprintf("sizeof(macsec_ctx_t) = %u bytes\n", (unsigned) sizeof(macsec_ctx_t));
+        xprintf("sizeof(macsec_mka_ctx_t) = %u bytes\n", (unsigned) sizeof(macsec_mka_ctx_t));
+        xprintf("sizeof(macsec_test_data_t) = %u bytes\n", (unsigned) sizeof(macsec_test_data_t));
     }
 
-    xprintf("ALL TESTS OK\n");
+#else
 
-    xprintf("========================================\n");
+    xprintf("No self-tests, returning success\n");
 
-    xprintf("sizeof(macsec_ctx_t) = %u bytes\n", (unsigned) sizeof(macsec_ctx_t));
-    xprintf("sizeof(macsec_mka_ctx_t) = %u bytes\n", (unsigned) sizeof(macsec_mka_ctx_t));
-    xprintf("sizeof(macsec_test_data_t) = %u bytes\n", (unsigned) sizeof(macsec_test_data_t));
+#endif
 
     return 0;
 }
