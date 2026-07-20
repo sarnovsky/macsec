@@ -32,6 +32,8 @@ static void macsec_mka_raise_events(macsec_mka_ctx_t *ctx, macsec_mka_event_flag
 
 static void macsec_mka_schedule_tx(macsec_mka_ctx_t *ctx, macsec_mka_tx_reason_flags_t reasons);
 
+#if (MACSEC_DEBUG_LEVEL >= MACSEC_DEBUG_LEVEL_ERROR)
+
 static const char *macsec_mka_state_name(macsec_mka_state_t state)
 {
     switch (state)
@@ -91,6 +93,8 @@ static const char *macsec_mka_sak_state_name(macsec_mka_sak_state_t state)
         return "UNKNOWN";
     }
 }
+
+#endif
 
 static macsec_bool_t macsec_mka_state_transition_allowed(macsec_mka_state_t old_state,
                                                          macsec_mka_state_t new_state)
