@@ -35,6 +35,7 @@ extern "C"
 #define MACSEC_FRAME_SCI_LEN 8u
 #define MACSEC_FRAME_MAX_SA 4u
 #define MACSEC_FRAME_MAX_KEY_LEN 32u
+#define MACSEC_FRAME_MAX_REPLAY_WINDOW 64u
 
 #define MACSEC_FRAME_MAX_PLAIN_SIZE 1600u
 #define MACSEC_FRAME_MAX_SECURE_SIZE 1700u
@@ -53,16 +54,23 @@ typedef struct
     uint32_t next_pn;
     uint32_t lowest_acceptable_pn;
 
+    /* RX-only replay state. Bit 0 represents highest_received_pn. */
+    uint32_t highest_received_pn;
+    uint64_t replay_bitmap;
+    macsec_bool_t replay_exhausted;
+
     macsec_bool_t valid;
 } macsec_frame_sak_t;
 
 typedef struct
 {
+    /* Local SCI for TX, expected peer SCI for RX. */
     macsec_frame_sci_t local_sci;
 
     macsec_frame_sak_t tx_sak;
     macsec_frame_sak_t rx_sak[MACSEC_FRAME_MAX_SA];
 
+    /* Only confidentiality-protected frames are currently supported. */
     macsec_bool_t encrypt;
     macsec_bool_t replay_protect;
     uint32_t replay_window;
@@ -86,17 +94,13 @@ typedef struct
 } macsec_frame_crypto_self_test_ctx_t;
 
 int macsec_frame_crypto_init(macsec_frame_crypto_ctx_t *ctx, const macsec_frame_sci_t *local_sci);
-
 void macsec_frame_crypto_clear(macsec_frame_crypto_ctx_t *ctx);
 
 int macsec_frame_crypto_set_tx_sak(macsec_frame_crypto_ctx_t *ctx, const macsec_frame_sak_t *sak);
-
 int macsec_frame_crypto_set_rx_sak(macsec_frame_crypto_ctx_t *ctx, const macsec_frame_sak_t *sak);
 
 macsec_bool_t macsec_frame_crypto_ready_tx(const macsec_frame_crypto_ctx_t *ctx);
-
 macsec_bool_t macsec_frame_crypto_ready_rx(const macsec_frame_crypto_ctx_t *ctx, uint8_t an);
-
 macsec_bool_t macsec_frame_is_macsec(const uint8_t *frame, size_t frame_len);
 
 int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *plain_eth,
@@ -107,11 +111,7 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_e
                          size_t secure_eth_len, uint8_t *plain_eth, size_t *plain_eth_len,
                          size_t plain_eth_max_len);
 
-/*
- * Returns:
- *   0 = self-test OK
- *   1 = self-test failed
- */
+/* Returns 0 on success and 1 on failure. */
 int macsec_frame_crypto_self_test(macsec_frame_crypto_self_test_ctx_t *test_ctx, int verbose);
 
 #ifdef __cplusplus

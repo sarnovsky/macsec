@@ -17,6 +17,7 @@
 #include "frame_crypto.h"
 
 #define MACSEC_FRAME_TCI_BASE 0x2Cu
+#define MACSEC_FRAME_TCI_MASK 0xFCu
 #define MACSEC_FRAME_SHORT_LEN_MAX 48u
 
 static macsec_bool_t macsec_frame_key_len_valid(uint8_t key_len)
@@ -33,6 +34,12 @@ static int macsec_frame_gcm_setkey(macsec_frame_crypto_ctx_t *ctx, const uint8_t
     macsec_assert(key != NULL);
     macsec_assert(macsec_frame_key_len_valid(key_len));
 
+    if (ctx->current_gcm_key_valid && (ctx->current_gcm_key_len == key_len) &&
+        (memcmp(ctx->current_gcm_key, key, key_len) == 0))
+    {
+        return MACSEC_ERR_OK;
+    }
+
     if (ctx->gcm_initialized)
     {
         math_gcm_free(&ctx->gcm);
@@ -43,13 +50,162 @@ static int macsec_frame_gcm_setkey(macsec_frame_crypto_ctx_t *ctx, const uint8_t
     ctx->gcm_initialized = MACSEC_TRUE;
 
     ret = math_gcm_setkey(&ctx->gcm, key, (uint32_t) key_len * 8u);
-
     if (ret != 0)
     {
+        macsec_zeroize(ctx->current_gcm_key, sizeof(ctx->current_gcm_key));
+        ctx->current_gcm_key_len = 0u;
+        ctx->current_gcm_key_valid = MACSEC_FALSE;
         return MACSEC_ERR_CRYPTO;
     }
 
+    memcpy(ctx->current_gcm_key, key, key_len);
+    if (key_len < sizeof(ctx->current_gcm_key))
+    {
+        macsec_zeroize(&ctx->current_gcm_key[key_len], sizeof(ctx->current_gcm_key) - key_len);
+    }
+
+    ctx->current_gcm_key_len = key_len;
+    ctx->current_gcm_key_valid = MACSEC_TRUE;
+
     return MACSEC_ERR_OK;
+}
+
+static uint64_t macsec_frame_replay_mask(uint32_t replay_window)
+{
+    macsec_assert(replay_window > 0u);
+    macsec_assert(replay_window <= MACSEC_FRAME_MAX_REPLAY_WINDOW);
+
+    if (replay_window == MACSEC_FRAME_MAX_REPLAY_WINDOW)
+    {
+        return UINT64_MAX;
+    }
+
+    return (((uint64_t) 1u << replay_window) - 1u);
+}
+
+static int macsec_frame_replay_check(const macsec_frame_crypto_ctx_t *ctx,
+                                     const macsec_frame_sak_t *sak, uint32_t pn)
+{
+    uint32_t distance;
+
+    macsec_assert(ctx != NULL);
+    macsec_assert(sak != NULL);
+
+    if (!ctx->replay_protect)
+    {
+        return MACSEC_ERR_OK;
+    }
+
+    macsec_check(ctx->replay_window <= MACSEC_FRAME_MAX_REPLAY_WINDOW, MACSEC_ERR_UNSUPPORTED);
+
+    if (sak->replay_exhausted)
+    {
+        return MACSEC_ERR_REPLAY;
+    }
+
+    if (pn < sak->lowest_acceptable_pn)
+    {
+        return MACSEC_ERR_REPLAY;
+    }
+
+    if (ctx->replay_window == 0u)
+    {
+        return MACSEC_ERR_OK;
+    }
+
+    if ((sak->highest_received_pn == 0u) || (pn > sak->highest_received_pn))
+    {
+        return MACSEC_ERR_OK;
+    }
+
+    distance = sak->highest_received_pn - pn;
+
+    if (distance >= ctx->replay_window)
+    {
+        return MACSEC_ERR_REPLAY;
+    }
+
+    if ((sak->replay_bitmap & ((uint64_t) 1u << distance)) != 0u)
+    {
+        return MACSEC_ERR_REPLAY;
+    }
+
+    return MACSEC_ERR_OK;
+}
+
+static void macsec_frame_replay_commit(macsec_frame_crypto_ctx_t *ctx, macsec_frame_sak_t *sak,
+                                       uint32_t pn)
+{
+    uint32_t shift;
+    uint32_t distance;
+    uint32_t new_lowest_pn;
+    uint64_t mask;
+
+    macsec_assert(ctx != NULL);
+    macsec_assert(sak != NULL);
+    macsec_assert(ctx->replay_protect);
+    macsec_assert(ctx->replay_window <= MACSEC_FRAME_MAX_REPLAY_WINDOW);
+
+    if (ctx->replay_window == 0u)
+    {
+        sak->highest_received_pn = pn;
+        sak->replay_bitmap = 1u;
+
+        if (pn == UINT32_MAX)
+        {
+            sak->lowest_acceptable_pn = UINT32_MAX;
+            sak->replay_exhausted = MACSEC_TRUE;
+        }
+        else
+        {
+            sak->lowest_acceptable_pn = pn + 1u;
+        }
+
+        return;
+    }
+
+    mask = macsec_frame_replay_mask(ctx->replay_window);
+
+    if (sak->highest_received_pn == 0u)
+    {
+        sak->highest_received_pn = pn;
+        sak->replay_bitmap = 1u;
+    }
+    else if (pn > sak->highest_received_pn)
+    {
+        shift = pn - sak->highest_received_pn;
+
+        if (shift >= ctx->replay_window)
+        {
+            sak->replay_bitmap = 1u;
+        }
+        else
+        {
+            sak->replay_bitmap = ((sak->replay_bitmap << shift) | 1u) & mask;
+        }
+
+        sak->highest_received_pn = pn;
+    }
+    else
+    {
+        distance = sak->highest_received_pn - pn;
+        sak->replay_bitmap |= ((uint64_t) 1u << distance);
+        sak->replay_bitmap &= mask;
+    }
+
+    if (sak->highest_received_pn >= ctx->replay_window)
+    {
+        new_lowest_pn = sak->highest_received_pn - ctx->replay_window + 1u;
+    }
+    else
+    {
+        new_lowest_pn = 1u;
+    }
+
+    if (new_lowest_pn > sak->lowest_acceptable_pn)
+    {
+        sak->lowest_acceptable_pn = new_lowest_pn;
+    }
 }
 
 int macsec_frame_crypto_init(macsec_frame_crypto_ctx_t *ctx, const macsec_frame_sci_t *local_sci)
@@ -104,6 +260,10 @@ int macsec_frame_crypto_set_tx_sak(macsec_frame_crypto_ctx_t *ctx, const macsec_
         ctx->tx_sak.next_pn = 1u;
     }
 
+    ctx->tx_sak.highest_received_pn = 0u;
+    ctx->tx_sak.replay_bitmap = 0u;
+    ctx->tx_sak.replay_exhausted = MACSEC_FALSE;
+
     MACSEC_MEDIUM(("Frame TX SAK installed: an=%u key_len=%u next_pn=%lu\n", ctx->tx_sak.an,
                    ctx->tx_sak.key_len, (unsigned long) ctx->tx_sak.next_pn));
     MACSEC_INFO_HEX(("Frame TX SAK key", ctx->tx_sak.key, ctx->tx_sak.key_len));
@@ -129,6 +289,12 @@ int macsec_frame_crypto_set_rx_sak(macsec_frame_crypto_ctx_t *ctx, const macsec_
         ctx->rx_sak[an].lowest_acceptable_pn = 1u;
     }
 
+    if ((ctx->rx_sak[an].highest_received_pn == 0u) && (ctx->rx_sak[an].replay_bitmap == 0u) &&
+        (ctx->rx_sak[an].lowest_acceptable_pn > 1u))
+    {
+        ctx->rx_sak[an].highest_received_pn = ctx->rx_sak[an].lowest_acceptable_pn - 1u;
+    }
+
     MACSEC_MEDIUM(("Frame RX SAK installed: an=%u key_len=%u lowest_pn=%lu\n", an,
                    ctx->rx_sak[an].key_len, (unsigned long) ctx->rx_sak[an].lowest_acceptable_pn));
     MACSEC_INFO_HEX(("Frame RX SAK key", ctx->rx_sak[an].key, ctx->rx_sak[an].key_len));
@@ -140,18 +306,25 @@ macsec_bool_t macsec_frame_crypto_ready_tx(const macsec_frame_crypto_ctx_t *ctx)
 {
     macsec_assert(ctx != NULL);
 
-    return ctx->tx_sak.valid && macsec_frame_key_len_valid(ctx->tx_sak.key_len);
+    return (ctx->tx_sak.valid && macsec_frame_key_len_valid(ctx->tx_sak.key_len) &&
+            (ctx->tx_sak.next_pn != 0u))
+               ? MACSEC_TRUE
+               : MACSEC_FALSE;
 }
 
 macsec_bool_t macsec_frame_crypto_ready_rx(const macsec_frame_crypto_ctx_t *ctx, uint8_t an)
 {
     macsec_assert(ctx != NULL);
+
     if (an >= MACSEC_FRAME_MAX_SA)
     {
         return MACSEC_FALSE;
     }
 
-    return ctx->rx_sak[an].valid && macsec_frame_key_len_valid(ctx->rx_sak[an].key_len);
+    return (ctx->rx_sak[an].valid && macsec_frame_key_len_valid(ctx->rx_sak[an].key_len) &&
+            !ctx->rx_sak[an].replay_exhausted)
+               ? MACSEC_TRUE
+               : MACSEC_FALSE;
 }
 
 macsec_bool_t macsec_frame_is_macsec(const uint8_t *frame, size_t frame_len)
@@ -184,9 +357,12 @@ int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *plain_et
     macsec_assert(secure_eth != NULL);
     macsec_assert(secure_eth_len != NULL);
 
+    *secure_eth_len = 0u;
+
     macsec_check(ctx->encrypt, MACSEC_ERR_UNSUPPORTED);
     macsec_check(macsec_frame_crypto_ready_tx(ctx), MACSEC_ERR_STATE);
     macsec_check(plain_eth_len >= MACSEC_FRAME_ETH_HDR_LEN, MACSEC_ERR_BUFFER);
+    macsec_check(plain_eth_len <= MACSEC_FRAME_MAX_PLAIN_SIZE, MACSEC_ERR_BUFFER);
 
     secure_data = plain_eth + 12u;
     secure_len = plain_eth_len - 12u;
@@ -194,6 +370,7 @@ int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *plain_et
     out_len =
         MACSEC_FRAME_ETH_HDR_LEN + MACSEC_FRAME_SECTAG_LEN + secure_len + MACSEC_FRAME_ICV_LEN;
 
+    macsec_check(out_len <= MACSEC_FRAME_MAX_SECURE_SIZE, MACSEC_ERR_BUFFER);
     macsec_check(out_len <= secure_eth_max_len, MACSEC_ERR_BUFFER);
 
     pn = ctx->tx_sak.next_pn;
@@ -235,6 +412,7 @@ int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *plain_et
     if (ret != MACSEC_ERR_OK)
     {
         macsec_zeroize(iv, sizeof(iv));
+        macsec_zeroize(secure_eth, out_len);
         return ret;
     }
 
@@ -247,12 +425,21 @@ int macsec_frame_encrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *plain_et
     if (ret != 0)
     {
         MACSEC_ERROR(("Frame encrypt GCM failed ret=%d\n", ret));
+        macsec_zeroize(secure_eth, out_len);
         return MACSEC_ERR_CRYPTO;
     }
 
     MACSEC_INFO_HEX(("Frame encrypt ICV", icv, MACSEC_FRAME_ICV_LEN));
 
-    ctx->tx_sak.next_pn++;
+    if (pn == UINT32_MAX)
+    {
+        ctx->tx_sak.next_pn = 0u;
+    }
+    else
+    {
+        ctx->tx_sak.next_pn = pn + 1u;
+    }
+
     *secure_eth_len = out_len;
 
     MACSEC_INFO(("Frame encrypt OK: tx_len=%lu next_pn=%lu\n", (unsigned long) *secure_eth_len,
@@ -273,7 +460,6 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_e
     size_t ciphertext_len;
     uint8_t an;
     uint32_t pn;
-    uint32_t new_lowest_pn;
     macsec_frame_sak_t *sak;
     int ret;
 
@@ -288,11 +474,17 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_e
      */
     *plain_eth_len = 0u;
 
+    macsec_check(secure_eth_len <= MACSEC_FRAME_MAX_SECURE_SIZE, MACSEC_ERR_BUFFER);
     macsec_check(macsec_frame_is_macsec(secure_eth, secure_eth_len), MACSEC_ERR_PARAM);
     macsec_check(secure_eth_len >= (MACSEC_FRAME_AAD_LEN + MACSEC_FRAME_ICV_LEN),
                  MACSEC_ERR_BUFFER);
 
     sectag = secure_eth + MACSEC_FRAME_ETH_HDR_LEN;
+
+    macsec_check((sectag[0] & MACSEC_FRAME_TCI_MASK) == MACSEC_FRAME_TCI_BASE,
+                 MACSEC_ERR_UNSUPPORTED);
+    macsec_check(memcmp(&sectag[6], ctx->local_sci.bytes, MACSEC_FRAME_SCI_LEN) == 0,
+                 MACSEC_ERR_PARAM);
 
     an = sectag[0] & 0x03u;
 
@@ -314,14 +506,10 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_e
 
     macsec_check(pn != 0u, MACSEC_ERR_REPLAY);
 
-    if (ctx->replay_protect)
+    ret = macsec_frame_replay_check(ctx, sak, pn);
+    if (ret != MACSEC_ERR_OK)
     {
-        if (pn < sak->lowest_acceptable_pn)
-        {
-            MACSEC_ERROR(("Frame replay rejected: pn=%lu lowest=%lu\n", (unsigned long) pn,
-                          (unsigned long) sak->lowest_acceptable_pn));
-            return MACSEC_ERR_REPLAY;
-        }
+        return ret;
     }
 
     aad = secure_eth;
@@ -330,7 +518,17 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_e
 
     ciphertext_len = secure_eth_len - MACSEC_FRAME_AAD_LEN - MACSEC_FRAME_ICV_LEN;
 
+    macsec_check((12u + ciphertext_len) <= MACSEC_FRAME_MAX_PLAIN_SIZE, MACSEC_ERR_BUFFER);
     macsec_check((12u + ciphertext_len) <= plain_eth_max_len, MACSEC_ERR_BUFFER);
+
+    if (ciphertext_len < MACSEC_FRAME_SHORT_LEN_MAX)
+    {
+        macsec_check(sectag[1] == (uint8_t) ciphertext_len, MACSEC_ERR_PARAM);
+    }
+    else
+    {
+        macsec_check(sectag[1] == 0u, MACSEC_ERR_PARAM);
+    }
 
     memcpy(&iv[0], &sectag[6], MACSEC_FRAME_SCI_LEN);
     memcpy(&iv[8], &sectag[2], 4u);
@@ -345,6 +543,7 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_e
     if (ret != MACSEC_ERR_OK)
     {
         macsec_zeroize(iv, sizeof(iv));
+        macsec_zeroize(plain_eth, 12u);
         return ret;
     }
 
@@ -375,29 +574,13 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_e
 
     if (ctx->replay_protect)
     {
-        if (ctx->replay_window == 0u)
-        {
-            sak->lowest_acceptable_pn = pn + 1u;
-        }
-        else
-        {
-            if (pn > ctx->replay_window)
-            {
-                new_lowest_pn = pn - ctx->replay_window + 1u;
-            }
-            else
-            {
-                new_lowest_pn = 1u;
-            }
+        macsec_frame_replay_commit(ctx, sak, pn);
 
-            if (new_lowest_pn > sak->lowest_acceptable_pn)
-            {
-                sak->lowest_acceptable_pn = new_lowest_pn;
-            }
-        }
-
-        MACSEC_INFO(("Frame replay update: new_lowest_pn=%lu\n",
-                     (unsigned long) sak->lowest_acceptable_pn));
+        MACSEC_INFO(
+            ("Frame replay update: lowest=%lu highest=%lu bitmap=0x%08lX%08lX exhausted=%u\n",
+             (unsigned long) sak->lowest_acceptable_pn, (unsigned long) sak->highest_received_pn,
+             (unsigned long) (sak->replay_bitmap >> 32),
+             (unsigned long) (sak->replay_bitmap & 0xFFFFFFFFu), sak->replay_exhausted ? 1u : 0u));
     }
 
     *plain_eth_len = 12u + ciphertext_len;
