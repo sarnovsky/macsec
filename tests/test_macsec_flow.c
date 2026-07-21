@@ -371,7 +371,7 @@ static int macsec_test_macsec_flow_build_control_frame(macsec_ctx_t *ctx, uint8_
         return ret;
     }
 
-    ret = macsec_get_control_frame(ctx, control, control_len, control_max_len);
+    ret = macsec_build_control_frame(ctx, control, control_len, control_max_len);
     if (ret != MACSEC_ERR_OK)
     {
         *control_len = 0u;
@@ -879,7 +879,7 @@ static int macsec_test_macsec_flow_exchange_control_frame(macsec_ctx_t *tx, macs
 
     control_len = 0u;
 
-    ret = macsec_get_control_frame(tx, control, &control_len, control_max_len);
+    ret = macsec_build_control_frame(tx, control, &control_len, control_max_len);
 
     if (ret == MACSEC_ERR_NOT_READY)
     {
