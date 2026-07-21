@@ -688,7 +688,7 @@ int macsec_build_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_
 
     if (ctx->cfg.mode != MACSEC_MODE_MKA_PSK)
     {
-        return MACSEC_ERR_NOT_READY;
+        return MACSEC_ERR_STATE;
     }
 
     if (ctx->pending_mka_tx_valid)

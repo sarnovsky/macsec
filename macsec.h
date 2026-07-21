@@ -182,6 +182,16 @@ typedef struct
 
     uint32_t last_tick_ms;
 
+    /*
+     * Internal top-level control-TX transaction state.
+     *
+     * Applications and network drivers must not access these fields
+     * directly. Use:
+     *
+     *   macsec_build_control_frame()
+     *   macsec_notify_control_tx_success()
+     *   macsec_notify_control_tx_failure()
+     */
     macsec_mka_tx_meta_t pending_mka_tx_meta;
     macsec_bool_t pending_mka_tx_valid;
 } macsec_ctx_t;
@@ -299,6 +309,9 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms);
  *
  *   macsec_notify_control_tx_failure()
  *
+ * The caller must report the result before calling this function again.
+ * Calling macsec_clear() discards any pending control transmission.
+ *
  * Until the result is reported, another control frame cannot be built.
  *
  * @param ctx MACsec context.
@@ -309,6 +322,7 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms);
  * @return MACSEC_ERR_OK when a control frame was built.
  *         MACSEC_ERR_NOT_READY when no control frame is pending.
  *         MACSEC_ERR_BUSY when a previously built frame is awaiting result.
+ *         MACSEC_ERR_STATE when MACsec is not operating in MKA PSK mode.
  *         Otherwise MACSEC_ERR_*.
  */
 int macsec_build_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_len,
