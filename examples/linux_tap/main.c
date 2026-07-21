@@ -30,6 +30,10 @@
 
 #define LINUX_TAP_FRAME_MAX 2048u
 
+#define LINUX_TAP_PHYSICAL_MTU 1500
+#define LINUX_TAP_MACSEC_OVERHEAD 32
+#define LINUX_TAP_MTU (LINUX_TAP_PHYSICAL_MTU - LINUX_TAP_MACSEC_OVERHEAD)
+
 static volatile sig_atomic_t linux_tap_running = 1;
 
 #define LINUX_TAP_CONFIG_DEFAULT "linux_tap.conf"
@@ -81,7 +85,7 @@ typedef struct
 
 static void linux_tap_signal_handler(int signal_number)
 {
-    (void)signal_number;
+    (void) signal_number;
     linux_tap_running = 0;
 }
 
@@ -510,9 +514,7 @@ static int linux_tap_init_macsec(macsec_ctx_t *ctx, const uint8_t local_mac[6],
     return macsec_init(ctx, &cfg);
 }
 
-static int linux_tap_process_plain(macsec_ctx_t *macsec,
-                                   linux_raw_socket_t *raw,
-                                   int tap_fd,
+static int linux_tap_process_plain(macsec_ctx_t *macsec, linux_raw_socket_t *raw, int tap_fd,
                                    linux_tap_stats_t *stats)
 {
     uint8_t plain[LINUX_TAP_FRAME_MAX];
@@ -536,12 +538,7 @@ static int linux_tap_process_plain(macsec_ctx_t *macsec,
 
     stats->tap_rx++;
 
-    ret = macsec_output(macsec,
-                        plain,
-                        (size_t)plain_len,
-                        secure,
-                        &secure_len,
-                        sizeof(secure));
+    ret = macsec_output(macsec, plain, (size_t) plain_len, secure, &secure_len, sizeof(secure));
 
     if (ret != MACSEC_ERR_OK)
     {
@@ -549,15 +546,11 @@ static int linux_tap_process_plain(macsec_ctx_t *macsec,
 
         if (macsec_get_state(macsec) != MACSEC_STATE_SECURED)
         {
-            printf("TX plaintext deferred: MACsec state=%u\n",
-                   (unsigned)macsec_get_state(macsec));
+            printf("TX plaintext deferred: MACsec state=%u\n", (unsigned) macsec_get_state(macsec));
         }
         else
         {
-            fprintf(stderr,
-                    "MACsec encrypt failed: ret=%d plain_len=%d\n",
-                    ret,
-                    plain_len);
+            fprintf(stderr, "MACsec encrypt failed: ret=%d plain_len=%d\n", ret, plain_len);
         }
 
         return 0;
@@ -567,7 +560,18 @@ static int linux_tap_process_plain(macsec_ctx_t *macsec,
 
     if (send_ret < 0)
     {
-        perror("sendto(AF_PACKET)");
+        if (errno == EMSGSIZE)
+        {
+            fprintf(stderr,
+                    "sendto(AF_PACKET): frame too large: "
+                    "plain_len=%d secure_len=%zu\n",
+                    plain_len, secure_len);
+        }
+        else
+        {
+            perror("sendto(AF_PACKET)");
+        }
+
         return -1;
     }
 
@@ -586,9 +590,7 @@ static int linux_tap_process_plain(macsec_ctx_t *macsec,
     return 0;
 }
 
-static int linux_tap_process_physical(macsec_ctx_t *macsec,
-                                      linux_raw_socket_t *raw,
-                                      int tap_fd,
+static int linux_tap_process_physical(macsec_ctx_t *macsec, linux_raw_socket_t *raw, int tap_fd,
                                       linux_tap_stats_t *stats)
 {
     uint8_t input[LINUX_TAP_FRAME_MAX];
@@ -620,14 +622,11 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec,
 
     if (input_len < 14)
     {
-        fprintf(stderr,
-                "Received Ethernet frame is too short: len=%d\n",
-                input_len);
+        fprintf(stderr, "Received Ethernet frame is too short: len=%d\n", input_len);
         return 0;
     }
 
-    ether_type = ((uint16_t)input[12] << 8) |
-                 (uint16_t)input[13];
+    ether_type = ((uint16_t) input[12] << 8) | (uint16_t) input[13];
 
     if (ether_type == 0x888Eu)
     {
@@ -638,22 +637,14 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec,
         stats->macsec_rx++;
     }
 
-    ret = macsec_input(macsec,
-                       input,
-                       (size_t)input_len,
-                       plain,
-                       &plain_len,
-                       sizeof(plain),
+    ret = macsec_input(macsec, input, (size_t) input_len, plain, &plain_len, sizeof(plain),
                        &pass_to_stack);
 
     if (ret != MACSEC_ERR_OK)
     {
         stats->decrypt_errors++;
 
-        fprintf(stderr,
-                "macsec_input failed: ret=%d type=0x%04X len=%d\n",
-                ret,
-                ether_type,
+        fprintf(stderr, "macsec_input failed: ret=%d type=0x%04X len=%d\n", ret, ether_type,
                 input_len);
 
         return 0;
@@ -690,24 +681,15 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec,
 static void linux_tap_print_stats(const linux_tap_stats_t *stats)
 {
     printf("\nStatistics:\n");
-    printf("  TAP -> stack        : %lu\n",
-           (unsigned long)stats->tap_rx);
-    printf("  MACsec TX           : %lu\n",
-           (unsigned long)stats->raw_tx);
-    printf("  MACsec TX dropped   : %lu\n",
-           (unsigned long)stats->raw_tx_dropped);
-    printf("  MKA RX              : %lu\n",
-           (unsigned long)stats->mka_rx);
-    printf("  MACsec RX           : %lu\n",
-           (unsigned long)stats->macsec_rx);
-    printf("  stack -> TAP        : %lu\n",
-           (unsigned long)stats->tap_tx);
-    printf("  TAP TX dropped      : %lu\n",
-           (unsigned long)stats->tap_tx_dropped);
-    printf("  encrypt errors      : %lu\n",
-           (unsigned long)stats->encrypt_errors);
-    printf("  decrypt/input errors: %lu\n",
-           (unsigned long)stats->decrypt_errors);
+    printf("  TAP -> stack        : %lu\n", (unsigned long) stats->tap_rx);
+    printf("  MACsec TX           : %lu\n", (unsigned long) stats->raw_tx);
+    printf("  MACsec TX dropped   : %lu\n", (unsigned long) stats->raw_tx_dropped);
+    printf("  MKA RX              : %lu\n", (unsigned long) stats->mka_rx);
+    printf("  MACsec RX           : %lu\n", (unsigned long) stats->macsec_rx);
+    printf("  stack -> TAP        : %lu\n", (unsigned long) stats->tap_tx);
+    printf("  TAP TX dropped      : %lu\n", (unsigned long) stats->tap_tx_dropped);
+    printf("  encrypt errors      : %lu\n", (unsigned long) stats->encrypt_errors);
+    printf("  decrypt/input errors: %lu\n", (unsigned long) stats->decrypt_errors);
 }
 
 static uint32_t linux_tap_get_time_ms(void)
@@ -725,8 +707,7 @@ static uint32_t linux_tap_get_time_ms(void)
     return (uint32_t) milliseconds;
 }
 
-static int linux_tap_macsec_control_service(macsec_ctx_t *macsec,
-                                            linux_raw_socket_t *raw)
+static int linux_tap_macsec_control_service(macsec_ctx_t *macsec, linux_raw_socket_t *raw)
 {
     uint8_t frame[MACSEC_MKA_MAX_FRAME_LEN];
     size_t frame_len = 0u;
@@ -743,10 +724,7 @@ static int linux_tap_macsec_control_service(macsec_ctx_t *macsec,
         return -1;
     }
 
-    ret = macsec_build_control_frame(macsec,
-                                     frame,
-                                     &frame_len,
-                                     sizeof(frame));
+    ret = macsec_build_control_frame(macsec, frame, &frame_len, sizeof(frame));
 
     if (ret == MACSEC_ERR_NOT_READY)
     {
@@ -755,16 +733,13 @@ static int linux_tap_macsec_control_service(macsec_ctx_t *macsec,
 
     if (ret == MACSEC_ERR_BUSY)
     {
-        fprintf(stderr,
-                "MKA control TX is still awaiting notification\n");
+        fprintf(stderr, "MKA control TX is still awaiting notification\n");
         return -1;
     }
 
     if (ret != MACSEC_ERR_OK)
     {
-        fprintf(stderr,
-                "macsec_build_control_frame failed: ret=%d\n",
-                ret);
+        fprintf(stderr, "macsec_build_control_frame failed: ret=%d\n", ret);
         return -1;
     }
 
@@ -776,9 +751,7 @@ static int linux_tap_macsec_control_service(macsec_ctx_t *macsec,
 
         if (ret != MACSEC_ERR_OK)
         {
-            fprintf(stderr,
-                    "MKA control TX success notification failed: ret=%d\n",
-                    ret);
+            fprintf(stderr, "MKA control TX success notification failed: ret=%d\n", ret);
             return -1;
         }
 
@@ -793,9 +766,7 @@ static int linux_tap_macsec_control_service(macsec_ctx_t *macsec,
 
     if (ret != MACSEC_ERR_OK)
     {
-        fprintf(stderr,
-                "MKA control TX failure notification failed: ret=%d\n",
-                ret);
+        fprintf(stderr, "MKA control TX failure notification failed: ret=%d\n", ret);
         return -1;
     }
 
@@ -903,6 +874,12 @@ int main(int argc, char *argv[])
         goto cleanup;
     }
 
+    if (linux_tap_set_mtu(tap_name, LINUX_TAP_MTU) < 0)
+    {
+        perror("linux_tap_set_mtu");
+        goto cleanup;
+    }
+
     if (linux_tap_set_up(tap_name) < 0)
     {
         perror("linux_tap_set_up");
@@ -921,6 +898,7 @@ int main(int argc, char *argv[])
     printf("Linux userspace MACsec example started\n");
     printf("  physical: %s\n", physical_name);
     printf("  TAP     : %s\n", tap_name);
+    printf("  TAP MTU : %d\n", LINUX_TAP_MTU);
     printf("  MAC     : ");
     linux_tap_print_mac(raw.mac);
     printf("\n");

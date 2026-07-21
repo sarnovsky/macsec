@@ -17,6 +17,7 @@
 
 int linux_tap_open(char *name, size_t name_size);
 int linux_tap_set_mac(const char *name, const uint8_t mac[6]);
+int linux_tap_set_mtu(const char *name, int mtu);
 int linux_tap_set_up(const char *name);
 int linux_tap_read(int fd, uint8_t *frame, size_t frame_capacity);
 int linux_tap_write(int fd, const uint8_t *frame, size_t frame_len);
