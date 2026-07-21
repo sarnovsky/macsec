@@ -650,7 +650,7 @@ static int linux_tap_macsec_control_service(macsec_ctx_t *macsec, linux_raw_sock
         return -1;
     }
 
-    ret = macsec_get_control_frame(macsec, frame, &frame_len, sizeof(frame));
+    ret = macsec_build_control_frame(macsec, frame, &frame_len, sizeof(frame));
 
     if (ret == MACSEC_ERR_OK)
     {

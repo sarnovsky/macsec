@@ -311,8 +311,8 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms);
  *         MACSEC_ERR_BUSY when a previously built frame is awaiting result.
  *         Otherwise MACSEC_ERR_*.
  */
-int macsec_get_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_len,
-                             size_t tx_max_len);
+int macsec_build_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_len,
+                               size_t tx_max_len);
 
 /**
  * @brief Report successful transmission of the pending MKA control frame.

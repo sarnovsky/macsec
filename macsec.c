@@ -675,8 +675,8 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms)
     return MACSEC_ERR_OK;
 }
 
-int macsec_get_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_len,
-                             size_t tx_max_len)
+int macsec_build_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_len,
+                               size_t tx_max_len)
 {
     int ret;
 

@@ -261,8 +261,8 @@ static int memusage_run_full(void)
      * Pull an MKA control frame. This keeps the complete TX MKA path,
      * including MIC calculation, in the linked image.
      */
-    ret = macsec_get_control_frame(&g_macsec_ctx, g_work.control, &output_len,
-                                   sizeof(g_work.control));
+    ret = macsec_build_control_frame(&g_macsec_ctx, g_work.control, &output_len,
+                                     sizeof(g_work.control));
 
     if ((ret != MACSEC_ERR_OK) && (ret != MACSEC_ERR_NOT_READY))
     {
