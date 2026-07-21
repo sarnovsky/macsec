@@ -310,9 +310,8 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms);
  *   macsec_notify_control_tx_failure()
  *
  * The caller must report the result before calling this function again.
+ * Until then, another control frame cannot be built.
  * Calling macsec_clear() discards any pending control transmission.
- *
- * Until the result is reported, another control frame cannot be built.
  *
  * @param ctx MACsec context.
  * @param tx_frame Output frame buffer.
@@ -320,8 +319,9 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms);
  * @param tx_max_len Output buffer size.
  *
  * @return MACSEC_ERR_OK when a control frame was built.
- *         MACSEC_ERR_NOT_READY when no control frame is pending.
- *         MACSEC_ERR_BUSY when a previously built frame is awaiting result.
+ *         MACSEC_ERR_NOT_READY when no control frame is currently scheduled.
+ *         MACSEC_ERR_BUSY when a previously built frame is awaiting its
+ *         transmission result.
  *         MACSEC_ERR_STATE when MACsec is not operating in MKA PSK mode.
  *         Otherwise MACSEC_ERR_*.
  */
@@ -338,7 +338,10 @@ int macsec_build_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_
  * @param ctx MACsec context.
  * @param now_ms Timestamp at which the frame was successfully transmitted.
  *
- * @return MACSEC_ERR_OK on success, otherwise MACSEC_ERR_*.
+ * @return MACSEC_ERR_OK on success.
+ *         MACSEC_ERR_NOT_READY when no control transmission is awaiting
+ *         its result.
+ *         MACSEC_ERR_STATE when MACsec is not operating in MKA PSK mode.
  */
 int macsec_notify_control_tx_success(macsec_ctx_t *ctx, uint32_t now_ms);
 
@@ -351,8 +354,9 @@ int macsec_notify_control_tx_success(macsec_ctx_t *ctx, uint32_t now_ms);
  * @param ctx MACsec context.
  *
  * @return MACSEC_ERR_OK on success.
- *         MACSEC_ERR_NOT_READY when no control transmission is pending.
- *         MACSEC_ERR_STATE when the context is not in MKA mode.
+ *         MACSEC_ERR_NOT_READY when no control transmission is awaiting
+ *         its result.
+ *         MACSEC_ERR_STATE when MACsec is not operating in MKA PSK mode.
  */
 int macsec_notify_control_tx_failure(macsec_ctx_t *ctx);
 

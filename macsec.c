@@ -696,7 +696,7 @@ int macsec_build_control_frame(macsec_ctx_t *ctx, uint8_t *tx_frame, size_t *tx_
         return MACSEC_ERR_BUSY;
     }
 
-    memset(&ctx->pending_mka_tx_meta, 0, sizeof(ctx->pending_mka_tx_meta));
+    macsec_zeroize(&ctx->pending_mka_tx_meta, sizeof(ctx->pending_mka_tx_meta));
 
     ret = macsec_mka_build_tx_frame(&ctx->mka, tx_frame, tx_len, tx_max_len,
                                     &ctx->pending_mka_tx_meta);
