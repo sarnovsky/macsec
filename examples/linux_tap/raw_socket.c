@@ -78,7 +78,14 @@ int linux_raw_open(linux_raw_socket_t *raw, const char *ifname)
     memset(raw, 0, sizeof(*raw));
     raw->fd = -1;
 
-    fd = socket(AF_PACKET, SOCK_RAW | SOCK_CLOEXEC, htons(ETH_P_ALL));
+    /*
+     * Non-blocking I/O is required because the example uses one event loop
+     * for both TAP and AF_PACKET. A full socket queue must never prevent the
+     * process from observing SIGINT/SIGTERM.
+     */
+    fd = socket(AF_PACKET,
+                SOCK_RAW | SOCK_CLOEXEC | SOCK_NONBLOCK,
+                htons(ETH_P_ALL));
     if (fd < 0)
     {
         return -1;
@@ -87,6 +94,7 @@ int linux_raw_open(linux_raw_socket_t *raw, const char *ifname)
     if (linux_raw_get_interface(fd, ifname, &raw->ifindex, raw->mac) < 0)
     {
         int saved_errno = errno;
+
         close(fd);
         errno = saved_errno;
         return -1;
@@ -94,14 +102,20 @@ int linux_raw_open(linux_raw_socket_t *raw, const char *ifname)
 
 #ifdef PACKET_IGNORE_OUTGOING
     /*
-     * Prevent frames sent by this socket from being delivered back to it.
-     * Older kernels may not support the option; ENOPROTOOPT is harmless.
+     * Prevent locally transmitted frames from being delivered back to this
+     * packet socket. The receive path also checks PACKET_OUTGOING as a
+     * fallback for kernels that do not support this socket option.
      */
-    if (setsockopt(fd, SOL_PACKET, PACKET_IGNORE_OUTGOING, &one, sizeof(one)) < 0)
+    if (setsockopt(fd,
+                   SOL_PACKET,
+                   PACKET_IGNORE_OUTGOING,
+                   &one,
+                   sizeof(one)) < 0)
     {
         if (errno != ENOPROTOOPT)
         {
             int saved_errno = errno;
+
             close(fd);
             errno = saved_errno;
             return -1;
@@ -114,9 +128,10 @@ int linux_raw_open(linux_raw_socket_t *raw, const char *ifname)
     address.sll_protocol = htons(ETH_P_ALL);
     address.sll_ifindex = raw->ifindex;
 
-    if (bind(fd, (const struct sockaddr *) &address, sizeof(address)) < 0)
+    if (bind(fd, (const struct sockaddr *)&address, sizeof(address)) < 0)
     {
         int saved_errno = errno;
+
         close(fd);
         errno = saved_errno;
         return -1;
@@ -145,22 +160,27 @@ void linux_raw_close(linux_raw_socket_t *raw)
 
 static uint16_t linux_raw_get_ethertype(const uint8_t *frame, size_t frame_len)
 {
-    if ((frame == NULL) || (frame_len < 14u))
+    if ((frame == NULL) || (frame_len < ETH_HLEN))
     {
         return 0u;
     }
 
-    return ((uint16_t) frame[12] << 8) | (uint16_t) frame[13];
+    return ((uint16_t)frame[12] << 8) | (uint16_t)frame[13];
 }
 
-int linux_raw_receive(linux_raw_socket_t *raw, uint8_t *frame, size_t frame_capacity)
+int linux_raw_receive(linux_raw_socket_t *raw,
+                      uint8_t *frame,
+                      size_t frame_capacity)
 {
     struct sockaddr_ll source;
     socklen_t source_len;
     ssize_t ret;
     uint16_t ether_type;
 
-    if ((raw == NULL) || (raw->fd < 0) || (frame == NULL) || (frame_capacity == 0u))
+    if ((raw == NULL) ||
+        (raw->fd < 0) ||
+        (frame == NULL) ||
+        (frame_capacity == 0u))
     {
         errno = EINVAL;
         return -1;
@@ -171,18 +191,30 @@ int linux_raw_receive(linux_raw_socket_t *raw, uint8_t *frame, size_t frame_capa
         memset(&source, 0, sizeof(source));
         source_len = sizeof(source);
 
-        ret = recvfrom(raw->fd, frame, frame_capacity, 0, (struct sockaddr *) &source, &source_len);
+        ret = recvfrom(raw->fd,
+                       frame,
+                       frame_capacity,
+                       0,
+                       (struct sockaddr *)&source,
+                       &source_len);
 
         if (ret < 0)
         {
-            if (errno == EINTR)
+            if ((errno == EAGAIN) || (errno == EWOULDBLOCK) ||
+                (errno == EINTR))
             {
-                continue;
+                return 0;
             }
 
             return -1;
         }
 
+        /*
+         * Fallback protection against the AF_PACKET socket receiving frames
+         * emitted by this host. Feeding such a frame into TAP would create:
+         *
+         *   TAP -> encrypt -> AF_PACKET -> decrypt -> TAP -> ...
+         */
         if (source.sll_pkttype == PACKET_OUTGOING)
         {
             continue;
@@ -194,24 +226,34 @@ int linux_raw_receive(linux_raw_socket_t *raw, uint8_t *frame, size_t frame_capa
             return -1;
         }
 
-        ether_type = linux_raw_get_ethertype(frame, (size_t) ret);
+        ether_type = linux_raw_get_ethertype(frame, (size_t)ret);
 
-        if ((ether_type != 0x88E5u) && (ether_type != 0x888Eu))
+        /*
+         * The userspace MACsec endpoint consumes only protected MACsec data
+         * and EAPOL/MKA control traffic. Ignore all other physical traffic.
+         */
+        if ((ether_type != ETH_P_MACSEC) &&
+            (ether_type != ETH_P_PAE))
         {
             continue;
         }
 
-        return (int) ret;
+        return (int)ret;
     }
 }
 
-int linux_raw_send(linux_raw_socket_t *raw, const uint8_t *frame, size_t frame_len)
+int linux_raw_send(linux_raw_socket_t *raw,
+                   const uint8_t *frame,
+                   size_t frame_len)
 {
     struct sockaddr_ll destination;
     ssize_t ret;
     uint16_t ether_type;
 
-    if ((raw == NULL) || (raw->fd < 0) || (frame == NULL) || (frame_len < ETH_HLEN))
+    if ((raw == NULL) ||
+        (raw->fd < 0) ||
+        (frame == NULL) ||
+        (frame_len < ETH_HLEN))
     {
         errno = EINVAL;
         return -1;
@@ -219,28 +261,46 @@ int linux_raw_send(linux_raw_socket_t *raw, const uint8_t *frame, size_t frame_l
 
     memset(&destination, 0, sizeof(destination));
     destination.sll_family = AF_PACKET;
-    ether_type = ((uint16_t) frame[12] << 8) | (uint16_t) frame[13];
+
+    ether_type = linux_raw_get_ethertype(frame, frame_len);
+
     destination.sll_protocol = htons(ether_type);
     destination.sll_ifindex = raw->ifindex;
     destination.sll_halen = ETH_ALEN;
+
     memcpy(destination.sll_addr, frame, ETH_ALEN);
 
-    do
-    {
-        ret = sendto(raw->fd, frame, frame_len, 0, (const struct sockaddr *) &destination,
-                     sizeof(destination));
-    } while ((ret < 0) && (errno == EINTR));
+    ret = sendto(raw->fd,
+                 frame,
+                 frame_len,
+                 0,
+                 (const struct sockaddr *)&destination,
+                 sizeof(destination));
 
     if (ret < 0)
     {
+        if ((errno == EAGAIN) || (errno == EWOULDBLOCK) ||
+            (errno == EINTR))
+        {
+            /*
+             * The frame was not queued. This is a temporary condition, not
+             * a fatal socket error.
+             */
+            return 0;
+        }
+
         return -1;
     }
 
-    if ((size_t) ret != frame_len)
+    /*
+     * AF_PACKET sends one complete Ethernet frame per call. A short send is
+     * therefore treated as an I/O error rather than retried as a byte stream.
+     */
+    if ((size_t)ret != frame_len)
     {
         errno = EIO;
         return -1;
     }
 
-    return (int) ret;
+    return (int)ret;
 }

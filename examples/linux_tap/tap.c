@@ -60,14 +60,19 @@ int linux_tap_open(char *name, size_t name_size)
         return -1;
     }
 
-    fd = open("/dev/net/tun", O_RDWR | O_CLOEXEC);
+    /*
+     * Non-blocking mode prevents a full TAP queue from trapping the event
+     * loop inside read() or write(), which would also delay Ctrl+C handling.
+     */
+    fd = open("/dev/net/tun",
+              O_RDWR | O_CLOEXEC | O_NONBLOCK);
     if (fd < 0)
     {
         return -1;
     }
 
     memset(&ifr, 0, sizeof(ifr));
-    ifr.ifr_flags = (short) (IFF_TAP | IFF_NO_PI);
+    ifr.ifr_flags = (short)(IFF_TAP | IFF_NO_PI);
 
     if (name[0] != '\0')
     {
@@ -77,6 +82,7 @@ int linux_tap_open(char *name, size_t name_size)
     if (ioctl(fd, TUNSETIFF, &ifr) < 0)
     {
         int saved_errno = errno;
+
         close(fd);
         errno = saved_errno;
         return -1;
@@ -126,6 +132,7 @@ int linux_tap_set_mac(const char *name, const uint8_t mac[6])
 
     ret = ioctl(fd, SIOCSIFHWADDR, &ifr);
     saved_errno = errno;
+
     close(fd);
     errno = saved_errno;
 
@@ -167,30 +174,43 @@ int linux_tap_set_up(const char *name)
         return -1;
     }
 
-    ifr.ifr_flags = (short) (ifr.ifr_flags | IFF_UP | IFF_RUNNING);
+    ifr.ifr_flags = (short)(ifr.ifr_flags | IFF_UP | IFF_RUNNING);
 
     ret = ioctl(fd, SIOCSIFFLAGS, &ifr);
     saved_errno = errno;
+
     close(fd);
     errno = saved_errno;
 
     return ret;
 }
 
-int linux_tap_read(int fd, uint8_t *frame, size_t frame_capacity)
+int linux_tap_read(int fd,
+                   uint8_t *frame,
+                   size_t frame_capacity)
 {
     ssize_t ret;
 
-    if ((fd < 0) || (frame == NULL) || (frame_capacity == 0u))
+    if ((fd < 0) ||
+        (frame == NULL) ||
+        (frame_capacity == 0u))
     {
         errno = EINVAL;
         return -1;
     }
 
-    do
+    ret = read(fd, frame, frame_capacity);
+
+    if (ret < 0)
     {
-        ret = read(fd, frame, frame_capacity);
-    } while ((ret < 0) && (errno == EINTR));
+        if ((errno == EAGAIN) || (errno == EWOULDBLOCK) ||
+            (errno == EINTR))
+        {
+            return 0;
+        }
+
+        return -1;
+    }
 
     if (ret > INT32_MAX)
     {
@@ -198,41 +218,45 @@ int linux_tap_read(int fd, uint8_t *frame, size_t frame_capacity)
         return -1;
     }
 
-    return (int) ret;
+    return (int)ret;
 }
 
-int linux_tap_write(int fd, const uint8_t *frame, size_t frame_len)
+int linux_tap_write(int fd,
+                    const uint8_t *frame,
+                    size_t frame_len)
 {
-    size_t written = 0u;
+    ssize_t ret;
 
-    if ((fd < 0) || (frame == NULL) || (frame_len == 0u))
+    if ((fd < 0) ||
+        (frame == NULL) ||
+        (frame_len == 0u))
     {
         errno = EINVAL;
         return -1;
     }
 
-    while (written < frame_len)
+    /*
+     * TAP preserves Ethernet frame boundaries. Do not retry a partial write
+     * as a byte stream because that could create a malformed second frame.
+     */
+    ret = write(fd, frame, frame_len);
+
+    if (ret < 0)
     {
-        ssize_t ret = write(fd, frame + written, frame_len - written);
-
-        if (ret < 0)
+        if ((errno == EAGAIN) || (errno == EWOULDBLOCK) ||
+            (errno == EINTR))
         {
-            if (errno == EINTR)
-            {
-                continue;
-            }
-
-            return -1;
+            return 0;
         }
 
-        if (ret == 0)
-        {
-            errno = EIO;
-            return -1;
-        }
-
-        written += (size_t) ret;
+        return -1;
     }
 
-    return (int) written;
+    if ((size_t)ret != frame_len)
+    {
+        errno = EIO;
+        return -1;
+    }
+
+    return (int)ret;
 }
