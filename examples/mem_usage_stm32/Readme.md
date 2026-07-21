@@ -1,300 +1,302 @@
-\# STM32 Memory Footprint Measurement
+# STM32 Memory Footprint Measurement
 
+This example measures the Flash and RAM footprint of the Lightweight MACsec Stack across multiple build configurations.
 
+The purpose is not to benchmark execution performance, but to compare the memory impact of:
 
-This example measures the Flash and RAM footprint of the lightweight MACsec stack
+* compiler optimization level,
+* enabled protocol components,
+* debug logging,
+* built-in self-tests,
+* AES lookup-table implementation.
 
-for a number of different build configurations.
+The measurement script automatically builds multiple firmware variants, extracts memory usage from the generated ELF files and stores the results in CSV and Markdown reports.
 
+---
 
+# Requirements
 
-The goal is not to benchmark performance, but to compare the impact of:
+The measurement project requires:
 
+* Python 3,
+* GNU Arm Embedded Toolchain,
+* `arm-none-eabi-gcc`,
+* `arm-none-eabi-size`,
+* GNU Make.
 
+The current project configuration targets:
 
-\- compiler optimization level,
+* STM32F411,
+* Arm Cortex-M4,
+* Thumb instruction set.
 
-\- enabled protocol components,
+---
 
-\- debug logging,
+# Running the Measurement
 
-\- self-tests,
+Run the measurement script from the example directory.
 
-\- AES lookup-table implementation.
-
-
-
-The project automatically builds multiple firmware variants, extracts their
-
-memory usage from the generated ELF files and stores the results as CSV and
-
-Markdown reports.
-
-
-
-\---
-
-
-
-\# Running
-
-
-
-Example:
-
-
+Example on Windows:
 
 ```bash
-
-python3 measure.py --toolchain "C:/Users/<user>/Sourcery\_CodeBench\_Lite\_for\_ARM\_EABI/bin/"
-
+python3 measure.py \
+    --toolchain "C:/Users/<user>/Sourcery_CodeBench_Lite_for_ARM_EABI/bin/"
 ```
 
+The toolchain path must contain the required Arm compiler and binary utilities.
 
+After all configurations have been processed, the generated reports are stored in:
 
-Generated reports:
-
-
-
-```
-
+```text
 results/
-
-&#x20;   memory.csv
-
-&#x20;   memory.md
-
+    memory.csv
+    memory.md
 ```
 
+The existing report files are replaced whenever the measurement script is run again.
 
+---
 
-\---
+# Configuration Groups
 
+The measurements are divided into two groups:
 
+1. **Profiles**
+2. **Production configurations**
 
-\# Configuration groups
+The profile group compares major library configurations, while the production group provides a more detailed comparison of settings relevant to deployed firmware.
 
+---
 
+# Profiles
 
-The measurements are divided into two groups.
+The **profiles** group compares complete firmware configurations.
 
+| Profile         | Description                                          |
+| --------------- | ---------------------------------------------------- |
+| `minimal`       | MACsec frame encryption and decryption using AES-GCM |
+| `full`          | Complete MACsec stack including MKA                  |
+| `full_debug`    | Complete stack with maximum debug logging            |
+| `full_selftest` | Complete stack including all built-in self-tests     |
 
+Each profile is measured using the following compiler optimization levels:
 
-\## Profiles
+* `-O0`
+* `-O2`
+* `-Os`
 
+The profile measurements use the default embedded AES configuration:
 
+```text
+rom_fewer
+```
 
-The \*\*profiles\*\* group compares complete firmware configurations.
+This group provides a high-level overview of the memory required by individual library capabilities.
 
+---
 
+# Production Configurations
 
-| Profile | Description |
+The **production** group measures configurations representative of practical firmware deployments.
 
-|---------|-------------|
+The complete MACsec and MKA stack is enabled while varying:
 
-| minimal | Frame encryption/decryption only (AES-GCM) |
+* compiler optimization level,
+* debug level,
+* AES lookup-table implementation.
 
-| full | Complete MACsec stack including MKA |
+The following optimization levels are measured:
 
-| full\_debug | Complete stack with maximum debug logging |
+* `-O0`
+* `-O2`
+* `-Os`
 
-| full\_selftest | Complete stack including all built-in self-tests |
+The following debug levels are measured:
 
+* `0`
+* `1`
+* `2`
+* `3`
 
+Built-in self-tests are disabled in this group because they would normally be excluded from production firmware.
 
-Each profile is measured for:
+---
 
+# AES Lookup-Table Modes
 
+Four AES lookup-table configurations are available.
 
-\- `-O0`
+| Mode            |          Flash usage |  RAM usage | Description                                                  |
+| --------------- | -------------------: | ---------: | ------------------------------------------------------------ |
+| `runtime_full`  |                  Low |    Highest | Full lookup tables generated in RAM during initialization    |
+| `runtime_fewer` | **Lowest practical** |     Medium | Reduced lookup tables generated in RAM during initialization |
+| `rom_full`      |              Highest |        Low | Full lookup tables stored in Flash                           |
+| `rom_fewer`     |               Medium | **Lowest** | Reduced lookup tables stored in Flash                        |
 
-\- `-O2`
+The runtime configurations generate lookup tables during startup. This reduces Flash consumption but requires writable RAM for the generated tables.
 
-\- `-Os`
+The ROM configurations store constant lookup tables in Flash. This increases Flash consumption but substantially reduces RAM usage.
 
+---
 
+# Typical Production Results
 
-using the default embedded AES configuration (`rom\_fewer`).
+For a production-oriented build using:
 
+```text
+PROFILE=full
+SELF_TEST=0
+DEBUG_LEVEL=0
+OPTIMIZATION=-Os
+```
 
+the measured memory usage is approximately:
 
-\---
+| AES implementation |         Flash |          RAM |
+| ------------------ | ------------: | -----------: |
+| `runtime_fewer`    | **14.71 KiB** |     8.39 KiB |
+| `rom_fewer`        |     16.84 KiB | **4.35 KiB** |
 
+These configurations demonstrate the primary Flash/RAM trade-off:
 
+* **`runtime_fewer`** minimizes Flash usage by generating reduced AES lookup tables during initialization.
+* **`rom_fewer`** minimizes RAM usage by storing the reduced lookup tables in Flash.
 
-\## Production
+The remaining modes, `runtime_full` and `rom_full`, are included primarily for comparison and evaluation.
 
+Actual values may differ depending on the compiler version, linker version, configuration macros and changes made to the library.
 
+---
 
-The \*\*production\*\* group measures practical deployment configurations.
-
-
-
-The complete MACsec stack is always enabled while varying only:
-
-
-
-\- compiler optimization (`-O0`, `-O2`, `-Os`)
-
-\- debug level (`0...3`)
-
-\- AES lookup-table implementation
-
-
-
-Self-tests are disabled because they are not included in production firmware.
-
-
-
-\---
-
-
-
-\# AES lookup-table modes
-
-
-
-Four AES implementations are available.
-
-
-
-| Mode | Flash | RAM | Description |
-
-|------|------:|----:|-------------|
-
-| runtime\_full | lowest | highest | Tables generated at runtime |
-
-| runtime\_fewer | \*\*lowest practical Flash\*\* | medium | Reduced runtime tables |
-
-| rom\_full | highest | lowest | Full lookup tables stored in Flash |
-
-| rom\_fewer | good compromise | \*\*lowest RAM\*\* | Reduced ROM lookup tables |
-
-
-
-\---
-
-
-
-\# Typical production configurations
-
-
-
-For a production build (`PROFILE=full`, `SELF\_TEST=0`, `DEBUG\_LEVEL=0`,
-
-`-Os`) the measured memory usage is approximately:
-
-
-
-| AES mode | Flash | RAM |
-
-|----------|------:|----:|
-
-| runtime\_fewer | \*\*13.85 KiB\*\* | 8.80 KiB |
-
-| rom\_fewer | 15.93 KiB | \*\*4.26 KiB\*\* |
-
-
-
-This demonstrates the main trade-off:
-
-
-
-\- \*\*runtime\_fewer\*\* minimizes Flash usage by generating AES lookup tables at startup.
-
-\- \*\*rom\_fewer\*\* minimizes RAM usage by storing the lookup tables in Flash.
-
-
-
-The remaining modes (`runtime\_full` and `rom\_full`) are included mainly for
-
-comparison and performance evaluation.
-
-
-
-\---
-
-
-
-\# Optimization levels
-
-
+# Optimization Levels
 
 Measurements are generated for three compiler optimization levels.
 
+| Option | Description                                                 |
+| ------ | ----------------------------------------------------------- |
+| `-O0`  | Disables optimization and is primarily useful for debugging |
+| `-O2`  | Optimizes primarily for execution performance               |
+| `-Os`  | Optimizes primarily for code size                           |
 
+For resource-constrained production firmware, `-Os` will usually provide the smallest Flash footprint.
 
-| Option | Description |
+However, the most suitable optimization level depends on the target platform, timing requirements and compiler version.
 
-|---------|-------------|
+---
 
-| `-O0` | No optimization (debugging) |
-
-| `-O2` | Performance optimization |
-
-| `-Os` | Size optimization |
-
-
-
-For embedded production firmware, `-Os` is generally the recommended choice.
-
-
-
-\---
-
-
-
-\# Debug levels
-
-
+# Debug Levels
 
 The production matrix also measures the effect of debug logging.
 
+| Level | Description                       |
+| ----: | --------------------------------- |
+|   `0` | Debug output disabled             |
+|   `1` | Error messages                    |
+|   `2` | Protocol events                   |
+|   `3` | Detailed packet-level diagnostics |
 
+Increasing the debug level primarily increases Flash usage because additional logging code and format strings are included in the firmware image.
 
-| Level | Description |
+Depending on the platform implementation, debug output may also affect execution timing and stack usage.
 
-|------:|-------------|
+Production firmware should normally use:
 
-| 0 | Debug disabled |
+```text
+DEBUG_LEVEL=0
+```
 
-| 1 | Errors only |
+---
 
-| 2 | Protocol events |
+# Self-Tests
 
-| 3 | Detailed packet-level logging |
+Built-in cryptographic and protocol self-tests can be included in the firmware when required.
 
+The `full_selftest` profile measures the additional memory needed for:
 
+* AES self-tests,
+* AES-GCM self-tests,
+* AES-CMAC self-tests,
+* MACsec protocol self-tests,
+* MKA cryptographic self-tests.
 
-Increasing the debug level primarily increases Flash usage due to additional
+Self-tests are useful during development, validation and platform bring-up, but are normally disabled in production firmware to reduce Flash usage.
 
-format strings and logging code.
+---
 
+# Generated Reports
 
+The measurement script generates two report formats.
 
-\---
+## CSV Report
 
+```text
+results/memory.csv
+```
 
+The CSV file is suitable for:
 
-\# Output
+* automated processing,
+* spreadsheet analysis,
+* regression tracking,
+* plotting memory usage over time.
 
+## Markdown Report
 
+```text
+results/memory.md
+```
 
-The generated reports provide:
+The Markdown report provides a human-readable summary that can be viewed directly on GitHub.
 
+Each report contains:
 
+* configuration group,
+* profile,
+* optimization level,
+* debug level,
+* self-test setting,
+* AES implementation,
+* Flash usage,
+* RAM usage,
+* build status.
 
-\- Flash usage
+---
 
-\- RAM usage
+# Memory Accounting
 
-\- build status
+Flash usage is calculated from sections stored in the firmware image, primarily:
 
-\- complete build configuration
+* `.text`
+* `.rodata`
+* initialized data stored in Flash.
 
+RAM usage includes statically allocated runtime sections, primarily:
 
+* `.data`
+* `.bss`.
 
-making it easy to compare memory consumption across different compiler and
+The reported RAM value does not necessarily represent the maximum runtime memory consumption of the complete application. Depending on the target integration, additional memory may be required for:
 
-library configurations.
+* task stacks,
+* interrupt stacks,
+* Ethernet frame buffers,
+* driver buffers,
+* dynamically allocated memory,
+* application-specific data.
 
+The measurements are therefore intended primarily for comparing library configurations under identical build conditions.
+
+---
+
+# Purpose
+
+This example makes it possible to evaluate the cost of individual MACsec features and select an appropriate configuration for a specific embedded target.
+
+In particular, it helps determine:
+
+* whether Flash or RAM should be prioritized,
+* which AES implementation is most suitable,
+* how much memory debug logging consumes,
+* how much memory is added by MKA,
+* how much memory is added by built-in self-tests,
+* which compiler optimization level provides the best result.
