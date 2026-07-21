@@ -265,8 +265,7 @@ static int linux_tap_load_config(const char *path, linux_tap_config_t *config)
 
         if ((strchr(line, '\n') == NULL) && !feof(file))
         {
-            fprintf(stderr, "%s:%lu: configuration line is too long\n", path,
-                    (unsigned long) line_number);
+            fprintf(stderr, "%s:%u: configuration line is too long\n", path, line_number);
 
             fclose(file);
             return -1;
@@ -294,21 +293,21 @@ static int linux_tap_load_config(const char *path, linux_tap_config_t *config)
 
             if (config->cak_set)
             {
-                fprintf(stderr, "%s:%lu: duplicate mka_cak\n", path, line_number);
+                fprintf(stderr, "%s:%u: duplicate mka_cak\n", path, line_number);
                 fclose(file);
                 return -1;
             }
 
             if (linux_tap_parse_hex(value, config->cak, sizeof(config->cak), &config->cak_len) < 0)
             {
-                fprintf(stderr, "%s:%lu: invalid mka_cak\n", path, line_number);
+                fprintf(stderr, "%s:%u: invalid mka_cak\n", path, line_number);
                 fclose(file);
                 return -1;
             }
 
             if ((config->cak_len != 16u) && (config->cak_len != 32u))
             {
-                fprintf(stderr, "%s:%lu: mka_cak must contain 16 or 32 bytes\n", path, line_number);
+                fprintf(stderr, "%s:%u: mka_cak must contain 16 or 32 bytes\n", path, line_number);
                 fclose(file);
                 return -1;
             }
@@ -321,21 +320,21 @@ static int linux_tap_load_config(const char *path, linux_tap_config_t *config)
 
             if (config->ckn_set)
             {
-                fprintf(stderr, "%s:%lu: duplicate mka_ckn\n", path, line_number);
+                fprintf(stderr, "%s:%u: duplicate mka_ckn\n", path, line_number);
                 fclose(file);
                 return -1;
             }
 
             if (linux_tap_parse_hex(value, config->ckn, sizeof(config->ckn), &config->ckn_len) < 0)
             {
-                fprintf(stderr, "%s:%lu: invalid mka_ckn\n", path, line_number);
+                fprintf(stderr, "%s:%u: invalid mka_ckn\n", path, line_number);
                 fclose(file);
                 return -1;
             }
 
             if ((config->ckn_len == 0u) || (config->ckn_len > LINUX_TAP_CKN_MAX_LEN))
             {
-                fprintf(stderr, "%s:%lu: mka_ckn must contain 1 to 32 bytes\n", path, line_number);
+                fprintf(stderr, "%s:%u: mka_ckn must contain 1 to 32 bytes\n", path, line_number);
                 fclose(file);
                 return -1;
             }
@@ -348,14 +347,14 @@ static int linux_tap_load_config(const char *path, linux_tap_config_t *config)
 
             if (config->priority_set)
             {
-                fprintf(stderr, "%s:%lu: duplicate mka_priority\n", path, line_number);
+                fprintf(stderr, "%s:%u: duplicate mka_priority\n", path, line_number);
                 fclose(file);
                 return -1;
             }
 
             if (linux_tap_parse_priority(value, &config->mka_priority) < 0)
             {
-                fprintf(stderr, "%s:%lu: invalid mka_priority\n", path, line_number);
+                fprintf(stderr, "%s:%u: invalid mka_priority\n", path, line_number);
                 fclose(file);
                 return -1;
             }
