@@ -406,7 +406,7 @@ macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_peer_exchang
     TEST_TRUE(data->b.peer.valid);
     TEST_TRUE(data->b.local_key_server);
     TEST_TRUE(!data->b.peer.live);
-    TEST_TRUE(data->b.state == MACSEC_MKA_STATE_PEER_FOUND);
+    TEST_TRUE(data->b.state == MACSEC_MKA_STATE_PEER_DISCOVERED);
 
     frame_len = 0u;
 
@@ -430,7 +430,7 @@ macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_peer_exchang
     TEST_TRUE(data->a.peer.valid);
     TEST_TRUE(!data->a.local_key_server);
     TEST_TRUE(data->a.peer.live);
-    TEST_TRUE(data->a.state == MACSEC_MKA_STATE_AUTHENTICATED);
+    TEST_TRUE(data->a.state == MACSEC_MKA_STATE_PEER_LIVE);
 
     frame_len = 0u;
 
@@ -454,7 +454,7 @@ macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_peer_exchang
     TEST_TRUE(data->b.peer.valid);
     TEST_TRUE(data->b.local_key_server);
     TEST_TRUE(data->b.peer.live);
-    TEST_TRUE(data->b.state == MACSEC_MKA_STATE_AUTHENTICATED);
+    TEST_TRUE(data->b.state == MACSEC_MKA_STATE_PEER_LIVE);
 
     macsec_mka_clear(&data->a);
     macsec_mka_clear(&data->b);

@@ -93,15 +93,6 @@ typedef enum
     MACSEC_MKA_STATE_ERROR
 } macsec_mka_state_t;
 
-/*
- * Temporary migration aliases.
- *
- * Remove these after mka.c and the existing tests have been migrated to the
- * new state names.
- */
-#define MACSEC_MKA_STATE_PEER_FOUND MACSEC_MKA_STATE_PEER_DISCOVERED
-#define MACSEC_MKA_STATE_AUTHENTICATED MACSEC_MKA_STATE_PEER_LIVE
-
 /******************************************************************************
  * SAK origin and lifecycle
  *****************************************************************************/
