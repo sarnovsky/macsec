@@ -437,22 +437,10 @@ typedef struct
 
     macsec_mka_event_flags_t pending_events;
     macsec_mka_tx_reason_flags_t tx_reasons;
-
-    /*
-     * Legacy SAK Use fields.
-     *
-     * Remove after all code uses latest_sak.rx_installed,
-     * latest_sak.tx_installed and latest_sak.lowest_pn.
-     */
-    macsec_bool_t latest_key_tx;
-    macsec_bool_t latest_key_rx;
-    uint32_t latest_lowest_pn;
 } macsec_mka_ctx_t;
 
 /******************************************************************************
- * Existing MKA API
- *
- * These functions remain available during the migration.
+ * MKA protocol API
  *****************************************************************************/
 
 int macsec_mka_init(macsec_mka_ctx_t *ctx, const uint8_t *cak, size_t cak_len, const uint8_t *ckn,
@@ -476,25 +464,6 @@ int macsec_mka_verify_icv(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t fr
                           const macsec_mka_basic_t *basic);
 
 void macsec_mka_print_basic(const macsec_mka_basic_t *basic);
-
-/******************************************************************************
- * Legacy TX and SAK API
- *
- * Remove after macsec.c has been migrated to the event-driven API.
- *****************************************************************************/
-
-macsec_bool_t macsec_mka_has_sak(const macsec_mka_ctx_t *ctx);
-
-const macsec_mka_sak_t *macsec_mka_get_latest_sak(const macsec_mka_ctx_t *ctx);
-
-void macsec_mka_set_latest_key_tx(macsec_mka_ctx_t *ctx, uint8_t an, uint32_t lowest_pn);
-
-/******************************************************************************
- * New event-driven MKA API
- *
- * These declarations are introduced in phase 1. Their implementation will be
- * added incrementally in the following phases.
- *****************************************************************************/
 
 /*
  * Return and atomically clear all currently pending MKA events.
