@@ -153,7 +153,9 @@ typedef enum
     MACSEC_MKA_SAK_STATE_ACTIVE,
 
     /*
-     * Active SAK has also been confirmed by the peer through SAK Use.
+     * Active SAK has also been confirmed by the current peer through
+     * SAK Use. A peer identity change returns the lifecycle to ACTIVE
+     * without uninstalling or replacing the SAK.
      */
     MACSEC_MKA_SAK_STATE_CONFIRMED,
 
@@ -350,7 +352,11 @@ typedef struct
     macsec_bool_t tx_installed;
 
     /*
-     * Peer confirmation received through SAK Use.
+     * Confirmation reported by the current peer through SAK Use.
+     *
+     * These flags are cleared whenever the authenticated peer identity
+     * changes, because a replacement participant must independently confirm
+     * possession and use of the current SAK.
      */
     macsec_bool_t peer_rx_confirmed;
     macsec_bool_t peer_tx_confirmed;

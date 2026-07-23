@@ -4,7 +4,8 @@
  * Lightweight MACsec stack
  * Unit tests for the explicit MKA transmit lifecycle.
  * This file verifies separation of MKPDU building from transmission commit,
- * successful and failed transmission notification and TX reason handling.
+ * successful and failed transmission notification, TX reason handling and
+ * Distributed SAK retransmission after a peer identity change.
  *
  * Copyright (c) 2026 Michal Sarnovsky
  *
@@ -37,6 +38,10 @@ typedef struct
     uint8_t frame_b[MACSEC_MKA_MAX_FRAME_LEN];
 } macsec_test_mka_tx_case_data_t;
 
+/*
+ * The individual test cases are executed sequentially, therefore their
+ * storage can be shared.
+ */
 typedef union
 {
     macsec_test_mka_tx_case_data_t build_without_commit_data;
@@ -44,6 +49,10 @@ typedef union
     macsec_test_mka_tx_case_data_t failure_retry_data;
     macsec_test_mka_tx_case_data_t preserve_new_reason_data;
     macsec_test_mka_tx_case_data_t periodic_after_success_data;
+
+    macsec_test_mka_tx_case_data_t peer_restart_redistribution_data;
+    macsec_test_mka_tx_case_data_t redistribution_repeat_data;
+    macsec_test_mka_tx_case_data_t redistribution_stop_data;
 } macsec_test_mka_tx_data_t;
 
 int macsec_test_mka_tx(macsec_test_mka_tx_data_t *data, int verbose);

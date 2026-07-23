@@ -35,6 +35,26 @@
 
 #define MACSEC_TEST_MKA_LOWEST_PN 123u
 
+#define MACSEC_TEST_MKA_LOCAL_PRIORITY 10u
+#define MACSEC_TEST_MKA_PEER_PRIORITY 20u
+
+#define MACSEC_TEST_MKA_TX_INTERVAL_MS 1000u
+#define MACSEC_TEST_MKA_RX_TIME_MS 1000u
+
+static const uint8_t s_macsec_test_mka_cak[16] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u,
+                                                  0x66u, 0x77u, 0x88u, 0x99u, 0xAAu, 0xBBu,
+                                                  0xCCu, 0xDDu, 0xEEu, 0xFFu};
+
+static const uint8_t s_macsec_test_mka_ckn[16] = {0x10u, 0x11u, 0x12u, 0x13u, 0x14u, 0x15u,
+                                                  0x16u, 0x17u, 0x18u, 0x19u, 0x1Au, 0x1Bu,
+                                                  0x1Cu, 0x1Du, 0x1Eu, 0x1Fu};
+
+static const uint8_t s_macsec_test_mka_local_mac[MACSEC_MKA_SRC_LEN] = {0x02u, 0x00u, 0x00u,
+                                                                        0x00u, 0x00u, 0x01u};
+
+static const uint8_t s_macsec_test_mka_peer_mac[MACSEC_MKA_SRC_LEN] = {0x02u, 0x00u, 0x00u,
+                                                                       0x00u, 0x00u, 0x02u};
+
 static const uint8_t s_macsec_test_mka_sak[16] = {0x00u, 0x01u, 0x02u, 0x03u, 0x04u, 0x05u,
                                                   0x06u, 0x07u, 0x08u, 0x09u, 0x0Au, 0x0Bu,
                                                   0x0Cu, 0x0Du, 0x0Eu, 0x0Fu};
@@ -126,6 +146,94 @@ static macsec_bool_t macsec_test_mka_state_buffer_is_zero(const uint8_t *buffer,
     }
 
     return MACSEC_TRUE;
+}
+
+static int macsec_test_mka_state_prepare_peer_confirmation(
+    macsec_test_mka_state_peer_confirmation_data_t *data)
+{
+    macsec_assert(data != NULL);
+
+    memset(data, 0, sizeof(*data));
+
+    TEST_OK(macsec_mka_init(&data->local, s_macsec_test_mka_cak, sizeof(s_macsec_test_mka_cak),
+                            s_macsec_test_mka_ckn, sizeof(s_macsec_test_mka_ckn),
+                            s_macsec_test_mka_local_mac, 1u, MACSEC_TEST_MKA_LOCAL_PRIORITY,
+                            MACSEC_TEST_MKA_TX_INTERVAL_MS));
+
+    TEST_OK(macsec_mka_init(&data->peer, s_macsec_test_mka_cak, sizeof(s_macsec_test_mka_cak),
+                            s_macsec_test_mka_ckn, sizeof(s_macsec_test_mka_ckn),
+                            s_macsec_test_mka_peer_mac, 1u, MACSEC_TEST_MKA_PEER_PRIORITY,
+                            MACSEC_TEST_MKA_TX_INTERVAL_MS));
+
+    /*
+     * The local participant is the Key Server and already has one active
+     * locally generated SAK.
+     */
+    data->local.local_key_server = MACSEC_TRUE;
+    data->local.state = MACSEC_MKA_STATE_OPERATIONAL;
+
+    macsec_test_mka_state_prepare_sak(&data->local, MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_ACTIVE);
+
+    data->local.latest_sak.rx_installed = MACSEC_TRUE;
+    data->local.latest_sak.tx_installed = MACSEC_TRUE;
+    data->local.latest_key_rx = MACSEC_TRUE;
+    data->local.latest_key_tx = MACSEC_TRUE;
+    data->local.latest_lowest_pn = 1u;
+
+    /*
+     * Pretend that an older participant identity was previously live. The
+     * newly initialized peer uses a different random MI, so the next frame
+     * represents a participant restart.
+     */
+    data->local.peer.valid = MACSEC_TRUE;
+    data->local.peer.live = MACSEC_TRUE;
+    data->local.peer.seen_in_peer_list = MACSEC_TRUE;
+    memcpy(data->local.peer.mac, s_macsec_test_mka_peer_mac, sizeof(data->local.peer.mac));
+    memcpy(data->local.peer.sci, data->peer.local_sci, sizeof(data->local.peer.sci));
+    memcpy(data->local.peer.mi, data->peer.local_mi, sizeof(data->local.peer.mi));
+    data->local.peer.mi[0] ^= 0x80u;
+    data->local.peer.mn = 1u;
+    data->local.peer.key_server_priority = MACSEC_TEST_MKA_PEER_PRIORITY;
+
+    /*
+     * Let the peer list the local participant so the received frame makes
+     * the replacement peer live immediately.
+     */
+    data->peer.local_key_server = MACSEC_FALSE;
+    data->peer.peer.valid = MACSEC_TRUE;
+    data->peer.peer.live = MACSEC_TRUE;
+    data->peer.peer.seen_in_peer_list = MACSEC_TRUE;
+    memcpy(data->peer.peer.mac, data->local.local_mac, sizeof(data->peer.peer.mac));
+    memcpy(data->peer.peer.sci, data->local.local_sci, sizeof(data->peer.peer.sci));
+    memcpy(data->peer.peer.mi, data->local.local_mi, sizeof(data->peer.peer.mi));
+    data->peer.peer.mn = data->local.local_mn;
+    data->peer.peer.key_server_priority = MACSEC_TEST_MKA_LOCAL_PRIORITY;
+
+    data->peer.tx_reasons = MACSEC_MKA_TX_REASON_PEER_CHANGE;
+
+    return 0;
+}
+
+static void
+macsec_test_mka_state_clear_peer_confirmation(macsec_test_mka_state_peer_confirmation_data_t *data)
+{
+    macsec_assert(data != NULL);
+
+    macsec_mka_clear(&data->local);
+    macsec_mka_clear(&data->peer);
+}
+
+static int
+macsec_test_mka_state_build_peer_frame(macsec_test_mka_state_peer_confirmation_data_t *data)
+{
+    macsec_assert(data != NULL);
+
+    data->frame_len = 0u;
+    memset(&data->tx_meta, 0, sizeof(data->tx_meta));
+
+    return macsec_mka_build_tx_frame(&data->peer, data->frame, &data->frame_len,
+                                     sizeof(data->frame), &data->tx_meta);
 }
 
 /******************************************************************************
@@ -899,6 +1007,156 @@ macsec_test_mka_state_sak_install_without_live_peer(macsec_test_mka_state_sak_in
 }
 
 /******************************************************************************
+ * Peer SAK confirmation tests
+ *****************************************************************************/
+
+static int macsec_test_mka_state_peer_restart_resets_confirmation(
+    macsec_test_mka_state_peer_confirmation_data_t *data, int verbose)
+{
+    macsec_mka_event_flags_t events;
+
+    macsec_assert(data != NULL);
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  MKA peer restart resets SAK confirmation test\n"));
+    }
+
+    TEST_OK(macsec_test_mka_state_prepare_peer_confirmation(data));
+
+    data->local.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_CONFIRMED;
+    data->local.latest_sak.peer_rx_confirmed = MACSEC_TRUE;
+    data->local.latest_sak.peer_tx_confirmed = MACSEC_TRUE;
+
+    /*
+     * The replacement peer has not installed the SAK yet, therefore its
+     * MKPDU contains no SAK Use Parameter Set.
+     */
+    TEST_OK(macsec_test_mka_state_build_peer_frame(data));
+    TEST_TRUE(data->tx_meta.contains_sak_use == MACSEC_FALSE);
+
+    TEST_OK(
+        macsec_mka_input(&data->local, data->frame, data->frame_len, MACSEC_TEST_MKA_RX_TIME_MS));
+
+    TEST_EQ_U32(data->local.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_TRUE(data->local.latest_sak.peer_rx_confirmed == MACSEC_FALSE);
+    TEST_TRUE(data->local.latest_sak.peer_tx_confirmed == MACSEC_FALSE);
+
+    TEST_TRUE((data->local.tx_reasons & MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK) != 0u);
+
+    events = macsec_mka_take_events(&data->local);
+
+    TEST_TRUE((events & MACSEC_MKA_EVENT_PEER_DISCOVERED) != 0u);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_TX_DISTRIBUTE_SAK) != 0u);
+
+    macsec_test_mka_state_clear_peer_confirmation(data);
+
+    return 0;
+}
+
+static int macsec_test_mka_state_matching_sak_use_confirms_current_sak(
+    macsec_test_mka_state_peer_confirmation_data_t *data, int verbose)
+{
+    macsec_mka_event_flags_t events;
+
+    macsec_assert(data != NULL);
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  MKA matching SAK Use confirms current SAK test\n"));
+    }
+
+    TEST_OK(macsec_test_mka_state_prepare_peer_confirmation(data));
+
+    data->local.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_ACTIVE;
+    data->local.latest_sak.peer_rx_confirmed = MACSEC_FALSE;
+    data->local.latest_sak.peer_tx_confirmed = MACSEC_FALSE;
+
+    /*
+     * Represent the same SAK as installed by the non-Key-Server peer. Its
+     * SAK Use therefore references the local Key Server MI, Key Number and
+     * AN and advertises both latest RX and latest TX.
+     */
+    data->peer.latest_sak = data->local.latest_sak;
+    data->peer.latest_sak.origin = MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER;
+    data->peer.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_ACTIVE;
+    data->peer.latest_sak.peer_rx_confirmed = MACSEC_FALSE;
+    data->peer.latest_sak.peer_tx_confirmed = MACSEC_FALSE;
+    data->peer.latest_key_rx = MACSEC_TRUE;
+    data->peer.latest_key_tx = MACSEC_TRUE;
+    data->peer.latest_lowest_pn = 1u;
+
+    TEST_OK(macsec_test_mka_state_build_peer_frame(data));
+    TEST_TRUE(data->tx_meta.contains_sak_use == MACSEC_TRUE);
+
+    TEST_OK(
+        macsec_mka_input(&data->local, data->frame, data->frame_len, MACSEC_TEST_MKA_RX_TIME_MS));
+
+    TEST_TRUE(data->local.latest_sak.peer_rx_confirmed == MACSEC_TRUE);
+    TEST_TRUE(data->local.latest_sak.peer_tx_confirmed == MACSEC_TRUE);
+    TEST_EQ_U32(data->local.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_CONFIRMED);
+
+    events = macsec_mka_take_events(&data->local);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_SAK_CONFIRMED) != 0u);
+
+    macsec_test_mka_state_clear_peer_confirmation(data);
+
+    return 0;
+}
+
+static int macsec_test_mka_state_mismatching_sak_use_not_confirmed(
+    macsec_test_mka_state_peer_confirmation_data_t *data, int verbose)
+{
+    macsec_mka_event_flags_t events;
+
+    macsec_assert(data != NULL);
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  MKA mismatching SAK Use remains unconfirmed test\n"));
+    }
+
+    TEST_OK(macsec_test_mka_state_prepare_peer_confirmation(data));
+
+    data->local.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_ACTIVE;
+    data->local.latest_sak.peer_rx_confirmed = MACSEC_FALSE;
+    data->local.latest_sak.peer_tx_confirmed = MACSEC_FALSE;
+
+    data->peer.latest_sak = data->local.latest_sak;
+    data->peer.latest_sak.origin = MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER;
+    data->peer.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_ACTIVE;
+
+    /*
+     * SAK Use is otherwise well formed and authenticated, but references a
+     * different Key Number.
+     */
+    data->peer.latest_sak.key_number = MACSEC_TEST_MKA_OTHER_KEY_NUMBER;
+    data->peer.latest_key_rx = MACSEC_TRUE;
+    data->peer.latest_key_tx = MACSEC_TRUE;
+    data->peer.latest_lowest_pn = 1u;
+
+    TEST_OK(macsec_test_mka_state_build_peer_frame(data));
+    TEST_TRUE(data->tx_meta.contains_sak_use == MACSEC_TRUE);
+
+    TEST_OK(
+        macsec_mka_input(&data->local, data->frame, data->frame_len, MACSEC_TEST_MKA_RX_TIME_MS));
+
+    TEST_TRUE(data->local.latest_sak.peer_rx_confirmed == MACSEC_FALSE);
+    TEST_TRUE(data->local.latest_sak.peer_tx_confirmed == MACSEC_FALSE);
+    TEST_EQ_U32(data->local.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
+
+    TEST_TRUE((data->local.tx_reasons & MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK) != 0u);
+
+    events = macsec_mka_take_events(&data->local);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_SAK_CONFIRMED) == 0u);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_TX_DISTRIBUTE_SAK) != 0u);
+
+    macsec_test_mka_state_clear_peer_confirmation(data);
+
+    return 0;
+}
+
+/******************************************************************************
  * SAK retirement tests
  *****************************************************************************/
 
@@ -1184,6 +1442,15 @@ int macsec_test_mka_state(macsec_test_mka_state_data_t *data, int verbose)
 
     TEST_OK(macsec_test_mka_state_sak_install_without_live_peer(
         &data->test_mka_state_sak_install_data, verbose));
+
+    TEST_OK(macsec_test_mka_state_peer_restart_resets_confirmation(
+        &data->test_mka_state_peer_confirmation_data, verbose));
+
+    TEST_OK(macsec_test_mka_state_matching_sak_use_confirms_current_sak(
+        &data->test_mka_state_peer_confirmation_data, verbose));
+
+    TEST_OK(macsec_test_mka_state_mismatching_sak_use_not_confirmed(
+        &data->test_mka_state_peer_confirmation_data, verbose));
 
     TEST_OK(
         macsec_test_mka_state_sak_retire_no_sak(&data->test_mka_state_sak_retire_data, verbose));

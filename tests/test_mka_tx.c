@@ -4,7 +4,8 @@
  * Lightweight MACsec stack
  * Unit tests for the explicit MKA transmit lifecycle.
  * This file verifies separation of MKPDU building from transmission commit,
- * successful and failed transmission notification and TX reason handling.
+ * successful and failed transmission notification, TX reason handling and
+ * Distributed SAK retransmission after a peer identity change.
  *
  * Copyright (c) 2026 Michal Sarnovsky
  *
@@ -21,8 +22,30 @@
 
 #if (MACSEC_SELF_TEST != 0)
 
+/******************************************************************************
+ * Test constants
+ *****************************************************************************/
+
 #define MACSEC_TEST_MKA_TX_INTERVAL_MS 2000u
 #define MACSEC_TEST_MKA_TX_TIME_MS 1000u
+
+#define MACSEC_TEST_MKA_TX_KEY_NUMBER 1u
+#define MACSEC_TEST_MKA_TX_AN 0u
+
+#define MACSEC_TEST_MKA_TX_LOCAL_PRIORITY 10u
+#define MACSEC_TEST_MKA_TX_PEER_PRIORITY 20u
+
+/*
+ * IEEE 802.1X MKA parameter-set type for Distributed SAK.
+ */
+#define MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK 4u
+
+/*
+ * Ethernet header followed by the four-byte EAPOL header.
+ */
+#define MACSEC_TEST_MKA_TX_EAPOL_BODY_OFFSET 18u
+#define MACSEC_TEST_MKA_TX_EAPOL_LENGTH_OFFSET 16u
+#define MACSEC_TEST_MKA_TX_PARAMETER_HEADER_LEN 4u
 
 static const uint8_t s_macsec_test_mka_tx_cak[16] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u,
                                                      0x66u, 0x77u, 0x88u, 0x99u, 0xAAu, 0xBBu,
@@ -34,6 +57,16 @@ static const uint8_t s_macsec_test_mka_tx_ckn[24] = {
 
 static const uint8_t s_macsec_test_mka_tx_mac[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u};
 
+static const uint8_t s_macsec_test_mka_tx_peer_mac[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x02u};
+
+static const uint8_t s_macsec_test_mka_tx_sak[16] = {0x00u, 0x01u, 0x02u, 0x03u, 0x04u, 0x05u,
+                                                     0x06u, 0x07u, 0x08u, 0x09u, 0x0Au, 0x0Bu,
+                                                     0x0Cu, 0x0Du, 0x0Eu, 0x0Fu};
+
+/******************************************************************************
+ * Test helpers
+ *****************************************************************************/
+
 static int macsec_test_mka_tx_init(macsec_test_mka_tx_case_data_t *data)
 {
     macsec_assert(data != NULL);
@@ -42,7 +75,8 @@ static int macsec_test_mka_tx_init(macsec_test_mka_tx_case_data_t *data)
 
     return macsec_mka_init(&data->mka, s_macsec_test_mka_tx_cak, sizeof(s_macsec_test_mka_tx_cak),
                            s_macsec_test_mka_tx_ckn, sizeof(s_macsec_test_mka_tx_ckn),
-                           s_macsec_test_mka_tx_mac, 1u, 255u, MACSEC_TEST_MKA_TX_INTERVAL_MS);
+                           s_macsec_test_mka_tx_mac, 1u, MACSEC_TEST_MKA_TX_LOCAL_PRIORITY,
+                           MACSEC_TEST_MKA_TX_INTERVAL_MS);
 }
 
 static int macsec_test_mka_tx_build(macsec_test_mka_tx_case_data_t *data, uint8_t *frame,
@@ -69,6 +103,121 @@ static int macsec_test_mka_tx_build(macsec_test_mka_tx_case_data_t *data, uint8_
 
     return macsec_mka_parse_basic(frame, *frame_len, basic);
 }
+
+static macsec_bool_t macsec_test_mka_tx_frame_has_parameter(const uint8_t *frame, size_t frame_len,
+                                                            uint8_t expected_type)
+{
+    uint16_t eapol_len;
+    uint16_t body_len;
+    size_t pos;
+    size_t end;
+    size_t next_pos;
+
+    macsec_assert(frame != NULL);
+
+    if (frame_len < MACSEC_TEST_MKA_TX_EAPOL_BODY_OFFSET)
+    {
+        return MACSEC_FALSE;
+    }
+
+    eapol_len = (uint16_t) (((uint16_t) frame[MACSEC_TEST_MKA_TX_EAPOL_LENGTH_OFFSET] << 8u) |
+                            (uint16_t) frame[MACSEC_TEST_MKA_TX_EAPOL_LENGTH_OFFSET + 1u]);
+
+    if (eapol_len < MACSEC_MKA_ICV_LEN)
+    {
+        return MACSEC_FALSE;
+    }
+
+    end = MACSEC_TEST_MKA_TX_EAPOL_BODY_OFFSET + (size_t) eapol_len - MACSEC_MKA_ICV_LEN;
+
+    if (end > frame_len)
+    {
+        return MACSEC_FALSE;
+    }
+
+    pos = MACSEC_TEST_MKA_TX_EAPOL_BODY_OFFSET;
+
+    while ((pos + MACSEC_TEST_MKA_TX_PARAMETER_HEADER_LEN) <= end)
+    {
+        body_len =
+            (uint16_t) (((uint16_t) (frame[pos + 2u] & 0x0Fu) << 8u) | (uint16_t) frame[pos + 3u]);
+
+        next_pos = pos + MACSEC_TEST_MKA_TX_PARAMETER_HEADER_LEN + (size_t) body_len;
+
+        if (next_pos > end)
+        {
+            return MACSEC_FALSE;
+        }
+
+        if (frame[pos] == expected_type)
+        {
+            return MACSEC_TRUE;
+        }
+
+        pos = next_pos;
+    }
+
+    return MACSEC_FALSE;
+}
+
+static int macsec_test_mka_tx_prepare_redistribution(macsec_test_mka_tx_case_data_t *data)
+{
+    macsec_assert(data != NULL);
+
+    TEST_OK(macsec_test_mka_tx_init(data));
+
+    /*
+     * Prepare one live peer. The local participant has the lower priority and
+     * therefore acts as the Key Server.
+     */
+    data->mka.local_key_server = MACSEC_TRUE;
+
+    data->mka.peer.valid = MACSEC_TRUE;
+    data->mka.peer.live = MACSEC_TRUE;
+    data->mka.peer.seen_in_peer_list = MACSEC_TRUE;
+
+    memcpy(data->mka.peer.mac, s_macsec_test_mka_tx_peer_mac, sizeof(data->mka.peer.mac));
+
+    data->mka.peer.key_server_priority = MACSEC_TEST_MKA_TX_PEER_PRIORITY;
+
+    /*
+     * Prepare the already installed locally generated SAK which existed before
+     * the peer changed its MI. Local data-plane installation remains valid,
+     * but confirmation belonging to the current peer identity is cleared.
+     */
+    memset(&data->mka.latest_sak, 0, sizeof(data->mka.latest_sak));
+
+    memcpy(data->mka.latest_sak.sak, s_macsec_test_mka_tx_sak, sizeof(s_macsec_test_mka_tx_sak));
+
+    data->mka.latest_sak.sak_len = sizeof(s_macsec_test_mka_tx_sak);
+    data->mka.latest_sak.an = MACSEC_TEST_MKA_TX_AN;
+    data->mka.latest_sak.key_number = MACSEC_TEST_MKA_TX_KEY_NUMBER;
+    data->mka.latest_sak.lowest_pn = 1u;
+    data->mka.latest_sak.origin = MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER;
+    data->mka.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_ACTIVE;
+    data->mka.latest_sak.valid = MACSEC_TRUE;
+    data->mka.latest_sak.rx_installed = MACSEC_TRUE;
+    data->mka.latest_sak.tx_installed = MACSEC_TRUE;
+    data->mka.latest_sak.peer_rx_confirmed = MACSEC_FALSE;
+    data->mka.latest_sak.peer_tx_confirmed = MACSEC_FALSE;
+
+    data->mka.latest_key_rx = MACSEC_TRUE;
+    data->mka.latest_key_tx = MACSEC_TRUE;
+    data->mka.latest_lowest_pn = 1u;
+
+    data->mka.state = MACSEC_MKA_STATE_OPERATIONAL;
+
+    /*
+     * A peer identity change normally schedules an immediate redistribution.
+     */
+    data->mka.tx_reasons = MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK;
+
+    return 0;
+}
+
+/******************************************************************************
+ * Existing explicit TX lifecycle tests
+ *****************************************************************************/
 
 static int macsec_test_mka_tx_build_without_commit(macsec_test_mka_tx_case_data_t *data,
                                                    int verbose)
@@ -254,6 +403,157 @@ static int macsec_test_mka_tx_periodic_after_success(macsec_test_mka_tx_case_dat
     return 0;
 }
 
+/******************************************************************************
+ * Distributed SAK retransmission tests
+ *****************************************************************************/
+
+static int macsec_test_mka_tx_peer_restart_redistributes_sak(macsec_test_mka_tx_case_data_t *data,
+                                                             int verbose)
+{
+    size_t frame_len;
+
+    macsec_assert(data != NULL);
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  MKA TX peer restart redistributes SAK test\n"));
+    }
+
+    TEST_OK(macsec_test_mka_tx_prepare_redistribution(data));
+
+    TEST_OK(macsec_test_mka_tx_build(data, data->frame_a, &frame_len, &data->basic_a));
+
+    TEST_TRUE(macsec_test_mka_tx_frame_has_parameter(data->frame_a, frame_len,
+                                                     MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
+              MACSEC_TRUE);
+
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_TRUE(data->mka.latest_sak.peer_rx_confirmed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.peer_tx_confirmed == MACSEC_FALSE);
+
+    /*
+     * Building the retransmission must not allocate a new key identity.
+     */
+    TEST_EQ_U32(data->mka.latest_sak.key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
+    TEST_EQ_U32(data->mka.latest_sak.an, MACSEC_TEST_MKA_TX_AN);
+
+    macsec_mka_clear(&data->mka);
+
+    return 0;
+}
+
+static int
+macsec_test_mka_tx_redistribution_repeats_until_confirmation(macsec_test_mka_tx_case_data_t *data,
+                                                             int verbose)
+{
+    size_t frame_a_len;
+    size_t frame_b_len;
+    int ret;
+
+    macsec_assert(data != NULL);
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  MKA TX SAK redistribution repeats until confirmation test\n"));
+    }
+
+    TEST_OK(macsec_test_mka_tx_prepare_redistribution(data));
+
+    TEST_OK(macsec_test_mka_tx_build(data, data->frame_a, &frame_a_len, &data->basic_a));
+
+    TEST_TRUE(macsec_test_mka_tx_frame_has_parameter(data->frame_a, frame_a_len,
+                                                     MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
+              MACSEC_TRUE);
+
+    ret = macsec_mka_notify_tx_success(&data->mka, &data->tx_meta, MACSEC_TEST_MKA_TX_TIME_MS);
+
+    TEST_TRUE(ret == MACSEC_ERR_OK);
+
+    /*
+     * Successful local transmission is not peer confirmation.
+     */
+    TEST_TRUE(data->mka.latest_sak.peer_rx_confirmed == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.peer_tx_confirmed == MACSEC_FALSE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
+
+    TEST_OK(
+        macsec_mka_tick(&data->mka, MACSEC_TEST_MKA_TX_TIME_MS + MACSEC_TEST_MKA_TX_INTERVAL_MS));
+
+    TEST_TRUE((data->mka.tx_reasons & MACSEC_MKA_TX_REASON_PERIODIC) != 0u);
+
+    TEST_OK(macsec_test_mka_tx_build(data, data->frame_b, &frame_b_len, &data->basic_b));
+
+    TEST_TRUE(macsec_test_mka_tx_frame_has_parameter(data->frame_b, frame_b_len,
+                                                     MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
+              MACSEC_TRUE);
+
+    TEST_EQ_U32(data->mka.latest_sak.key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
+    TEST_EQ_U32(data->mka.latest_sak.an, MACSEC_TEST_MKA_TX_AN);
+
+    macsec_mka_clear(&data->mka);
+
+    return 0;
+}
+
+static int
+macsec_test_mka_tx_redistribution_stops_after_confirmation(macsec_test_mka_tx_case_data_t *data,
+                                                           int verbose)
+{
+    size_t frame_a_len;
+    size_t frame_b_len;
+    int ret;
+
+    macsec_assert(data != NULL);
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  MKA TX SAK redistribution stops after confirmation test\n"));
+    }
+
+    TEST_OK(macsec_test_mka_tx_prepare_redistribution(data));
+
+    TEST_OK(macsec_test_mka_tx_build(data, data->frame_a, &frame_a_len, &data->basic_a));
+
+    TEST_TRUE(macsec_test_mka_tx_frame_has_parameter(data->frame_a, frame_a_len,
+                                                     MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
+              MACSEC_TRUE);
+
+    ret = macsec_mka_notify_tx_success(&data->mka, &data->tx_meta, MACSEC_TEST_MKA_TX_TIME_MS);
+
+    TEST_TRUE(ret == MACSEC_ERR_OK);
+
+    /*
+     * The MKA state tests verify that a matching received SAK Use produces
+     * this confirmed state. This TX test verifies its effect on the builder.
+     */
+    data->mka.latest_sak.peer_rx_confirmed = MACSEC_TRUE;
+    data->mka.latest_sak.peer_tx_confirmed = MACSEC_TRUE;
+    data->mka.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_CONFIRMED;
+
+    TEST_OK(
+        macsec_mka_tick(&data->mka, MACSEC_TEST_MKA_TX_TIME_MS + MACSEC_TEST_MKA_TX_INTERVAL_MS));
+
+    TEST_TRUE((data->mka.tx_reasons & MACSEC_MKA_TX_REASON_PERIODIC) != 0u);
+
+    TEST_OK(macsec_test_mka_tx_build(data, data->frame_b, &frame_b_len, &data->basic_b));
+
+    TEST_TRUE(macsec_test_mka_tx_frame_has_parameter(data->frame_b, frame_b_len,
+                                                     MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
+              MACSEC_FALSE);
+
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_CONFIRMED);
+    TEST_EQ_U32(data->mka.latest_sak.key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
+    TEST_EQ_U32(data->mka.latest_sak.an, MACSEC_TEST_MKA_TX_AN);
+
+    macsec_mka_clear(&data->mka);
+
+    return 0;
+}
+
+/******************************************************************************
+ * Public test entry point
+ *****************************************************************************/
+
 int macsec_test_mka_tx(macsec_test_mka_tx_data_t *data, int verbose)
 {
     macsec_assert(data != NULL);
@@ -273,6 +573,15 @@ int macsec_test_mka_tx(macsec_test_mka_tx_data_t *data, int verbose)
         macsec_test_mka_tx_success_preserves_new_reason(&data->preserve_new_reason_data, verbose));
 
     TEST_OK(macsec_test_mka_tx_periodic_after_success(&data->periodic_after_success_data, verbose));
+
+    TEST_OK(macsec_test_mka_tx_peer_restart_redistributes_sak(
+        &data->peer_restart_redistribution_data, verbose));
+
+    TEST_OK(macsec_test_mka_tx_redistribution_repeats_until_confirmation(
+        &data->redistribution_repeat_data, verbose));
+
+    TEST_OK(macsec_test_mka_tx_redistribution_stops_after_confirmation(
+        &data->redistribution_stop_data, verbose));
 
     if (verbose)
     {

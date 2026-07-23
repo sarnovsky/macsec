@@ -236,7 +236,10 @@ static macsec_bool_t macsec_mka_sak_transition_allowed(macsec_mka_sak_state_t ol
                    : MACSEC_FALSE;
 
     case MACSEC_MKA_SAK_STATE_CONFIRMED:
-        return (new_state == MACSEC_MKA_SAK_STATE_RETIRING) ? MACSEC_TRUE : MACSEC_FALSE;
+        return ((new_state == MACSEC_MKA_SAK_STATE_ACTIVE) ||
+                (new_state == MACSEC_MKA_SAK_STATE_RETIRING))
+                   ? MACSEC_TRUE
+                   : MACSEC_FALSE;
 
     case MACSEC_MKA_SAK_STATE_RETIRING:
         return (new_state == MACSEC_MKA_SAK_STATE_NONE) ? MACSEC_TRUE : MACSEC_FALSE;
@@ -801,6 +804,23 @@ int macsec_mka_notify_sak_installed(macsec_mka_ctx_t *ctx, uint32_t key_number, 
 
     macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_SAK_ACTIVE | MACSEC_MKA_EVENT_TX_SAK_USE);
 
+    /*
+     * Peer confirmation may have arrived before local installation
+     * completed. In that case complete the lifecycle now.
+     */
+    if (ctx->latest_sak.peer_rx_confirmed && ctx->latest_sak.peer_tx_confirmed)
+    {
+        macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_CONFIRMED,
+                                 "locally installed SAK was already confirmed by peer");
+
+        if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_CONFIRMED)
+        {
+            return MACSEC_ERR_STATE;
+        }
+
+        macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_SAK_CONFIRMED);
+    }
+
     macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_SAK_USE);
 
     if (ctx->peer.valid && ctx->peer.live)
@@ -1232,6 +1252,173 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
     return MACSEC_ERR_NOT_READY;
 }
 
+static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
+                                    size_t frame_len)
+{
+    uint16_t eapol_len;
+    size_t pos;
+    size_t end;
+
+    macsec_assert(ctx != NULL);
+    macsec_assert(frame != NULL);
+
+    if (frame_len < 90u)
+    {
+        return MACSEC_ERR_NOT_READY;
+    }
+
+    eapol_len = macsec_rd_be16(&frame[16]);
+
+    if (eapol_len < MACSEC_MKA_ICV_LEN)
+    {
+        return MACSEC_ERR_BUFFER;
+    }
+
+    end = 14u + 4u + eapol_len - MACSEC_MKA_ICV_LEN;
+
+    if (end > frame_len)
+    {
+        return MACSEC_ERR_BUFFER;
+    }
+
+    pos = 18u;
+
+    while ((pos + 4u) <= end)
+    {
+        uint8_t type;
+        uint8_t flags;
+        uint16_t body_len;
+        size_t body_pos;
+        size_t body_end;
+
+        if (pos == 18u)
+        {
+            body_len = (uint16_t) (((uint16_t) (frame[pos + 2u] & 0x0Fu) << 8u) |
+                                   (uint16_t) frame[pos + 3u]);
+
+            if ((pos + 4u + body_len) > end)
+            {
+                return MACSEC_ERR_BUFFER;
+            }
+
+            pos += 4u + body_len;
+            continue;
+        }
+
+        type = frame[pos];
+        flags = frame[pos + 1u];
+        body_len = (uint16_t) (((uint16_t) (frame[pos + 2u] & 0x0Fu) << 8u) |
+                               (uint16_t) frame[pos + 3u]);
+        body_pos = pos + 4u;
+        body_end = body_pos + body_len;
+
+        if (body_end > end)
+        {
+            return MACSEC_ERR_BUFFER;
+        }
+
+        if (type == MACSEC_MKA_PARAM_SAK_USE)
+        {
+            const uint8_t *key_server_mi;
+            uint32_t key_number;
+            uint8_t an;
+            macsec_bool_t latest_tx;
+            macsec_bool_t latest_rx;
+            macsec_bool_t confirmation_changed;
+
+            /*
+             * Supported SAK Use body:
+             *
+             *   bytes  0..11 : Latest Key Server MI
+             *   bytes 12..15 : Latest Key Number
+             *   bytes 16..19 : Latest Lowest Acceptable PN
+             *   bytes 20..31 : Old Key Server MI
+             *   bytes 32..35 : Old Key Number
+             *   bytes 36..39 : Old Lowest Acceptable PN
+             */
+            if (body_len < 40u)
+            {
+                return MACSEC_ERR_BUFFER;
+            }
+
+            key_server_mi = &frame[body_pos];
+            key_number = macsec_rd_be32(&frame[body_pos + MACSEC_MKA_MI_LEN]);
+            an = (uint8_t) ((flags >> 6u) & 0x03u);
+            latest_tx = ((flags & 0x20u) != 0u) ? MACSEC_TRUE : MACSEC_FALSE;
+            latest_rx = ((flags & 0x10u) != 0u) ? MACSEC_TRUE : MACSEC_FALSE;
+
+            MACSEC_INFO(("MKA RX SAK Use: key_number=%lu an=%u latest_tx=%u latest_rx=%u\n",
+                         (unsigned long) key_number, an, latest_tx ? 1u : 0u,
+                         latest_rx ? 1u : 0u));
+
+            /*
+             * Peer confirmation is relevant here only when this participant
+             * is the Key Server for the referenced locally generated SAK.
+             */
+            if (!ctx->local_key_server || !ctx->latest_sak.valid ||
+                (ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER))
+            {
+                return MACSEC_ERR_NOT_READY;
+            }
+
+            if ((macsec_compare(key_server_mi, ctx->local_mi, MACSEC_MKA_MI_LEN) != 0) ||
+                (key_number != ctx->latest_sak.key_number) ||
+                (an != (ctx->latest_sak.an & 0x03u)))
+            {
+                MACSEC_INFO(("MKA RX SAK Use does not reference current local SAK\n"));
+                return MACSEC_ERR_NOT_READY;
+            }
+
+            confirmation_changed =
+                (ctx->latest_sak.peer_tx_confirmed != latest_tx) ||
+                (ctx->latest_sak.peer_rx_confirmed != latest_rx);
+
+            ctx->latest_sak.peer_tx_confirmed = latest_tx;
+            ctx->latest_sak.peer_rx_confirmed = latest_rx;
+
+            if (ctx->latest_sak.peer_rx_confirmed &&
+                ctx->latest_sak.peer_tx_confirmed)
+            {
+                if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_ACTIVE)
+                {
+                    macsec_mka_set_sak_state(
+                        ctx, MACSEC_MKA_SAK_STATE_CONFIRMED,
+                        "current peer confirmed active SAK through SAK Use");
+
+                    if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_CONFIRMED)
+                    {
+                        return MACSEC_ERR_STATE;
+                    }
+
+                    macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_SAK_CONFIRMED);
+                }
+            }
+            else if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_CONFIRMED)
+            {
+                macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_ACTIVE,
+                                         "current peer no longer confirms active SAK");
+            }
+
+            if (confirmation_changed)
+            {
+                MACSEC_MEDIUM(("MKA peer SAK confirmation updated: key_number=%lu an=%u "
+                               "peer_tx=%u peer_rx=%u lifecycle=%u\n",
+                               (unsigned long) ctx->latest_sak.key_number,
+                               ctx->latest_sak.an,
+                               ctx->latest_sak.peer_tx_confirmed ? 1u : 0u,
+                               ctx->latest_sak.peer_rx_confirmed ? 1u : 0u,
+                               (unsigned) ctx->latest_sak.lifecycle_state));
+            }
+
+            return MACSEC_ERR_OK;
+        }
+
+        pos = body_end;
+    }
+
+    return MACSEC_ERR_NOT_READY;
+}
+
 int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_len, uint32_t now_ms)
 {
     macsec_mka_basic_t basic;
@@ -1248,7 +1435,7 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
 
     uint32_t listed_mn;
     uint8_t peer_list_type;
-    int ret, distributed_sak_ret;
+    int ret, distributed_sak_ret, sak_use_ret;
 
     macsec_assert(ctx != NULL);
     macsec_assert(frame != NULL);
@@ -1442,6 +1629,42 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
                    ctx->local_key_server ? 1u : 0u, key_server_changed ? 1u : 0u));
 
     /*
+     * SAK confirmation belongs to the authenticated peer identity. A peer
+     * that restarts and selects a new MI must independently confirm the
+     * current SAK. The SAK remains installed locally, so CONFIRMED falls
+     * back to ACTIVE rather than restarting the SAK lifecycle.
+     */
+    if (peer_identity_changed && ctx->latest_sak.valid)
+    {
+        ctx->latest_sak.peer_rx_confirmed = MACSEC_FALSE;
+        ctx->latest_sak.peer_tx_confirmed = MACSEC_FALSE;
+
+        if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_CONFIRMED)
+        {
+            macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_ACTIVE,
+                                     "current peer identity changed");
+        }
+
+        MACSEC_MEDIUM(("MKA current SAK confirmation reset for new peer: "
+                       "key_number=%lu an=%u lifecycle=%u\n",
+                       (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
+                       (unsigned) ctx->latest_sak.lifecycle_state));
+    }
+
+    /*
+     * Process peer confirmation only after peer identity update and Key
+     * Server election. This prevents confirmation belonging to an old peer
+     * from surviving a participant restart.
+     */
+    sak_use_ret = macsec_mka_parse_sak_use(ctx, frame, frame_len);
+
+    if ((sak_use_ret != MACSEC_ERR_OK) && (sak_use_ret != MACSEC_ERR_NOT_READY))
+    {
+        MACSEC_ERROR(("MKA RX SAK Use parse failed ret=%d\n", sak_use_ret));
+        return sak_use_ret;
+    }
+
+    /*
      * Schedule immediate control traffic only for meaningful state
      * transitions. A normal actor_mn increment causes no immediate reply.
      */
@@ -1451,6 +1674,19 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
                                 MACSEC_MKA_EVENT_PEER_DISCOVERED | MACSEC_MKA_EVENT_TX_PEER_CHANGE);
 
         macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_PEER_CHANGE);
+
+        /*
+         * A replacement peer does not possess the current locally generated
+         * SAK. Schedule an immediate MKPDU; subsequent periodic MKPDUs keep
+         * carrying Distributed SAK until SAK Use confirms peer RX.
+         */
+        if (ctx->local_key_server && ctx->latest_sak.valid &&
+            (ctx->latest_sak.origin == MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER) &&
+            !ctx->latest_sak.peer_rx_confirmed)
+        {
+            macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_TX_DISTRIBUTE_SAK);
+            macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK);
+        }
     }
 
     if (peer_became_live)
@@ -1805,15 +2041,17 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
     distributed_sak_param_len = 0u;
 
     /*
-     * Include Distributed SAK only while the locally generated SAK is
-     * waiting for its first confirmed distribution.
+     * Include Distributed SAK while a new SAK awaits its first successful
+     * distribution or while the current peer has not confirmed RX use of
+     * the current locally generated SAK.
      *
-     * Later periodic redistribution policy may deliberately include an
-     * already distributed SAK again, but that should be a separate rule.
+     * This naturally covers a peer restart: peer confirmation is cleared
+     * when its identity changes, while the locally active SAK remains valid.
      */
     if (ctx->local_key_server && ctx->peer.valid && ctx->peer.live && ctx->latest_sak.valid &&
         (ctx->latest_sak.origin == MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER) &&
-        (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING))
+        ((ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING) ||
+         !ctx->latest_sak.peer_rx_confirmed))
     {
         include_distributed_sak = MACSEC_TRUE;
 
@@ -2026,14 +2264,16 @@ int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta
     }
 
     /*
-     * Commit successful distribution only when this exact transmitted
-     * frame contained the current pending local SAK.
+     * Commit transmission of a Distributed SAK.
+     *
+     * Successful local transmission does not confirm that the peer received
+     * or installed the SAK. Peer confirmation is accepted only from an
+     * authenticated SAK Use Parameter Set.
      */
     if (meta->contains_distributed_sak)
     {
         if (!ctx->latest_sak.valid ||
             (ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER) ||
-            (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING) ||
             (ctx->latest_sak.key_number != meta->distributed_key_number) ||
             (ctx->latest_sak.an != meta->distributed_an))
         {
@@ -2046,32 +2286,45 @@ int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta
             return MACSEC_ERR_STATE;
         }
 
-        macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_DISTRIBUTED,
-                                 "Distributed SAK MKPDU transmitted successfully");
-
-        if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_DISTRIBUTED)
-        {
-            return MACSEC_ERR_STATE;
-        }
-
-        macsec_mka_raise_events(ctx,
-                                MACSEC_MKA_EVENT_SAK_DISTRIBUTED | MACSEC_MKA_EVENT_SAK_AVAILABLE);
-
         /*
-         * Reserve the next Key Number and AN for a future rekey.
-         * This is done only on the first successful distribution.
+         * Only the first successful transmission advances the lifecycle and
+         * reserves the next Key Number and AN. Later transmissions merely
+         * repeat the same SAK until the current peer confirms it.
          */
-        ctx->key_server_next_key_number++;
-
-        if (ctx->key_server_next_key_number == 0u)
+        if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING)
         {
-            /*
-             * Key Number zero is not used by this implementation.
-             */
-            ctx->key_server_next_key_number = 1u;
-        }
+            macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_DISTRIBUTED,
+                                     "Distributed SAK MKPDU transmitted successfully");
 
-        ctx->key_server_next_an = (uint8_t) ((ctx->key_server_next_an + 1u) & 0x03u);
+            if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_DISTRIBUTED)
+            {
+                return MACSEC_ERR_STATE;
+            }
+
+            macsec_mka_raise_events(ctx,
+                                    MACSEC_MKA_EVENT_SAK_DISTRIBUTED |
+                                    MACSEC_MKA_EVENT_SAK_AVAILABLE);
+
+            ctx->key_server_next_key_number++;
+
+            if (ctx->key_server_next_key_number == 0u)
+            {
+                ctx->key_server_next_key_number = 1u;
+            }
+
+            ctx->key_server_next_an =
+                (uint8_t) ((ctx->key_server_next_an + 1u) & 0x03u);
+        }
+        else
+        {
+            MACSEC_MEDIUM(("MKA Distributed SAK retransmitted: key_number=%lu an=%u "
+                           "lifecycle=%u peer_rx=%u peer_tx=%u\n",
+                           (unsigned long) ctx->latest_sak.key_number,
+                           ctx->latest_sak.an,
+                           (unsigned) ctx->latest_sak.lifecycle_state,
+                           ctx->latest_sak.peer_rx_confirmed ? 1u : 0u,
+                           ctx->latest_sak.peer_tx_confirmed ? 1u : 0u));
+        }
     }
 
     /*

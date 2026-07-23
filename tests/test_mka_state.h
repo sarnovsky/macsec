@@ -4,7 +4,8 @@
  * Lightweight MACsec stack
  * Unit tests for MKA participant state, event handling and SAK lifecycle.
  * This file verifies event consumption, SAK installation handoff,
- * data-plane installation confirmation and SAK retirement.
+ * data-plane installation confirmation, peer SAK confirmation and SAK
+ * retirement.
  *
  * Copyright (c) 2026 Michal Sarnovsky
  *
@@ -55,6 +56,22 @@ typedef struct
 } macsec_test_mka_state_sak_install_data_t;
 
 /*
+ * Peer SAK confirmation tests.
+ *
+ * Two complete MKA participants are used so that received frames are built
+ * and authenticated by the normal MKA TX path.
+ */
+typedef struct
+{
+    macsec_mka_ctx_t local;
+    macsec_mka_ctx_t peer;
+
+    uint8_t frame[MACSEC_MKA_MAX_FRAME_LEN];
+    size_t frame_len;
+    macsec_mka_tx_meta_t tx_meta;
+} macsec_test_mka_state_peer_confirmation_data_t;
+
+/*
  * SAK retirement tests.
  */
 typedef struct
@@ -73,6 +90,8 @@ typedef union
     macsec_test_mka_state_sak_take_data_t test_mka_state_sak_take_data;
 
     macsec_test_mka_state_sak_install_data_t test_mka_state_sak_install_data;
+
+    macsec_test_mka_state_peer_confirmation_data_t test_mka_state_peer_confirmation_data;
 
     macsec_test_mka_state_sak_retire_data_t test_mka_state_sak_retire_data;
 } macsec_test_mka_state_data_t;
