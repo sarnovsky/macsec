@@ -683,7 +683,7 @@ static int macsec_test_mka_frames_stm32_key_server_distributes_sak(
      * its local SAK is already DISTRIBUTED. B has not processed this final
      * frame yet.
      */
-    TEST_TRUE(data->a.latest_sak.valid);
+    TEST_TRUE(data->a.latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE);
     TEST_EQ_U32(data->a.latest_sak.sak_len, 16u);
 
     ret = macsec_mka_input(&data->b, data->frame_a, frame_a_len, 3000u);
@@ -700,7 +700,7 @@ static int macsec_test_mka_frames_stm32_key_server_distributes_sak(
      * and stored the same 16-byte SAK.
      */
     TEST_TRUE(data->b.last_icv_valid);
-    TEST_TRUE(data->b.latest_sak.valid);
+    TEST_TRUE(data->b.latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE);
     TEST_EQ_U32(data->b.latest_sak.sak_len, 16u);
 
     TEST_MEM_EQ(data->a.latest_sak.sak, data->b.latest_sak.sak, 16u);

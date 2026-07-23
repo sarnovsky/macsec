@@ -178,8 +178,8 @@ static int macsec_process_mka_sak_install(macsec_ctx_t *ctx)
         return ret;
     }
 
-    if (!sak.valid || ((sak.sak_len != 16u) && (sak.sak_len != 32u)) ||
-        (sak.an >= MACSEC_FRAME_MAX_SA))
+    if ((sak.lifecycle_state != MACSEC_MKA_SAK_STATE_INSTALL_PENDING) ||
+        ((sak.sak_len != 16u) && (sak.sak_len != 32u)) || (sak.an >= MACSEC_FRAME_MAX_SA))
     {
         ret = MACSEC_ERR_STATE;
         goto cleanup;

@@ -309,18 +309,6 @@ typedef struct
 typedef struct
 {
     /*
-     * Legacy validity flag.
-     *
-     * During migration:
-     *
-     *   valid == false  normally corresponds to lifecycle_state == NONE
-     *   valid == true   normally corresponds to lifecycle_state != NONE
-     *
-     * Remove after all code uses lifecycle_state.
-     */
-    macsec_bool_t valid;
-
-    /*
      * Secure Association Key.
      *
      * 16 bytes = AES-128 SAK

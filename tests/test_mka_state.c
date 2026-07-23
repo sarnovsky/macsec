@@ -97,8 +97,6 @@ static void macsec_test_mka_state_prepare_sak(macsec_mka_ctx_t *mka, macsec_mka_
 
     mka->latest_sak.lifecycle_state = lifecycle_state;
 
-    mka->latest_sak.valid = MACSEC_TRUE;
-
     mka->latest_sak.rx_installed = MACSEC_FALSE;
 
     mka->latest_sak.tx_installed = MACSEC_FALSE;
@@ -375,7 +373,7 @@ macsec_test_mka_state_sak_take_remote_candidate(macsec_test_mka_state_sak_take_d
 
     TEST_EQ_U32(data->sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
 
-    TEST_TRUE(data->sak.valid == MACSEC_TRUE);
+    TEST_TRUE(data->sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE);
 
     TEST_EQ_U32(data->sak.origin, MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER);
 
@@ -1188,14 +1186,14 @@ macsec_test_mka_state_sak_retire_invalid_identity(macsec_test_mka_state_sak_reti
 
     TEST_TRUE(ret == MACSEC_ERR_PARAM);
 
-    TEST_TRUE(data->mka.latest_sak.valid == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE);
 
     ret = macsec_mka_notify_sak_retired(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER,
                                         MACSEC_TEST_MKA_OTHER_AN);
 
     TEST_TRUE(ret == MACSEC_ERR_PARAM);
 
-    TEST_TRUE(data->mka.latest_sak.valid == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE);
 
     TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_RETIRING);
 
@@ -1224,7 +1222,7 @@ macsec_test_mka_state_sak_retire_invalid_state(macsec_test_mka_state_sak_retire_
 
     TEST_TRUE(ret == MACSEC_ERR_STATE);
 
-    TEST_TRUE(data->mka.latest_sak.valid == MACSEC_TRUE);
+    TEST_TRUE(data->mka.latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE);
 
     TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
 
@@ -1258,7 +1256,7 @@ macsec_test_mka_state_sak_retire_clears_key(macsec_test_mka_state_sak_retire_dat
     TEST_OK(
         macsec_mka_notify_sak_retired(&data->mka, MACSEC_TEST_MKA_KEY_NUMBER, MACSEC_TEST_MKA_AN));
 
-    TEST_TRUE(data->mka.latest_sak.valid == MACSEC_FALSE);
+    TEST_TRUE(data->mka.latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_NONE);
 
     TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_NONE);
 
