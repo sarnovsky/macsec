@@ -69,29 +69,34 @@ typedef struct
     macsec_mka_ctx_t mka;
 } macsec_test_mka_negative_reflected_own_frame_ignored_data_t;
 
+typedef struct
+{
+    macsec_mka_ctx_t tx;
+    macsec_mka_ctx_t rx;
+
+    uint8_t frame[MACSEC_MKA_MAX_FRAME_LEN];
+} macsec_test_mka_negative_bad_icv_does_not_refresh_peer_data_t;
+
 typedef union
 {
-    macsec_test_mka_negative_bad_ethertype_data_t
-        test_mka_negative_bad_ethertype_data;
+    macsec_test_mka_negative_bad_ethertype_data_t test_mka_negative_bad_ethertype_data;
 
-    macsec_test_mka_negative_bad_eapol_type_data_t
-        test_mka_negative_bad_eapol_type_data;
+    macsec_test_mka_negative_bad_eapol_type_data_t test_mka_negative_bad_eapol_type_data;
 
-    macsec_test_mka_negative_short_frame_data_t
-        test_mka_negative_short_frame_data_data;
+    macsec_test_mka_negative_short_frame_data_t test_mka_negative_short_frame_data;
 
-    macsec_test_mka_negative_bad_icv_data_t
-        test_mka_negative_bad_icv_data_data;
+    macsec_test_mka_negative_bad_icv_data_t test_mka_negative_bad_icv_data;
 
-    macsec_test_mka_negative_wrong_cak_fails_icv_data_t
-        test_mka_negative_wrong_cak_fails_icv_data;
+    macsec_test_mka_negative_wrong_cak_fails_icv_data_t test_mka_negative_wrong_cak_fails_icv_data;
 
     macsec_test_mka_negative_reflected_own_frame_ignored_data_t
         test_mka_negative_reflected_own_frame_ignored_data;
+
+    macsec_test_mka_negative_bad_icv_does_not_refresh_peer_data_t
+        test_mka_negative_bad_icv_does_not_refresh_peer_data;
 } macsec_test_mka_negative_data_t;
 
-int macsec_test_mka_negative(macsec_test_mka_negative_data_t *data,
-                             int verbose);
+int macsec_test_mka_negative(macsec_test_mka_negative_data_t *data, int verbose);
 
 #endif /* MACSEC_SELF_TEST */
 

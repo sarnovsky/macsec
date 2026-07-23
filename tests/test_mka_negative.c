@@ -95,6 +95,28 @@ static int macsec_test_mka_build_and_commit_tx(macsec_mka_ctx_t *ctx, uint8_t *f
     return ret;
 }
 
+static int macsec_test_mka_build_commit_and_deliver(macsec_mka_ctx_t *tx, macsec_mka_ctx_t *rx,
+                                                    uint8_t *frame, size_t frame_max_len,
+                                                    uint32_t now_ms)
+{
+    size_t frame_len;
+    int ret;
+
+    macsec_assert(tx != NULL);
+    macsec_assert(rx != NULL);
+    macsec_assert(frame != NULL);
+
+    frame_len = 0u;
+
+    ret = macsec_test_mka_build_and_commit_tx(tx, frame, &frame_len, frame_max_len, now_ms);
+    if (ret != MACSEC_ERR_OK)
+    {
+        return ret;
+    }
+
+    return macsec_mka_input(rx, frame, frame_len, now_ms);
+}
+
 static int
 macsec_test_mka_negative_bad_ethertype(macsec_test_mka_negative_bad_ethertype_data_t *data,
                                        const uint8_t *cak, size_t cak_len, int verbose)
@@ -324,6 +346,143 @@ static int macsec_test_mka_negative_wrong_cak_fails_icv(
     return 0;
 }
 
+static int macsec_test_mka_negative_bad_icv_does_not_refresh_peer(
+    macsec_test_mka_negative_bad_icv_does_not_refresh_peer_data_t *data, const uint8_t *cak,
+    size_t cak_len, int verbose)
+{
+    macsec_mka_event_flags_t events;
+    uint32_t authenticated_last_seen_ms;
+    size_t frame_len;
+    int ret;
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  MKA negative bad ICV does not refresh peer timeout test, "
+                      "%u-byte CAK\n",
+                      (unsigned int) cak_len));
+    }
+
+    ret = macsec_test_mka_negative_init(&data->tx, cak, cak_len, test_mac_a, 255u);
+    TEST_OK(ret);
+
+    ret = macsec_test_mka_negative_init(&data->rx, cak, cak_len, test_mac_b, 100u);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_mka_clear(&data->tx);
+        return ret;
+    }
+
+    /*
+     * Establish an authenticated peer. The peer need not yet be LIVE:
+     * timeout is based on peer.valid and the timestamp of the last
+     * authenticated MKPDU.
+     */
+    ret = macsec_test_mka_build_commit_and_deliver(&data->tx, &data->rx, data->frame,
+                                                   sizeof(data->frame), 100u);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_mka_clear(&data->tx);
+        macsec_mka_clear(&data->rx);
+        return ret;
+    }
+
+    TEST_TRUE(data->rx.peer.valid);
+    TEST_TRUE(data->rx.peer.last_seen_ms == 100u);
+
+    authenticated_last_seen_ms = data->rx.peer.last_seen_ms;
+
+    /*
+     * Discard events caused by initial peer discovery.
+     */
+    (void) macsec_mka_take_events(&data->rx);
+
+    /*
+     * Schedule the next periodic transmission.
+     *
+     * The initial TX reason was consumed by the successful transmission at
+     * 100 ms. With a 2000 ms interval, the next periodic MKPDU becomes due
+     * at 2100 ms.
+     */
+    ret = macsec_mka_tick(&data->tx, 2100u);
+    TEST_OK(ret);
+
+    TEST_TRUE((data->tx.tx_reasons & MACSEC_MKA_TX_REASON_PERIODIC) != 0u);
+
+    /*
+     * Build a later valid MKPDU from the same participant and corrupt only
+     * its ICV.
+     */
+    frame_len = 0u;
+
+    ret = macsec_test_mka_build_and_commit_tx(&data->tx, data->frame, &frame_len,
+                                              sizeof(data->frame), 2100u);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_mka_clear(&data->tx);
+        macsec_mka_clear(&data->rx);
+        return ret;
+    }
+
+    TEST_TRUE(frame_len >= MACSEC_MKA_ICV_LEN);
+
+    data->frame[frame_len - 1u] ^= 0x01u;
+
+    ret = macsec_mka_input(&data->rx, data->frame, frame_len, 2100u);
+
+    TEST_TRUE(ret == MACSEC_ERR_AUTH);
+    TEST_TRUE(!data->rx.last_icv_valid);
+
+    /*
+     * The rejected MKPDU must not modify persistent peer state.
+     */
+    TEST_TRUE(data->rx.peer.valid);
+    TEST_TRUE(data->rx.peer.last_seen_ms == authenticated_last_seen_ms);
+
+    events = macsec_mka_take_events(&data->rx);
+
+    TEST_TRUE((events & MACSEC_MKA_EVENT_PEER_LOST) == 0u);
+
+    /*
+     * At exactly 6100 ms, 6000 ms have elapsed since the last authenticated
+     * MKPDU. The corrupted frame received at 2100 ms must not postpone this
+     * boundary to 8100 ms.
+     */
+    ret = macsec_mka_tick(&data->rx, 6099u);
+    TEST_OK(ret);
+
+    TEST_TRUE(data->rx.peer.valid);
+    TEST_TRUE(data->rx.peer.last_seen_ms == authenticated_last_seen_ms);
+
+    events = macsec_mka_take_events(&data->rx);
+
+    TEST_TRUE((events & MACSEC_MKA_EVENT_PEER_LOST) == 0u);
+
+    /*
+     * At exactly 6100 ms, 6000 ms have elapsed since the last authenticated
+     * MKPDU. The corrupted frame received at 400 ms must not postpone this
+     * boundary to 6400 ms.
+     */
+    ret = macsec_mka_tick(&data->rx, 6100u);
+    TEST_OK(ret);
+
+    TEST_TRUE(!data->rx.peer.valid);
+    TEST_TRUE(!data->rx.peer.live);
+    TEST_TRUE(!data->rx.peer.seen_in_peer_list);
+    TEST_TRUE(data->rx.state == MACSEC_MKA_STATE_WAIT_PEER);
+
+    events = macsec_mka_take_events(&data->rx);
+
+    TEST_TRUE((events & MACSEC_MKA_EVENT_PEER_LOST) != 0u);
+    TEST_TRUE((events & MACSEC_MKA_EVENT_TX_PEER_CHANGE) != 0u);
+
+    TEST_TRUE((data->rx.tx_reasons & MACSEC_MKA_TX_REASON_PEER_CHANGE) != 0u);
+
+    macsec_mka_clear(&data->tx);
+    macsec_mka_clear(&data->rx);
+
+    return 0;
+}
+
 int macsec_test_mka_negative(macsec_test_mka_negative_data_t *data, int verbose)
 {
     if (verbose)
@@ -343,17 +502,25 @@ int macsec_test_mka_negative(macsec_test_mka_negative_data_t *data, int verbose)
     TEST_OK(macsec_test_mka_negative_bad_eapol_type(&data->test_mka_negative_bad_eapol_type_data,
                                                     test_cak_32, sizeof(test_cak_32), verbose));
 
-    TEST_OK(macsec_test_mka_negative_short_frame(&data->test_mka_negative_short_frame_data_data,
+    TEST_OK(macsec_test_mka_negative_short_frame(&data->test_mka_negative_short_frame_data,
                                                  test_cak_16, sizeof(test_cak_16), verbose));
 
-    TEST_OK(macsec_test_mka_negative_short_frame(&data->test_mka_negative_short_frame_data_data,
+    TEST_OK(macsec_test_mka_negative_short_frame(&data->test_mka_negative_short_frame_data,
                                                  test_cak_32, sizeof(test_cak_32), verbose));
 
-    TEST_OK(macsec_test_mka_negative_bad_icv(&data->test_mka_negative_bad_icv_data_data,
-                                             test_cak_16, sizeof(test_cak_16), verbose));
+    TEST_OK(macsec_test_mka_negative_bad_icv(&data->test_mka_negative_bad_icv_data, test_cak_16,
+                                             sizeof(test_cak_16), verbose));
 
-    TEST_OK(macsec_test_mka_negative_bad_icv(&data->test_mka_negative_bad_icv_data_data,
-                                             test_cak_32, sizeof(test_cak_32), verbose));
+    TEST_OK(macsec_test_mka_negative_bad_icv(&data->test_mka_negative_bad_icv_data, test_cak_32,
+                                             sizeof(test_cak_32), verbose));
+
+    TEST_OK(macsec_test_mka_negative_bad_icv_does_not_refresh_peer(
+        &data->test_mka_negative_bad_icv_does_not_refresh_peer_data, test_cak_16,
+        sizeof(test_cak_16), verbose));
+
+    TEST_OK(macsec_test_mka_negative_bad_icv_does_not_refresh_peer(
+        &data->test_mka_negative_bad_icv_does_not_refresh_peer_data, test_cak_32,
+        sizeof(test_cak_32), verbose));
 
     TEST_OK(macsec_test_mka_negative_wrong_cak_fails_icv(
         &data->test_mka_negative_wrong_cak_fails_icv_data, test_cak_16, wrong_cak_16,

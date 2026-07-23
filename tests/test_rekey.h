@@ -79,6 +79,25 @@ typedef struct
     macsec_frame_sak_t wrong_rx_sak;
 } macsec_test_rekey_wrong_key_same_an_fails_data_t;
 
+typedef struct
+{
+    uint8_t old_plain[MACSEC_TEST_REKEY_PLAIN_MAX_LEN];
+    uint8_t new_plain[MACSEC_TEST_REKEY_PLAIN_MAX_LEN];
+
+    uint8_t old_secure[MACSEC_TEST_REKEY_SECURE_MAX_LEN];
+    uint8_t new_secure[MACSEC_TEST_REKEY_SECURE_MAX_LEN];
+
+    uint8_t decrypted[MACSEC_TEST_REKEY_PLAIN_MAX_LEN];
+
+    macsec_frame_sci_t sci;
+
+    macsec_frame_crypto_ctx_t tx_ctx;
+    macsec_frame_crypto_ctx_t rx_ctx;
+
+    macsec_frame_sak_t old_sak;
+    macsec_frame_sak_t new_sak;
+} macsec_test_rekey_same_an_replacement_data_t;
+
 typedef union
 {
     macsec_test_rekey_an_rotation_decrypts_all_data_t rekey_an_rotation_decrypts_all_data;
@@ -86,6 +105,8 @@ typedef union
     macsec_test_rekey_old_rx_sak_still_accepted_data_t rekey_old_rx_sak_still_accepted_data;
 
     macsec_test_rekey_wrong_key_same_an_fails_data_t rekey_wrong_key_same_an_fails_data;
+
+    macsec_test_rekey_same_an_replacement_data_t rekey_same_an_replacement_data;
 } macsec_test_rekey_data_t;
 
 int macsec_test_rekey(macsec_test_rekey_data_t *data, int verbose);

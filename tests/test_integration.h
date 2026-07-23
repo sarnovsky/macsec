@@ -69,6 +69,21 @@ typedef struct
     uint8_t secure[160];
 } macsec_test_integration_output_not_ready_mka_data_t;
 
+typedef struct
+{
+    macsec_config_t cfg_a;
+    macsec_config_t cfg_b;
+
+    macsec_ctx_t a;
+    macsec_ctx_t b;
+
+    uint8_t mka_frame[MACSEC_MKA_MAX_FRAME_LEN];
+
+    uint8_t plain_tx[MACSEC_FRAME_MAX_PLAIN_SIZE];
+    uint8_t secure_frame[MACSEC_FRAME_MAX_SECURE_SIZE];
+    uint8_t plain_rx[MACSEC_FRAME_MAX_PLAIN_SIZE];
+} macsec_test_integration_mka_secure_path_data_t;
+
 typedef union
 {
     macsec_test_integration_disabled_passthrough_data_t test_integration_disabled_passthrough_data;
@@ -79,6 +94,8 @@ typedef union
         test_integration_protected_drops_plain_data;
 
     macsec_test_integration_output_not_ready_mka_data_t test_integration_output_not_ready_mka_data;
+
+    macsec_test_integration_mka_secure_path_data_t test_integration_mka_secure_path_data;
 } macsec_test_integration_data_t;
 
 int macsec_test_integration(macsec_test_integration_data_t *data, int verbose);

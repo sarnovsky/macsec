@@ -447,6 +447,290 @@ macsec_test_frame_crypto_an_selection(macsec_test_frame_crypto_encrypt_decrypt_o
 }
 
 static int
+macsec_test_frame_crypto_remove_tx_sak(macsec_test_frame_crypto_encrypt_decrypt_one_data_t *data,
+                                       int verbose)
+{
+    size_t secure_len;
+    int ret;
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  Frame crypto remove TX SAK test\n"));
+    }
+
+    macsec_test_fill_sci(&data->sci);
+    macsec_test_fill_sak(&data->sak, 1u, 16u);
+
+    TEST_OK(macsec_frame_crypto_init(&data->tx_ctx, &data->sci));
+    TEST_OK(macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &data->sak));
+
+    TEST_TRUE(macsec_frame_crypto_ready_tx(&data->tx_ctx));
+    TEST_TRUE(data->tx_ctx.tx_sak.valid);
+    TEST_TRUE(data->tx_ctx.tx_sak.an == 1u);
+
+    macsec_test_fill_plain_frame(data->plain, 96u, 0x0800u, 0xC0u);
+
+    secure_len = 0u;
+
+    TEST_OK(macsec_frame_encrypt(&data->tx_ctx, data->plain, 96u, data->secure, &secure_len,
+                                 sizeof(data->secure)));
+
+    TEST_TRUE(secure_len != 0u);
+
+    ret = macsec_frame_crypto_remove_tx_sak(&data->tx_ctx);
+    TEST_OK(ret);
+
+    TEST_TRUE(!macsec_frame_crypto_ready_tx(&data->tx_ctx));
+    TEST_TRUE(!data->tx_ctx.tx_sak.valid);
+    TEST_TRUE(data->tx_ctx.tx_sak.key_len == 0u);
+    TEST_TRUE(data->tx_ctx.tx_sak.next_pn == 0u);
+
+    secure_len = 123u;
+
+    ret = macsec_frame_encrypt(&data->tx_ctx, data->plain, 96u, data->secure, &secure_len,
+                               sizeof(data->secure));
+
+    TEST_TRUE(ret == MACSEC_ERR_STATE);
+    TEST_TRUE(secure_len == 0u);
+
+    /*
+     * Removing an already absent TX SAK should remain harmless.
+     */
+    ret = macsec_frame_crypto_remove_tx_sak(&data->tx_ctx);
+    TEST_OK(ret);
+
+    TEST_TRUE(!macsec_frame_crypto_ready_tx(&data->tx_ctx));
+
+    macsec_frame_crypto_clear(&data->tx_ctx);
+
+    return 0;
+}
+
+static int macsec_test_frame_crypto_remove_one_rx_sak(
+    macsec_test_frame_crypto_encrypt_decrypt_one_data_t *data, int verbose)
+{
+    macsec_frame_sak_t sak_an0;
+    macsec_frame_sak_t sak_an1;
+
+    size_t secure_len;
+    size_t decrypted_len;
+    int ret;
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  Frame crypto remove one RX SAK test\n"));
+    }
+
+    macsec_test_fill_sci(&data->sci);
+
+    macsec_test_fill_sak_key(&sak_an0, macsec_test_key_a, 0u, 16u, 1u);
+
+    macsec_test_fill_sak_key(&sak_an1, macsec_test_key_b, 1u, 16u, 1u);
+
+    TEST_OK(macsec_frame_crypto_init(&data->tx_ctx, &data->sci));
+    TEST_OK(macsec_frame_crypto_init(&data->rx_ctx, &data->sci));
+
+    data->rx_ctx.replay_protect = MACSEC_FALSE;
+
+    TEST_OK(macsec_frame_crypto_set_rx_sak(&data->rx_ctx, &sak_an0));
+    TEST_OK(macsec_frame_crypto_set_rx_sak(&data->rx_ctx, &sak_an1));
+
+    TEST_TRUE(macsec_frame_crypto_ready_rx(&data->rx_ctx, 0u));
+    TEST_TRUE(macsec_frame_crypto_ready_rx(&data->rx_ctx, 1u));
+
+    macsec_test_fill_plain_frame(data->plain, 96u, 0x0800u, 0xC1u);
+
+    /*
+     * Verify AN 0 before removal.
+     */
+    TEST_OK(macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &sak_an0));
+
+    secure_len = 0u;
+    decrypted_len = 0u;
+
+    TEST_OK(macsec_frame_encrypt(&data->tx_ctx, data->plain, 96u, data->secure, &secure_len,
+                                 sizeof(data->secure)));
+
+    TEST_OK(macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                                 &decrypted_len, sizeof(data->decrypted)));
+
+    TEST_TRUE(decrypted_len == 96u);
+    TEST_TRUE(macsec_compare(data->plain, data->decrypted, 96u) == 0);
+
+    /*
+     * Verify AN 1 before removal.
+     */
+    TEST_OK(macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &sak_an1));
+
+    secure_len = 0u;
+    decrypted_len = 0u;
+
+    TEST_OK(macsec_frame_encrypt(&data->tx_ctx, data->plain, 96u, data->secure, &secure_len,
+                                 sizeof(data->secure)));
+
+    TEST_OK(macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                                 &decrypted_len, sizeof(data->decrypted)));
+
+    TEST_TRUE(decrypted_len == 96u);
+
+    /*
+     * Remove only AN 0.
+     */
+    TEST_OK(macsec_frame_crypto_remove_rx_sak(&data->rx_ctx, 0u));
+
+    TEST_TRUE(!macsec_frame_crypto_ready_rx(&data->rx_ctx, 0u));
+    TEST_TRUE(macsec_frame_crypto_ready_rx(&data->rx_ctx, 1u));
+
+    TEST_TRUE(!data->rx_ctx.rx_sak[0].valid);
+    TEST_TRUE(data->rx_ctx.rx_sak[0].key_len == 0u);
+
+    /*
+     * A frame for removed AN 0 must no longer be accepted.
+     */
+    TEST_OK(macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &sak_an0));
+
+    secure_len = 0u;
+    decrypted_len = 123u;
+
+    TEST_OK(macsec_frame_encrypt(&data->tx_ctx, data->plain, 96u, data->secure, &secure_len,
+                                 sizeof(data->secure)));
+
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
+
+    TEST_TRUE(ret == MACSEC_ERR_STATE);
+    TEST_TRUE(decrypted_len == 0u);
+
+    /*
+     * The other RX association must remain usable.
+     */
+    TEST_OK(macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &sak_an1));
+
+    secure_len = 0u;
+    decrypted_len = 0u;
+
+    TEST_OK(macsec_frame_encrypt(&data->tx_ctx, data->plain, 96u, data->secure, &secure_len,
+                                 sizeof(data->secure)));
+
+    TEST_OK(macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                                 &decrypted_len, sizeof(data->decrypted)));
+
+    TEST_TRUE(decrypted_len == 96u);
+    TEST_TRUE(macsec_compare(data->plain, data->decrypted, 96u) == 0);
+
+    macsec_frame_crypto_clear(&data->tx_ctx);
+    macsec_frame_crypto_clear(&data->rx_ctx);
+
+    return 0;
+}
+
+static int macsec_test_frame_crypto_remove_rx_sak_invalid_an(
+    macsec_test_frame_crypto_encrypt_decrypt_one_data_t *data, int verbose)
+{
+    int ret;
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  Frame crypto remove RX SAK invalid AN test\n"));
+    }
+
+    macsec_test_fill_sci(&data->sci);
+
+    TEST_OK(macsec_frame_crypto_init(&data->rx_ctx, &data->sci));
+
+    ret = macsec_frame_crypto_remove_rx_sak(&data->rx_ctx, MACSEC_FRAME_MAX_SA);
+
+    TEST_TRUE(ret == MACSEC_ERR_PARAM);
+
+    ret = macsec_frame_crypto_remove_rx_sak(&data->rx_ctx, UINT8_MAX);
+
+    TEST_TRUE(ret == MACSEC_ERR_PARAM);
+
+    macsec_frame_crypto_clear(&data->rx_ctx);
+
+    return 0;
+}
+
+static int macsec_test_frame_crypto_reinstall_removed_rx_sak(
+    macsec_test_frame_crypto_encrypt_decrypt_one_data_t *data, int verbose)
+{
+    macsec_frame_sak_t old_sak;
+    macsec_frame_sak_t new_sak;
+
+    size_t secure_len;
+    size_t decrypted_len;
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  Frame crypto reinstall removed RX SAK test\n"));
+    }
+
+    macsec_test_fill_sci(&data->sci);
+
+    macsec_test_fill_sak_key(&old_sak, macsec_test_key_a, 0u, 16u, 1u);
+
+    macsec_test_fill_sak_key(&new_sak, macsec_test_key_b, 0u, 16u, 1u);
+
+    TEST_OK(macsec_frame_crypto_init(&data->tx_ctx, &data->sci));
+    TEST_OK(macsec_frame_crypto_init(&data->rx_ctx, &data->sci));
+
+    data->rx_ctx.replay_protect = MACSEC_TRUE;
+    data->rx_ctx.replay_window = 4u;
+
+    /*
+     * Install and use the original AN 0 key.
+     */
+    TEST_OK(macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &old_sak));
+    TEST_OK(macsec_frame_crypto_set_rx_sak(&data->rx_ctx, &old_sak));
+
+    macsec_test_fill_plain_frame(data->plain, 96u, 0x0800u, 0xC2u);
+
+    secure_len = 0u;
+    decrypted_len = 0u;
+
+    TEST_OK(macsec_frame_encrypt(&data->tx_ctx, data->plain, 96u, data->secure, &secure_len,
+                                 sizeof(data->secure)));
+
+    TEST_OK(macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                                 &decrypted_len, sizeof(data->decrypted)));
+
+    TEST_TRUE(data->rx_ctx.rx_sak[0].highest_received_pn == 1u);
+    TEST_TRUE(data->rx_ctx.rx_sak[0].replay_bitmap != 0u);
+
+    /*
+     * Remove and reuse the same AN with a different key.
+     */
+    TEST_OK(macsec_frame_crypto_remove_rx_sak(&data->rx_ctx, 0u));
+
+    TEST_TRUE(!macsec_frame_crypto_ready_rx(&data->rx_ctx, 0u));
+
+    TEST_OK(macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &new_sak));
+    TEST_OK(macsec_frame_crypto_set_rx_sak(&data->rx_ctx, &new_sak));
+
+    TEST_TRUE(macsec_frame_crypto_ready_rx(&data->rx_ctx, 0u));
+    TEST_TRUE(data->rx_ctx.rx_sak[0].highest_received_pn == 0u);
+    TEST_TRUE(data->rx_ctx.rx_sak[0].replay_bitmap == 0u);
+    TEST_TRUE(!data->rx_ctx.rx_sak[0].replay_exhausted);
+
+    secure_len = 0u;
+    decrypted_len = 0u;
+
+    TEST_OK(macsec_frame_encrypt(&data->tx_ctx, data->plain, 96u, data->secure, &secure_len,
+                                 sizeof(data->secure)));
+
+    TEST_OK(macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                                 &decrypted_len, sizeof(data->decrypted)));
+
+    TEST_TRUE(decrypted_len == 96u);
+    TEST_TRUE(macsec_compare(data->plain, data->decrypted, 96u) == 0);
+
+    macsec_frame_crypto_clear(&data->tx_ctx);
+    macsec_frame_crypto_clear(&data->rx_ctx);
+
+    return 0;
+}
+
+static int
 macsec_test_frame_crypto_lengths(macsec_test_frame_crypto_encrypt_decrypt_one_data_t *data,
                                  int verbose)
 {
@@ -1013,6 +1297,17 @@ int macsec_test_frame_crypto(macsec_test_frame_crypto_data_t *data, int verbose)
 
     TEST_OK(macsec_test_frame_crypto_an_selection(&data->test_frame_crypto_encrypt_decrypt_one_data,
                                                   verbose));
+
+    TEST_OK(macsec_test_frame_crypto_an_selection(&data->test_frame_crypto_encrypt_decrypt_one_data,
+                                                  verbose));
+    TEST_OK(macsec_test_frame_crypto_remove_tx_sak(
+        &data->test_frame_crypto_encrypt_decrypt_one_data, verbose));
+    TEST_OK(macsec_test_frame_crypto_remove_one_rx_sak(
+        &data->test_frame_crypto_encrypt_decrypt_one_data, verbose));
+    TEST_OK(macsec_test_frame_crypto_remove_rx_sak_invalid_an(
+        &data->test_frame_crypto_encrypt_decrypt_one_data, verbose));
+    TEST_OK(macsec_test_frame_crypto_reinstall_removed_rx_sak(
+        &data->test_frame_crypto_encrypt_decrypt_one_data, verbose));
     TEST_OK(macsec_test_frame_crypto_lengths(&data->test_frame_crypto_encrypt_decrypt_one_data,
                                              verbose));
     TEST_OK(macsec_test_frame_crypto_output_capacity(

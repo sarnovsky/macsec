@@ -53,6 +53,7 @@ typedef union
     macsec_test_mka_tx_case_data_t peer_restart_redistribution_data;
     macsec_test_mka_tx_case_data_t redistribution_repeat_data;
     macsec_test_mka_tx_case_data_t redistribution_stop_data;
+    macsec_test_mka_tx_case_data_t retiring_sak_data;
 } macsec_test_mka_tx_data_t;
 
 int macsec_test_mka_tx(macsec_test_mka_tx_data_t *data, int verbose);

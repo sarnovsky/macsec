@@ -102,6 +102,46 @@ static void macsec_test_fill_mka_config(macsec_config_t *cfg, const uint8_t loca
     cfg->mka_tx_interval_ms = 2000u;
 }
 
+static int macsec_test_integration_transfer_mka(macsec_ctx_t *tx, macsec_ctx_t *rx, uint8_t *frame,
+                                                size_t frame_max_len, uint8_t *plain,
+                                                size_t plain_max_len, uint32_t now_ms)
+{
+    size_t frame_len = 0u;
+    size_t plain_len = 0u;
+    macsec_bool_t pass_to_stack = MACSEC_FALSE;
+    int ret;
+
+    macsec_assert(tx != NULL);
+    macsec_assert(rx != NULL);
+    macsec_assert(frame != NULL);
+    macsec_assert(plain != NULL);
+
+    ret = macsec_build_control_frame(tx, frame, &frame_len, frame_max_len);
+    if (ret != MACSEC_ERR_OK)
+    {
+        return ret;
+    }
+
+    ret = macsec_notify_control_tx_success(tx, now_ms);
+    if (ret != MACSEC_ERR_OK)
+    {
+        return ret;
+    }
+
+    ret = macsec_input(rx, frame, frame_len, plain, &plain_len, plain_max_len, &pass_to_stack);
+    if (ret != MACSEC_ERR_OK)
+    {
+        return ret;
+    }
+
+    if (pass_to_stack || (plain_len != 0u))
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    return MACSEC_ERR_OK;
+}
+
 static int macsec_test_integration_static_sak_ping_like(
     macsec_test_integration_static_sak_ping_like_data_t *data, int verbose)
 {
@@ -362,6 +402,193 @@ static int macsec_test_integration_output_not_ready_mka_cak_32(
     return 0;
 }
 
+static int
+macsec_test_integration_mka_secure_path(macsec_test_integration_mka_secure_path_data_t *data,
+                                        size_t cak_len, int verbose)
+{
+    static const uint8_t mac_a[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u};
+
+    static const uint8_t mac_b[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x02u};
+
+    static const uint8_t cak[32] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu,
+
+                                    0x10u, 0x21u, 0x32u, 0x43u, 0x54u, 0x65u, 0x76u, 0x87u,
+                                    0x98u, 0xA9u, 0xBAu, 0xCBu, 0xDCu, 0xEDu, 0xFEu, 0x0Fu};
+
+    static const uint8_t ckn[24] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u,
+                                    0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu,
+                                    0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
+
+    size_t plain_tx_len = 96u;
+    size_t secure_len = 0u;
+    size_t plain_rx_len = 0u;
+
+    macsec_bool_t pass_to_stack = MACSEC_FALSE;
+
+    uint32_t now_ms;
+    unsigned int exchange;
+    int ret;
+
+    macsec_assert(data != NULL);
+    macsec_assert((cak_len == 16u) || (cak_len == 32u));
+
+    if (verbose)
+    {
+        MACSEC_PRINT(("  Integration MKA secure path test, "
+                      "%u-byte CAK\n",
+                      (unsigned int) cak_len));
+    }
+
+    macsec_test_fill_mka_config(&data->cfg_a, mac_a, cak, cak_len, ckn, sizeof(ckn));
+
+    macsec_test_fill_mka_config(&data->cfg_b, mac_b, cak, cak_len, ckn, sizeof(ckn));
+
+    /*
+     * Lower numerical priority wins the Key Server election.
+     */
+    data->cfg_a.key_server_priority = 100u;
+    data->cfg_b.key_server_priority = 200u;
+
+    /*
+     * Enable replay protection here if the normal MKA configuration uses
+     * it. A zero-sized strict window is sufficient for ordered test traffic.
+     */
+    data->cfg_a.replay_protect = MACSEC_TRUE;
+    data->cfg_a.replay_window = 0u;
+
+    data->cfg_b.replay_protect = MACSEC_TRUE;
+    data->cfg_b.replay_window = 0u;
+
+    ret = macsec_init(&data->a, &data->cfg_a);
+    TEST_OK(ret);
+
+    ret = macsec_init(&data->b, &data->cfg_b);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_clear(&data->a);
+        return ret;
+    }
+
+    TEST_TRUE(macsec_get_state(&data->a) == MACSEC_STATE_WAIT_MKA);
+    TEST_TRUE(macsec_get_state(&data->b) == MACSEC_STATE_WAIT_MKA);
+
+    /*
+     * Exchange scheduled MKPDUs until peer discovery, peer liveness,
+     * SAK distribution and SAK installation have completed.
+     *
+     * The fixed upper bound prevents an implementation defect from turning
+     * the unit test into an infinite loop.
+     */
+    now_ms = 100u;
+
+    for (exchange = 0u; exchange < 16u; exchange++)
+    {
+        /*
+         * Invoke the normal periodic processing of both MACsec instances.
+         */
+        ret = macsec_tick(&data->a, now_ms);
+        if (ret != MACSEC_ERR_OK)
+        {
+            macsec_clear(&data->a);
+            macsec_clear(&data->b);
+            return ret;
+        }
+
+        ret = macsec_tick(&data->b, now_ms);
+        if (ret != MACSEC_ERR_OK)
+        {
+            macsec_clear(&data->a);
+            macsec_clear(&data->b);
+            return ret;
+        }
+
+        /*
+         * Send one scheduled MKPDU in each direction when available.
+         *
+         * MACSEC_ERR_NOT_READY means that the endpoint has no control frame
+         * scheduled in this iteration and is not a test failure.
+         */
+        ret = macsec_test_integration_transfer_mka(&data->a, &data->b, data->mka_frame,
+                                                   sizeof(data->mka_frame), data->plain_rx,
+                                                   sizeof(data->plain_rx), now_ms);
+
+        if ((ret != MACSEC_ERR_OK) && (ret != MACSEC_ERR_NOT_READY))
+        {
+            macsec_clear(&data->a);
+            macsec_clear(&data->b);
+            return ret;
+        }
+
+        ret = macsec_test_integration_transfer_mka(&data->b, &data->a, data->mka_frame,
+                                                   sizeof(data->mka_frame), data->plain_rx,
+                                                   sizeof(data->plain_rx), now_ms);
+
+        if ((ret != MACSEC_ERR_OK) && (ret != MACSEC_ERR_NOT_READY))
+        {
+            macsec_clear(&data->a);
+            macsec_clear(&data->b);
+            return ret;
+        }
+
+        if (macsec_is_secured(&data->a) && macsec_is_secured(&data->b))
+        {
+            break;
+        }
+
+        /*
+         * Advance by one full MKA interval so periodic TX becomes eligible
+         * even if no immediate peer-change or SAK-change transmission was
+         * scheduled.
+         */
+        now_ms += 2000u;
+    }
+
+    TEST_TRUE(exchange < 16u);
+
+    TEST_TRUE(macsec_is_secured(&data->a));
+    TEST_TRUE(macsec_is_secured(&data->b));
+
+    TEST_TRUE(macsec_get_state(&data->a) == MACSEC_STATE_SECURED);
+    TEST_TRUE(macsec_get_state(&data->b) == MACSEC_STATE_SECURED);
+
+    /*
+     * Verify the resulting data path through the publicly exposed MACsec
+     * encryption and decryption functions.
+     */
+    macsec_test_fill_plain_frame(data->plain_tx, plain_tx_len, 0x0800u,
+                                 (cak_len == 16u) ? 0x88u : 0x99u);
+
+    ret = macsec_output(&data->a, data->plain_tx, plain_tx_len, data->secure_frame, &secure_len,
+                        sizeof(data->secure_frame));
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_clear(&data->a);
+        macsec_clear(&data->b);
+        return ret;
+    }
+
+    TEST_TRUE(macsec_frame_is_macsec(data->secure_frame, secure_len));
+
+    ret = macsec_input(&data->b, data->secure_frame, secure_len, data->plain_rx, &plain_rx_len,
+                       sizeof(data->plain_rx), &pass_to_stack);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_clear(&data->a);
+        macsec_clear(&data->b);
+        return ret;
+    }
+
+    TEST_TRUE(pass_to_stack);
+    TEST_TRUE(plain_rx_len == plain_tx_len);
+    TEST_TRUE(macsec_compare(data->plain_tx, data->plain_rx, plain_tx_len) == 0);
+
+    macsec_clear(&data->a);
+    macsec_clear(&data->b);
+
+    return 0;
+}
+
 int macsec_test_integration(macsec_test_integration_data_t *data, int verbose)
 {
     if (verbose)
@@ -383,6 +610,12 @@ int macsec_test_integration(macsec_test_integration_data_t *data, int verbose)
 
     TEST_OK(macsec_test_integration_output_not_ready_mka_cak_32(
         &data->test_integration_output_not_ready_mka_data, verbose));
+
+    TEST_OK(macsec_test_integration_mka_secure_path(&data->test_integration_mka_secure_path_data,
+                                                    16u, verbose));
+
+    TEST_OK(macsec_test_integration_mka_secure_path(&data->test_integration_mka_secure_path_data,
+                                                    32u, verbose));
 
     return 0;
 }

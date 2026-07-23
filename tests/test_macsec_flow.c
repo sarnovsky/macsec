@@ -65,6 +65,7 @@ static void macsec_test_fill_plain_frame(uint8_t *frame, size_t len, const uint8
 
     memcpy(&frame[0], dst_mac, sizeof(test_mac_a));
     memcpy(&frame[6], src_mac, sizeof(test_mac_a));
+
     macsec_wr_be16(&frame[12], ethertype);
 
     for (i = MACSEC_TEST_MACSEC_FLOW_ETHERNET_HEADER_LEN; i < len; i++)
@@ -83,9 +84,11 @@ static void macsec_test_static_config(macsec_config_t *cfg, const uint8_t local_
     cfg->mode = MACSEC_MODE_STATIC_SAK;
 
     memcpy(cfg->local_mac.addr, local_mac, sizeof(cfg->local_mac.addr));
+
     cfg->port_id = MACSEC_TEST_MACSEC_FLOW_PORT_ID;
 
     memcpy(cfg->static_sak, test_static_sak, sizeof(test_static_sak));
+
     cfg->static_sak_len = sizeof(test_static_sak);
     cfg->static_an = an & 0x03u;
 
@@ -103,6 +106,7 @@ static void macsec_test_disabled_config(macsec_config_t *cfg, const uint8_t loca
     cfg->mode = MACSEC_MODE_DISABLED;
 
     memcpy(cfg->local_mac.addr, local_mac, sizeof(cfg->local_mac.addr));
+
     cfg->port_id = MACSEC_TEST_MACSEC_FLOW_PORT_ID;
 }
 
@@ -112,7 +116,9 @@ static void macsec_test_mka_config(macsec_config_t *cfg, const uint8_t local_mac
     macsec_assert(cfg != NULL);
     macsec_assert(local_mac != NULL);
     macsec_assert(cak != NULL);
+
     macsec_assert((cak_len == sizeof(test_cak_16)) || (cak_len == sizeof(test_cak_32)));
+
     macsec_assert(cak_len <= sizeof(cfg->cak));
 
     memset(cfg, 0, sizeof(*cfg));
@@ -120,6 +126,7 @@ static void macsec_test_mka_config(macsec_config_t *cfg, const uint8_t local_mac
     cfg->mode = MACSEC_MODE_MKA_PSK;
 
     memcpy(cfg->local_mac.addr, local_mac, sizeof(cfg->local_mac.addr));
+
     cfg->port_id = MACSEC_TEST_MACSEC_FLOW_PORT_ID;
 
     memcpy(cfg->cak, cak, cak_len);
@@ -152,7 +159,10 @@ static int macsec_test_macsec_flow_static_bidirectional(
         MACSEC_PRINT(("  MACsec flow static bidirectional test\n"));
     }
 
+    macsec_assert(data != NULL);
+
     macsec_test_static_config(&data->cfg_a, test_mac_a, MACSEC_TEST_MACSEC_FLOW_STATIC_AN);
+
     macsec_test_static_config(&data->cfg_b, test_mac_b, MACSEC_TEST_MACSEC_FLOW_STATIC_AN);
 
     ret = macsec_init(&data->a, &data->cfg_a);
@@ -251,6 +261,8 @@ static int macsec_test_macsec_flow_disabled_passthrough(
         MACSEC_PRINT(("  MACsec flow disabled passthrough test\n"));
     }
 
+    macsec_assert(data != NULL);
+
     macsec_test_disabled_config(&data->cfg, test_mac_a);
 
     ret = macsec_init(&data->ctx, &data->cfg);
@@ -309,7 +321,10 @@ static int macsec_test_macsec_flow_static_bad_key_rejected(
         MACSEC_PRINT(("  MACsec flow static bad key rejected test\n"));
     }
 
+    macsec_assert(data != NULL);
+
     macsec_test_static_config(&data->cfg_a, test_mac_a, MACSEC_TEST_MACSEC_FLOW_STATIC_AN);
+
     macsec_test_static_config(&data->cfg_b, test_mac_b, MACSEC_TEST_MACSEC_FLOW_STATIC_AN);
 
     data->cfg_b.static_sak[0] ^= MACSEC_TEST_MACSEC_FLOW_TAMPER_MASK;
@@ -342,7 +357,7 @@ static int macsec_test_macsec_flow_static_bad_key_rejected(
     macsec_clear(&data->a);
     macsec_clear(&data->b);
 
-    TEST_TRUE(ret != MACSEC_ERR_OK);
+    TEST_TRUE(ret == MACSEC_ERR_AUTH);
     TEST_EQ_U32(decrypted_len, 0u);
     TEST_TRUE(!pass_to_stack);
 
@@ -350,8 +365,8 @@ static int macsec_test_macsec_flow_static_bad_key_rejected(
 }
 
 /*
- * Generate one MKA control frame through the public MACsec API and report
- * successful transmission to the stack.
+ * Run periodic processing, build one scheduled MKA control frame and
+ * commit its successful transmission through the public MACsec API.
  */
 static int macsec_test_macsec_flow_build_control_frame(macsec_ctx_t *ctx, uint8_t *control,
                                                        size_t *control_len, size_t control_max_len,
@@ -406,9 +421,11 @@ macsec_test_macsec_flow_eapol_consumed(macsec_test_macsec_flow_eapol_consumed_da
 
     macsec_assert(data != NULL);
 
-    macsec_test_mka_config(&data->cfg_tx, test_mac_a, test_cak_16, sizeof(test_cak_16), 10u);
+    macsec_test_mka_config(&data->cfg_tx, test_mac_a, test_cak_16, sizeof(test_cak_16),
+                           MACSEC_TEST_MACSEC_FLOW_KEY_SERVER_PRIORITY);
 
-    macsec_test_mka_config(&data->cfg_rx, test_mac_b, test_cak_16, sizeof(test_cak_16), 20u);
+    macsec_test_mka_config(&data->cfg_rx, test_mac_b, test_cak_16, sizeof(test_cak_16),
+                           MACSEC_TEST_MACSEC_FLOW_PEER_PRIORITY);
 
     ret = macsec_init(&data->tx, &data->cfg_tx);
     TEST_OK(ret);
@@ -483,9 +500,11 @@ static int macsec_test_macsec_flow_bad_eapol_icv(macsec_test_macsec_flow_bad_eap
 
     macsec_assert(data != NULL);
 
-    macsec_test_mka_config(&data->cfg_tx, test_mac_a, test_cak_16, sizeof(test_cak_16), 10u);
+    macsec_test_mka_config(&data->cfg_tx, test_mac_a, test_cak_16, sizeof(test_cak_16),
+                           MACSEC_TEST_MACSEC_FLOW_KEY_SERVER_PRIORITY);
 
-    macsec_test_mka_config(&data->cfg_rx, test_mac_b, test_cak_16, sizeof(test_cak_16), 20u);
+    macsec_test_mka_config(&data->cfg_rx, test_mac_b, test_cak_16, sizeof(test_cak_16),
+                           MACSEC_TEST_MACSEC_FLOW_PEER_PRIORITY);
 
     ret = macsec_init(&data->tx, &data->cfg_tx);
     TEST_OK(ret);
@@ -524,13 +543,13 @@ static int macsec_test_macsec_flow_bad_eapol_icv(macsec_test_macsec_flow_bad_eap
     ret = macsec_input(&data->rx, data->control, control_len, data->plain, &plain_len,
                        sizeof(data->plain), &pass_to_stack);
 
-    TEST_TRUE(ret != MACSEC_ERR_OK);
+    TEST_TRUE(ret == MACSEC_ERR_AUTH);
     TEST_TRUE(!pass_to_stack);
     TEST_EQ_U32(plain_len, 0u);
 
     /*
      * The current top-level MACsec implementation enters ERROR after an
-     * authenticated MKA control frame fails ICV verification.
+     * MKA control frame fails ICV verification.
      */
     TEST_TRUE(macsec_get_state(&data->rx) == MACSEC_STATE_ERROR);
 
@@ -644,7 +663,10 @@ static int macsec_test_macsec_flow_tampered_secure_frame(
         MACSEC_PRINT(("  MACsec flow tampered secure frame test\n"));
     }
 
+    macsec_assert(data != NULL);
+
     macsec_test_static_config(&data->cfg_a, test_mac_a, MACSEC_TEST_MACSEC_FLOW_STATIC_AN);
+
     macsec_test_static_config(&data->cfg_b, test_mac_b, MACSEC_TEST_MACSEC_FLOW_STATIC_AN);
 
     ret = macsec_init(&data->a, &data->cfg_a);
@@ -676,7 +698,7 @@ static int macsec_test_macsec_flow_tampered_secure_frame(
     ret = macsec_input(&data->b, data->secure, secure_len, data->decrypted, &decrypted_len,
                        sizeof(data->decrypted), &pass_to_stack);
 
-    TEST_TRUE(ret != MACSEC_ERR_OK);
+    TEST_TRUE(ret == MACSEC_ERR_AUTH);
     TEST_EQ_U32(decrypted_len, 0u);
     TEST_TRUE(!pass_to_stack);
     TEST_TRUE(macsec_get_state(&data->b) == MACSEC_STATE_SECURED);
@@ -701,6 +723,8 @@ macsec_test_macsec_flow_small_output_buffer(macsec_test_macsec_flow_small_buffer
     {
         MACSEC_PRINT(("  MACsec flow small output buffer test\n"));
     }
+
+    macsec_assert(data != NULL);
 
     macsec_test_static_config(&data->cfg, test_mac_a, MACSEC_TEST_MACSEC_FLOW_STATIC_AN);
 
@@ -738,6 +762,8 @@ macsec_test_macsec_flow_small_input_buffer(macsec_test_macsec_flow_small_buffer_
     {
         MACSEC_PRINT(("  MACsec flow small input buffer test\n"));
     }
+
+    macsec_assert(data != NULL);
 
     macsec_test_static_config(&data->cfg, test_mac_a, MACSEC_TEST_MACSEC_FLOW_STATIC_AN);
 
@@ -785,6 +811,8 @@ macsec_test_macsec_flow_disabled_small_buffer(macsec_test_macsec_flow_small_buff
         MACSEC_PRINT(("  MACsec flow disabled mode small buffer test\n"));
     }
 
+    macsec_assert(data != NULL);
+
     macsec_test_disabled_config(&data->cfg, test_mac_a);
 
     ret = macsec_init(&data->ctx, &data->cfg);
@@ -829,6 +857,8 @@ static int macsec_test_macsec_flow_short_frame(macsec_test_macsec_flow_short_fra
     {
         MACSEC_PRINT(("  MACsec flow short Ethernet frame test\n"));
     }
+
+    macsec_assert(data != NULL);
 
     macsec_test_static_config(&data->cfg, test_mac_a, MACSEC_TEST_MACSEC_FLOW_STATIC_AN);
 
@@ -891,23 +921,12 @@ static int macsec_test_macsec_flow_exchange_control_frame(macsec_ctx_t *tx, macs
         return ret;
     }
 
-    plain_len = plain_max_len;
-    pass_to_stack = MACSEC_TRUE;
-
-    ret = macsec_input(rx, control, control_len, plain, &plain_len, plain_max_len, &pass_to_stack);
-
-    if (ret != MACSEC_ERR_OK)
-    {
-        (void) macsec_notify_control_tx_failure(tx);
-        return ret;
-    }
-
-    if ((plain_len != 0u) || pass_to_stack)
-    {
-        (void) macsec_notify_control_tx_failure(tx);
-        return MACSEC_ERR_AUTH;
-    }
-
+    /*
+     * Simulate successful transmission by the local Ethernet interface.
+     *
+     * This commits the pending MKA TX transaction before the frame is
+     * delivered to the remote participant.
+     */
     ret = macsec_notify_control_tx_success(tx, now_ms);
     if (ret != MACSEC_ERR_OK)
     {
@@ -915,6 +934,27 @@ static int macsec_test_macsec_flow_exchange_control_frame(macsec_ctx_t *tx, macs
     }
 
     *frame_sent = MACSEC_TRUE;
+
+    /*
+     * Deliver the successfully transmitted control frame to the remote
+     * MACsec instance.
+     *
+     * Any subsequent rejection by the receiver does not represent a local
+     * Ethernet TX failure and must not roll back the committed transaction.
+     */
+    plain_len = 0u;
+    pass_to_stack = MACSEC_FALSE;
+
+    ret = macsec_input(rx, control, control_len, plain, &plain_len, plain_max_len, &pass_to_stack);
+    if (ret != MACSEC_ERR_OK)
+    {
+        return ret;
+    }
+
+    if (pass_to_stack || (plain_len != 0u))
+    {
+        return MACSEC_ERR_STATE;
+    }
 
     return MACSEC_ERR_OK;
 }
@@ -994,6 +1034,8 @@ static int macsec_test_macsec_flow_mka_secure_bidirectional(
         MACSEC_PRINT(("  MACsec flow MKA secure bidirectional test\n"));
     }
 
+    macsec_assert(data != NULL);
+
     macsec_test_mka_config(&data->cfg_a, test_mac_a, test_cak_16, sizeof(test_cak_16),
                            MACSEC_TEST_MACSEC_FLOW_KEY_SERVER_PRIORITY);
 
@@ -1028,6 +1070,9 @@ static int macsec_test_macsec_flow_mka_secure_bidirectional(
     TEST_TRUE(macsec_is_secured(&data->a));
     TEST_TRUE(macsec_is_secured(&data->b));
 
+    /*
+     * Verify protected data transfer from participant A to participant B.
+     */
     macsec_test_fill_plain_frame(data->plain_a, plain_len, test_mac_b, test_mac_a,
                                  MACSEC_TEST_MACSEC_FLOW_IPV4_ETHERTYPE, 0x20u);
 
@@ -1035,7 +1080,12 @@ static int macsec_test_macsec_flow_mka_secure_bidirectional(
 
     ret = macsec_output(&data->a, data->plain_a, plain_len, data->secure, &secure_len,
                         sizeof(data->secure));
-    TEST_OK(ret);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_clear(&data->a);
+        macsec_clear(&data->b);
+        return ret;
+    }
 
     TEST_TRUE(secure_len > plain_len);
     TEST_TRUE(macsec_frame_is_macsec(data->secure, secure_len));
@@ -1045,12 +1095,20 @@ static int macsec_test_macsec_flow_mka_secure_bidirectional(
 
     ret = macsec_input(&data->b, data->secure, secure_len, data->decrypted, &decrypted_len,
                        sizeof(data->decrypted), &pass_to_stack);
-    TEST_OK(ret);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_clear(&data->a);
+        macsec_clear(&data->b);
+        return ret;
+    }
 
     TEST_TRUE(pass_to_stack);
     TEST_EQ_U32(decrypted_len, plain_len);
     TEST_MEM_EQ(data->decrypted, data->plain_a, plain_len);
 
+    /*
+     * Verify protected data transfer from participant B to participant A.
+     */
     macsec_test_fill_plain_frame(data->plain_b, plain_len, test_mac_a, test_mac_b,
                                  MACSEC_TEST_MACSEC_FLOW_IPV4_ETHERTYPE, 0x60u);
 
@@ -1058,7 +1116,12 @@ static int macsec_test_macsec_flow_mka_secure_bidirectional(
 
     ret = macsec_output(&data->b, data->plain_b, plain_len, data->secure, &secure_len,
                         sizeof(data->secure));
-    TEST_OK(ret);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_clear(&data->a);
+        macsec_clear(&data->b);
+        return ret;
+    }
 
     TEST_TRUE(secure_len > plain_len);
     TEST_TRUE(macsec_frame_is_macsec(data->secure, secure_len));
@@ -1068,7 +1131,12 @@ static int macsec_test_macsec_flow_mka_secure_bidirectional(
 
     ret = macsec_input(&data->a, data->secure, secure_len, data->decrypted, &decrypted_len,
                        sizeof(data->decrypted), &pass_to_stack);
-    TEST_OK(ret);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_clear(&data->a);
+        macsec_clear(&data->b);
+        return ret;
+    }
 
     TEST_TRUE(pass_to_stack);
     TEST_EQ_U32(decrypted_len, plain_len);
@@ -1079,9 +1147,12 @@ static int macsec_test_macsec_flow_mka_secure_bidirectional(
 
     return 0;
 }
+
 int macsec_test_macsec_flow(macsec_test_macsec_flow_data_t *data, int verbose)
 {
     int ret;
+
+    macsec_assert(data != NULL);
 
     if (verbose)
     {

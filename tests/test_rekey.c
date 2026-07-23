@@ -204,6 +204,9 @@ macsec_test_rekey_an_rotation_decrypts_all(macsec_test_rekey_an_rotation_decrypt
             return ret;
         }
 
+        /*
+         * The first frame protected by a newly installed SA must use PN 1.
+         */
         macsec_test_rekey_fill_plain_frame(data->plain, plain_len, MACSEC_TEST_REKEY_IPV4_ETHERTYPE,
                                            (uint8_t) (0x40u + an));
 
@@ -238,10 +241,48 @@ macsec_test_rekey_an_rotation_decrypts_all(macsec_test_rekey_an_rotation_decrypt
 
         TEST_EQ_U32(decrypted_len, plain_len);
         TEST_MEM_EQ(data->plain, data->decrypted, plain_len);
+
+        /*
+         * A second frame protected by the same SA must continue the packet
+         * number sequence rather than restarting it.
+         */
+        macsec_test_rekey_fill_plain_frame(data->plain, plain_len, MACSEC_TEST_REKEY_IPV4_ETHERTYPE,
+                                           (uint8_t) (0x80u + an));
+
+        secure_len = 0u;
+        decrypted_len = 0u;
+
+        ret = macsec_frame_encrypt(&data->tx_ctx, data->plain, plain_len, data->secure, &secure_len,
+                                   sizeof(data->secure));
+        if (ret != MACSEC_ERR_OK)
+        {
+            macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+            macsec_zeroize(&rx_sci, sizeof(rx_sci));
+            return ret;
+        }
+
+        TEST_TRUE((data->secure[MACSEC_TEST_REKEY_SECTAG_OFFSET + MACSEC_TEST_REKEY_SECTAG_TCI_AN] &
+                   MACSEC_TEST_REKEY_AN_MASK) == an);
+
+        TEST_EQ_U32(
+            macsec_rd_be32(
+                &data->secure[MACSEC_TEST_REKEY_SECTAG_OFFSET + MACSEC_TEST_REKEY_SECTAG_PN]),
+            2u);
+
+        ret = macsec_frame_decrypt(&data->rx_ctx, data->secure, secure_len, data->decrypted,
+                                   &decrypted_len, sizeof(data->decrypted));
+        if (ret != MACSEC_ERR_OK)
+        {
+            macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+            macsec_zeroize(&rx_sci, sizeof(rx_sci));
+            return ret;
+        }
+
+        TEST_EQ_U32(decrypted_len, plain_len);
+        TEST_MEM_EQ(data->plain, data->decrypted, plain_len);
     }
 
     macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
-
     macsec_zeroize(&rx_sci, sizeof(rx_sci));
 
     return 0;
@@ -359,20 +400,9 @@ static int macsec_test_rekey_old_rx_sak_still_accepted(
                     &data->secure1[MACSEC_TEST_REKEY_SECTAG_OFFSET + MACSEC_TEST_REKEY_SECTAG_PN]),
                 1u);
 
-    decrypted_len = 0u;
-
-    ret = macsec_frame_decrypt(&data->rx_ctx, data->secure0, secure0_len, data->decrypted,
-                               &decrypted_len, sizeof(data->decrypted));
-    if (ret != MACSEC_ERR_OK)
-    {
-        macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
-        macsec_zeroize(&rx_sci, sizeof(rx_sci));
-        return ret;
-    }
-
-    TEST_EQ_U32(decrypted_len, plain_len);
-    TEST_MEM_EQ(data->plain0, data->decrypted, plain_len);
-
+    /*
+     * First accept traffic protected by the newly installed SA.
+     */
     decrypted_len = 0u;
 
     ret = macsec_frame_decrypt(&data->rx_ctx, data->secure1, secure1_len, data->decrypted,
@@ -387,12 +417,30 @@ static int macsec_test_rekey_old_rx_sak_still_accepted(
     TEST_EQ_U32(decrypted_len, plain_len);
     TEST_MEM_EQ(data->plain1, data->decrypted, plain_len);
 
-    macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+    /*
+     * A delayed frame protected by the old SA must remain acceptable even
+     * after traffic using the new SA has already been received.
+     */
+    decrypted_len = 0u;
 
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->secure0, secure0_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+        macsec_zeroize(&rx_sci, sizeof(rx_sci));
+        return ret;
+    }
+
+    TEST_EQ_U32(decrypted_len, plain_len);
+    TEST_MEM_EQ(data->plain0, data->decrypted, plain_len);
+
+    macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
     macsec_zeroize(&rx_sci, sizeof(rx_sci));
 
     return 0;
 }
+
 static int
 macsec_test_rekey_wrong_key_same_an_fails(macsec_test_rekey_wrong_key_same_an_fails_data_t *data,
                                           int verbose)
@@ -468,7 +516,6 @@ macsec_test_rekey_wrong_key_same_an_fails(macsec_test_rekey_wrong_key_same_an_fa
                                &decrypted_len, sizeof(data->decrypted));
 
     macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
-
     macsec_zeroize(&rx_sci, sizeof(rx_sci));
 
     /*
@@ -481,10 +528,165 @@ macsec_test_rekey_wrong_key_same_an_fails(macsec_test_rekey_wrong_key_same_an_fa
     return 0;
 }
 
-int macsec_test_rekey(macsec_test_rekey_data_t *data, int verbose)
+static int macsec_test_rekey_same_an_replacement(macsec_test_rekey_same_an_replacement_data_t *data,
+                                                 int verbose)
 {
+    const size_t plain_len = MACSEC_TEST_REKEY_PLAIN_LEN;
+
+    macsec_frame_sci_t rx_sci;
+
+    size_t old_secure_len;
+    size_t new_secure_len;
+    size_t decrypted_len;
+
     int ret;
 
+    if (verbose)
+    {
+        MACSEC_PRINT(("  Rekey same AN replacement test\n"));
+    }
+
+    macsec_assert(data != NULL);
+
+    macsec_test_rekey_make_tx_sci(&data->sci);
+    macsec_test_rekey_make_rx_sci(&rx_sci, &data->sci);
+
+    /*
+     * Both SAKs deliberately use the same AN but contain different keys.
+     */
+    macsec_test_rekey_make_sak(&data->old_sak, 1u, 0x20u);
+    macsec_test_rekey_make_sak(&data->new_sak, 1u, 0x90u);
+
+    ret = macsec_test_rekey_init_context_pair(&data->tx_ctx, &data->rx_ctx, &data->sci, &rx_sci);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_zeroize(&rx_sci, sizeof(rx_sci));
+        return ret;
+    }
+
+    /*
+     * Install the original SAK and create a frame protected by it.
+     */
+    ret = macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &data->old_sak);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+        macsec_zeroize(&rx_sci, sizeof(rx_sci));
+        return ret;
+    }
+
+    ret = macsec_frame_crypto_set_rx_sak(&data->rx_ctx, &data->old_sak);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+        macsec_zeroize(&rx_sci, sizeof(rx_sci));
+        return ret;
+    }
+
+    macsec_test_rekey_fill_plain_frame(data->old_plain, plain_len, MACSEC_TEST_REKEY_IPV4_ETHERTYPE,
+                                       0x30u);
+
+    old_secure_len = 0u;
+
+    ret = macsec_frame_encrypt(&data->tx_ctx, data->old_plain, plain_len, data->old_secure,
+                               &old_secure_len, sizeof(data->old_secure));
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+        macsec_zeroize(&rx_sci, sizeof(rx_sci));
+        return ret;
+    }
+
+    TEST_TRUE((data->old_secure[MACSEC_TEST_REKEY_SECTAG_OFFSET + MACSEC_TEST_REKEY_SECTAG_TCI_AN] &
+               MACSEC_TEST_REKEY_AN_MASK) == 1u);
+
+    TEST_EQ_U32(
+        macsec_rd_be32(
+            &data->old_secure[MACSEC_TEST_REKEY_SECTAG_OFFSET + MACSEC_TEST_REKEY_SECTAG_PN]),
+        1u);
+
+    /*
+     * Replace both the TX and RX SAK under the same AN.
+     *
+     * Reusing an AN with a different key represents a new Secure
+     * Association, so its packet number sequence begins again at PN 1.
+     */
+    ret = macsec_frame_crypto_set_tx_sak(&data->tx_ctx, &data->new_sak);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+        macsec_zeroize(&rx_sci, sizeof(rx_sci));
+        return ret;
+    }
+
+    ret = macsec_frame_crypto_set_rx_sak(&data->rx_ctx, &data->new_sak);
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+        macsec_zeroize(&rx_sci, sizeof(rx_sci));
+        return ret;
+    }
+
+    macsec_test_rekey_fill_plain_frame(data->new_plain, plain_len, MACSEC_TEST_REKEY_IPV4_ETHERTYPE,
+                                       0x70u);
+
+    new_secure_len = 0u;
+
+    ret = macsec_frame_encrypt(&data->tx_ctx, data->new_plain, plain_len, data->new_secure,
+                               &new_secure_len, sizeof(data->new_secure));
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+        macsec_zeroize(&rx_sci, sizeof(rx_sci));
+        return ret;
+    }
+
+    TEST_TRUE((data->new_secure[MACSEC_TEST_REKEY_SECTAG_OFFSET + MACSEC_TEST_REKEY_SECTAG_TCI_AN] &
+               MACSEC_TEST_REKEY_AN_MASK) == 1u);
+
+    TEST_EQ_U32(
+        macsec_rd_be32(
+            &data->new_secure[MACSEC_TEST_REKEY_SECTAG_OFFSET + MACSEC_TEST_REKEY_SECTAG_PN]),
+        1u);
+
+    /*
+     * The frame protected by the replacement SAK must authenticate and
+     * decrypt successfully.
+     */
+    decrypted_len = 0u;
+
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->new_secure, new_secure_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
+    if (ret != MACSEC_ERR_OK)
+    {
+        macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+        macsec_zeroize(&rx_sci, sizeof(rx_sci));
+        return ret;
+    }
+
+    TEST_EQ_U32(decrypted_len, plain_len);
+    TEST_MEM_EQ(data->new_plain, data->decrypted, plain_len);
+
+    /*
+     * The old RX SAK occupying the reused AN has been replaced. A delayed
+     * frame protected by the old key must therefore fail authentication.
+     */
+    decrypted_len = 0u;
+
+    ret = macsec_frame_decrypt(&data->rx_ctx, data->old_secure, old_secure_len, data->decrypted,
+                               &decrypted_len, sizeof(data->decrypted));
+
+    macsec_test_rekey_clear_context_pair(&data->tx_ctx, &data->rx_ctx);
+    macsec_zeroize(&rx_sci, sizeof(rx_sci));
+
+    TEST_TRUE(ret == MACSEC_ERR_AUTH);
+    TEST_EQ_U32(decrypted_len, 0u);
+
+    return 0;
+}
+
+int macsec_test_rekey(macsec_test_rekey_data_t *data, int verbose)
+{
     if (verbose)
     {
         MACSEC_PRINT(("MACsec rekey tests\n"));
@@ -492,26 +694,16 @@ int macsec_test_rekey(macsec_test_rekey_data_t *data, int verbose)
 
     macsec_assert(data != NULL);
 
-    ret = macsec_test_rekey_an_rotation_decrypts_all(&data->rekey_an_rotation_decrypts_all_data,
-                                                     verbose);
-    if (ret != 0)
-    {
-        return ret;
-    }
+    TEST_OK(macsec_test_rekey_an_rotation_decrypts_all(&data->rekey_an_rotation_decrypts_all_data,
+                                                       verbose));
 
-    ret = macsec_test_rekey_old_rx_sak_still_accepted(&data->rekey_old_rx_sak_still_accepted_data,
-                                                      verbose);
-    if (ret != 0)
-    {
-        return ret;
-    }
+    TEST_OK(macsec_test_rekey_old_rx_sak_still_accepted(&data->rekey_old_rx_sak_still_accepted_data,
+                                                        verbose));
 
-    ret = macsec_test_rekey_wrong_key_same_an_fails(&data->rekey_wrong_key_same_an_fails_data,
-                                                    verbose);
-    if (ret != 0)
-    {
-        return ret;
-    }
+    TEST_OK(macsec_test_rekey_wrong_key_same_an_fails(&data->rekey_wrong_key_same_an_fails_data,
+                                                      verbose));
+
+    TEST_OK(macsec_test_rekey_same_an_replacement(&data->rekey_same_an_replacement_data, verbose));
 
     if (verbose)
     {

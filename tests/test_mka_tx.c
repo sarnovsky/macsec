@@ -29,8 +29,11 @@
 #define MACSEC_TEST_MKA_TX_INTERVAL_MS 2000u
 #define MACSEC_TEST_MKA_TX_TIME_MS 1000u
 
-#define MACSEC_TEST_MKA_TX_KEY_NUMBER 1u
-#define MACSEC_TEST_MKA_TX_AN 0u
+#define MACSEC_TEST_MKA_TX_OLD_KEY_NUMBER 1u
+#define MACSEC_TEST_MKA_TX_OLD_AN 0u
+
+#define MACSEC_TEST_MKA_TX_KEY_NUMBER 2u
+#define MACSEC_TEST_MKA_TX_AN 1u
 
 #define MACSEC_TEST_MKA_TX_LOCAL_PRIORITY 10u
 #define MACSEC_TEST_MKA_TX_PEER_PRIORITY 20u
@@ -60,9 +63,13 @@ static const uint8_t s_macsec_test_mka_tx_mac[6] = {0x02u, 0x00u, 0x00u, 0x00u, 
 
 static const uint8_t s_macsec_test_mka_tx_peer_mac[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x02u};
 
-static const uint8_t s_macsec_test_mka_tx_sak[16] = {0x00u, 0x01u, 0x02u, 0x03u, 0x04u, 0x05u,
-                                                     0x06u, 0x07u, 0x08u, 0x09u, 0x0Au, 0x0Bu,
-                                                     0x0Cu, 0x0Du, 0x0Eu, 0x0Fu};
+static const uint8_t s_macsec_test_mka_tx_old_sak[16] = {0x00u, 0x01u, 0x02u, 0x03u, 0x04u, 0x05u,
+                                                         0x06u, 0x07u, 0x08u, 0x09u, 0x0Au, 0x0Bu,
+                                                         0x0Cu, 0x0Du, 0x0Eu, 0x0Fu};
+
+static const uint8_t s_macsec_test_mka_tx_sak[16] = {0x10u, 0x11u, 0x12u, 0x13u, 0x14u, 0x15u,
+                                                     0x16u, 0x17u, 0x18u, 0x19u, 0x1Au, 0x1Bu,
+                                                     0x1Cu, 0x1Du, 0x1Eu, 0x1Fu};
 
 /******************************************************************************
  * Test helpers
@@ -182,10 +189,30 @@ static int macsec_test_mka_tx_prepare_redistribution(macsec_test_mka_tx_case_dat
     data->mka.peer.key_server_priority = MACSEC_TEST_MKA_TX_PEER_PRIORITY;
 
     /*
-     * Prepare the already installed locally generated SAK which existed before
-     * the peer changed its MI. Local data-plane installation remains valid,
-     * but confirmation belonging to the current peer identity is cleared.
+     * Model the state after a peer identity change:
+     *
+     * - the previously active SAK is retained in old_sak for receive
+     *   compatibility;
+     * - the replacement SAK is stored in latest_sak and waits for
+     *   distribution;
+     * - only latest_sak may be placed in a Distributed SAK Parameter Set.
      */
+    memset(&data->mka.old_sak, 0, sizeof(data->mka.old_sak));
+
+    memcpy(data->mka.old_sak.sak, s_macsec_test_mka_tx_old_sak,
+           sizeof(s_macsec_test_mka_tx_old_sak));
+
+    data->mka.old_sak.sak_len = sizeof(s_macsec_test_mka_tx_old_sak);
+    data->mka.old_sak.an = MACSEC_TEST_MKA_TX_OLD_AN;
+    data->mka.old_sak.key_number = MACSEC_TEST_MKA_TX_OLD_KEY_NUMBER;
+    data->mka.old_sak.lowest_pn = 1u;
+    data->mka.old_sak.origin = MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER;
+    data->mka.old_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_RETIRING;
+    data->mka.old_sak.rx_installed = MACSEC_TRUE;
+    data->mka.old_sak.tx_installed = MACSEC_FALSE;
+    data->mka.old_sak.peer_rx_confirmed = MACSEC_TRUE;
+    data->mka.old_sak.peer_tx_confirmed = MACSEC_TRUE;
+
     memset(&data->mka.latest_sak, 0, sizeof(data->mka.latest_sak));
 
     memcpy(data->mka.latest_sak.sak, s_macsec_test_mka_tx_sak, sizeof(s_macsec_test_mka_tx_sak));
@@ -193,18 +220,16 @@ static int macsec_test_mka_tx_prepare_redistribution(macsec_test_mka_tx_case_dat
     data->mka.latest_sak.sak_len = sizeof(s_macsec_test_mka_tx_sak);
     data->mka.latest_sak.an = MACSEC_TEST_MKA_TX_AN;
     data->mka.latest_sak.key_number = MACSEC_TEST_MKA_TX_KEY_NUMBER;
-    data->mka.latest_sak.lowest_pn = 1u;
     data->mka.latest_sak.origin = MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER;
-    data->mka.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_ACTIVE;
-    data->mka.latest_sak.rx_installed = MACSEC_TRUE;
-    data->mka.latest_sak.tx_installed = MACSEC_TRUE;
+    data->mka.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING;
+    data->mka.latest_sak.rx_installed = MACSEC_FALSE;
+    data->mka.latest_sak.tx_installed = MACSEC_FALSE;
     data->mka.latest_sak.peer_rx_confirmed = MACSEC_FALSE;
     data->mka.latest_sak.peer_tx_confirmed = MACSEC_FALSE;
-
-    data->mka.state = MACSEC_MKA_STATE_OPERATIONAL;
+    data->mka.latest_sak.lowest_pn = 0u;
 
     /*
-     * A peer identity change normally schedules an immediate redistribution.
+     * A peer identity change schedules immediate distribution of latest_sak.
      */
     data->mka.tx_reasons = MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK;
 
@@ -423,15 +448,24 @@ static int macsec_test_mka_tx_peer_restart_redistributes_sak(macsec_test_mka_tx_
                                                      MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
               MACSEC_TRUE);
 
-    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING);
     TEST_TRUE(data->mka.latest_sak.peer_rx_confirmed == MACSEC_FALSE);
     TEST_TRUE(data->mka.latest_sak.peer_tx_confirmed == MACSEC_FALSE);
 
+    TEST_TRUE(data->tx_meta.contains_distributed_sak == MACSEC_TRUE);
+    TEST_EQ_U32(data->tx_meta.distributed_key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
+    TEST_EQ_U32(data->tx_meta.distributed_an, MACSEC_TEST_MKA_TX_AN);
+
     /*
-     * Building the retransmission must not allocate a new key identity.
+     * Building the frame must not allocate another key identity or modify
+     * the retiring SAK.
      */
     TEST_EQ_U32(data->mka.latest_sak.key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
     TEST_EQ_U32(data->mka.latest_sak.an, MACSEC_TEST_MKA_TX_AN);
+
+    TEST_EQ_U32(data->mka.old_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_RETIRING);
+    TEST_EQ_U32(data->mka.old_sak.key_number, MACSEC_TEST_MKA_TX_OLD_KEY_NUMBER);
+    TEST_EQ_U32(data->mka.old_sak.an, MACSEC_TEST_MKA_TX_OLD_AN);
 
     macsec_mka_clear(&data->mka);
 
@@ -470,7 +504,7 @@ macsec_test_mka_tx_redistribution_repeats_until_confirmation(macsec_test_mka_tx_
      */
     TEST_TRUE(data->mka.latest_sak.peer_rx_confirmed == MACSEC_FALSE);
     TEST_TRUE(data->mka.latest_sak.peer_tx_confirmed == MACSEC_FALSE);
-    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_DISTRIBUTED);
 
     TEST_OK(
         macsec_mka_tick(&data->mka, MACSEC_TEST_MKA_TX_TIME_MS + MACSEC_TEST_MKA_TX_INTERVAL_MS));
@@ -555,12 +589,31 @@ static int macsec_test_mka_tx_retiring_sak_is_not_advertised(macsec_test_mka_tx_
 
     if (verbose)
     {
-        MACSEC_PRINT(("  MKA TX retiring SAK is not advertised test\n"));
+        MACSEC_PRINT(("  MKA TX retiring old SAK is not advertised test\n"));
     }
 
     TEST_OK(macsec_test_mka_tx_prepare_redistribution(data));
 
-    data->mka.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_RETIRING;
+    /*
+     * Keep a valid replacement latest SAK while the previous key remains in
+     * old_sak/RETIRING. Model the replacement as a remotely distributed key,
+     * so a periodic MKPDU must not contain a Distributed SAK parameter. This
+     * preserves the normal latest_sak/old_sak invariant and specifically
+     * verifies that old_sak is never advertised as a new key.
+     */
+    /*
+     * The replacement key was supplied by the new Key Server. The local
+     * participant is therefore no longer the Key Server and must not attempt
+     * to emit a Distributed SAK parameter for latest_sak.
+     */
+    data->mka.local_key_server = MACSEC_FALSE;
+
+    data->mka.latest_sak.origin = MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER;
+    data->mka.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_ACTIVE;
+    data->mka.latest_sak.rx_installed = MACSEC_TRUE;
+    data->mka.latest_sak.tx_installed = MACSEC_TRUE;
+    data->mka.latest_sak.peer_rx_confirmed = MACSEC_FALSE;
+    data->mka.latest_sak.peer_tx_confirmed = MACSEC_FALSE;
 
     data->mka.tx_reasons = MACSEC_MKA_TX_REASON_PERIODIC;
 
@@ -572,13 +625,15 @@ static int macsec_test_mka_tx_retiring_sak_is_not_advertised(macsec_test_mka_tx_
 
     TEST_TRUE(data->tx_meta.contains_distributed_sak == MACSEC_FALSE);
 
-    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_RETIRING);
-
-    TEST_EQ_U32(data->mka.latest_sak.origin, MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER);
-
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
+    TEST_EQ_U32(data->mka.latest_sak.origin, MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER);
     TEST_EQ_U32(data->mka.latest_sak.key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
-
     TEST_EQ_U32(data->mka.latest_sak.an, MACSEC_TEST_MKA_TX_AN);
+
+    TEST_EQ_U32(data->mka.old_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_RETIRING);
+    TEST_EQ_U32(data->mka.old_sak.origin, MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER);
+    TEST_EQ_U32(data->mka.old_sak.key_number, MACSEC_TEST_MKA_TX_OLD_KEY_NUMBER);
+    TEST_EQ_U32(data->mka.old_sak.an, MACSEC_TEST_MKA_TX_OLD_AN);
 
     macsec_mka_clear(&data->mka);
 
@@ -618,8 +673,7 @@ int macsec_test_mka_tx(macsec_test_mka_tx_data_t *data, int verbose)
     TEST_OK(macsec_test_mka_tx_redistribution_stops_after_confirmation(
         &data->redistribution_stop_data, verbose));
 
-    TEST_OK(macsec_test_mka_tx_retiring_sak_is_not_advertised(&data->redistribution_stop_data,
-                                                              verbose));
+    TEST_OK(macsec_test_mka_tx_retiring_sak_is_not_advertised(&data->retiring_sak_data, verbose));
 
     if (verbose)
     {
