@@ -126,6 +126,89 @@ static int macsec_install_tx_sak(macsec_ctx_t *ctx, const uint8_t *sak_key, size
     return MACSEC_ERR_OK;
 }
 
+static int macsec_remove_mka_old_sak(macsec_ctx_t *ctx)
+{
+    macsec_mka_sak_t *sak;
+    int ret;
+
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+
+    sak = &ctx->mka.old_sak;
+
+    if (sak->lifecycle_state == MACSEC_MKA_SAK_STATE_NONE)
+    {
+        return MACSEC_ERR_OK;
+    }
+
+    if (sak->lifecycle_state != MACSEC_MKA_SAK_STATE_RETIRING)
+    {
+        MACSEC_ERROR(("MACsec old SAK retirement requested in invalid state=%u\n",
+                      (unsigned) sak->lifecycle_state));
+
+        return MACSEC_ERR_STATE;
+    }
+
+    MACSEC_MEDIUM(("MACsec remove old MKA SAK: key_number=%lu an=%u rx=%u tx=%u\n",
+                   (unsigned long) sak->key_number, sak->an, sak->rx_installed ? 1u : 0u,
+                   sak->tx_installed ? 1u : 0u));
+
+    /*
+     * old_sak normally remains installed only for RX. Remove each direction
+     * still reported as installed by MKA before confirming retirement.
+     */
+    if (sak->rx_installed)
+    {
+        ret = macsec_frame_crypto_remove_rx_sak(&ctx->frame_crypto, sak->an);
+        if (ret != MACSEC_ERR_OK)
+        {
+            MACSEC_ERROR(("MACsec old RX SAK removal failed: ret=%d key_number=%lu an=%u\n", ret,
+                          (unsigned long) sak->key_number, sak->an));
+
+            return ret;
+        }
+    }
+
+    if (sak->tx_installed)
+    {
+        /*
+         * Protect the currently active TX SA from accidental removal. The TX
+         * direction is removed only when frame_crypto still contains this
+         * exact retiring key and AN.
+         */
+        if (macsec_sak_equal(&ctx->frame_crypto.tx_sak, sak->sak, sak->sak_len) &&
+            ((ctx->frame_crypto.tx_sak.an & 0x03u) == (sak->an & 0x03u)))
+        {
+            ret = macsec_frame_crypto_remove_tx_sak(&ctx->frame_crypto);
+            if (ret != MACSEC_ERR_OK)
+            {
+                MACSEC_ERROR(("MACsec old TX SAK removal failed: ret=%d key_number=%lu an=%u\n",
+                              ret, (unsigned long) sak->key_number, sak->an));
+
+                return ret;
+            }
+        }
+        else
+        {
+            MACSEC_MEDIUM(("MACsec old TX SAK already replaced: key_number=%lu an=%u\n",
+                           (unsigned long) sak->key_number, sak->an));
+        }
+    }
+
+    ret = macsec_mka_notify_sak_retired(&ctx->mka, sak->key_number, sak->an);
+    if (ret != MACSEC_ERR_OK)
+    {
+        MACSEC_ERROR(("MACsec old SAK retirement confirmation failed: ret=%d "
+                      "key_number=%lu an=%u\n",
+                      ret, (unsigned long) sak->key_number, sak->an));
+
+        return ret;
+    }
+
+    MACSEC_MEDIUM(("MACsec old MKA SAK retired\n"));
+
+    return MACSEC_ERR_OK;
+}
+
 static int macsec_install_static_sak(macsec_ctx_t *ctx)
 {
     int ret;
@@ -253,6 +336,7 @@ cleanup:
 static int macsec_process_mka_events(macsec_ctx_t *ctx)
 {
     macsec_mka_event_flags_t events;
+    int ret;
 
     macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
 
@@ -277,11 +361,8 @@ static int macsec_process_mka_events(macsec_ctx_t *ctx)
     if ((events & MACSEC_MKA_EVENT_PEER_LOST) != 0u)
     {
         /*
-         * For the current one-SAK design, loss of the peer means the
-         * connection is no longer considered operational.
-         *
-         * Retaining or removing an old RX/TX SAK can be refined when the
-         * rekey and peer timeout policy is implemented.
+         * Loss of the peer means that the connection is no longer
+         * considered operational.
          */
         ctx->state = MACSEC_STATE_WAIT_MKA;
 
@@ -295,14 +376,22 @@ static int macsec_process_mka_events(macsec_ctx_t *ctx)
         MACSEC_MEDIUM(("MACsec state: SECURED after active MKA SAK\n"));
     }
 
+    if ((events & MACSEC_MKA_EVENT_SAK_RETIRE_REQUIRED) != 0u)
+    {
+        ret = macsec_remove_mka_old_sak(ctx);
+        if (ret != MACSEC_ERR_OK)
+        {
+            return ret;
+        }
+    }
+
     if ((events & MACSEC_MKA_EVENT_SAK_RETIRED) != 0u)
     {
-        if (ctx->mka.state != MACSEC_MKA_STATE_OPERATIONAL)
-        {
-            ctx->state = MACSEC_STATE_WAIT_MKA;
-
-            MACSEC_MEDIUM(("MACsec state: WAIT_MKA after SAK retirement\n"));
-        }
+        /*
+         * Only old_sak was removed. latest_sak remains installed and active,
+         * so the external MACsec state remains SECURED.
+         */
+        MACSEC_MEDIUM(("MACsec old MKA SAK retired; active latest SAK retained\n"));
     }
 
     return MACSEC_ERR_OK;
@@ -313,6 +402,17 @@ static int macsec_service_mka(macsec_ctx_t *ctx)
     int ret;
 
     macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+
+    /*
+     * Process protocol requests first, then install a newly available SAK.
+     * Installation and retirement notifications may raise additional events,
+     * therefore drain the event set once more before returning.
+     */
+    ret = macsec_process_mka_events(ctx);
+    if (ret != MACSEC_ERR_OK)
+    {
+        return ret;
+    }
 
     ret = macsec_process_mka_sak_install(ctx);
     if (ret != MACSEC_ERR_OK)

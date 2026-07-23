@@ -32,6 +32,10 @@ static void macsec_mka_raise_events(macsec_mka_ctx_t *ctx, macsec_mka_event_flag
 
 static void macsec_mka_schedule_tx(macsec_mka_ctx_t *ctx, macsec_mka_tx_reason_flags_t reasons);
 
+static int macsec_mka_key_server_ensure_sak(macsec_mka_ctx_t *ctx);
+
+static int macsec_mka_start_rekey(macsec_mka_ctx_t *ctx, const char *reason);
+
 #if (MACSEC_DEBUG_LEVEL >= MACSEC_DEBUG_LEVEL_ERROR)
 
 static const char *macsec_mka_state_name(macsec_mka_state_t state)
@@ -249,16 +253,17 @@ static macsec_bool_t macsec_mka_sak_transition_allowed(macsec_mka_sak_state_t ol
     }
 }
 
-static void macsec_mka_set_sak_state(macsec_mka_ctx_t *ctx, macsec_mka_sak_state_t new_state,
-                                     const char *reason)
+static void macsec_mka_set_sak_state(macsec_mka_ctx_t *ctx, macsec_mka_sak_t *sak,
+                                     macsec_mka_sak_state_t new_state, const char *reason)
 {
     macsec_mka_sak_state_t old_state;
 
     (void) reason;
 
     macsec_assert(ctx != NULL);
+    macsec_assert(sak != NULL);
 
-    old_state = ctx->latest_sak.lifecycle_state;
+    old_state = sak->lifecycle_state;
 
     if (old_state == new_state)
     {
@@ -270,21 +275,78 @@ static void macsec_mka_set_sak_state(macsec_mka_ctx_t *ctx, macsec_mka_sak_state
         MACSEC_ERROR(("MKA invalid SAK transition %s(%u) -> %s(%u): key=%lu an=%u reason=%s\n",
                       macsec_mka_sak_state_name(old_state), (unsigned) old_state,
                       macsec_mka_sak_state_name(new_state), (unsigned) new_state,
-                      (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
+                      (unsigned long) sak->key_number, sak->an,
                       (reason != NULL) ? reason : "no reason"));
 
         macsec_mka_set_state(ctx, MACSEC_MKA_STATE_ERROR, "invalid SAK state transition");
-
         return;
     }
 
     MACSEC_MEDIUM(("MKA SAK state %s(%u) -> %s(%u): key=%lu an=%u reason=%s\n",
                    macsec_mka_sak_state_name(old_state), (unsigned) old_state,
                    macsec_mka_sak_state_name(new_state), (unsigned) new_state,
-                   (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
+                   (unsigned long) sak->key_number, sak->an,
                    (reason != NULL) ? reason : "no reason"));
 
-    ctx->latest_sak.lifecycle_state = new_state;
+    sak->lifecycle_state = new_state;
+}
+
+static void macsec_mka_sak_clear(macsec_mka_sak_t *sak)
+{
+    macsec_assert(sak != NULL);
+
+    macsec_zeroize(sak, sizeof(*sak));
+    sak->origin = MACSEC_MKA_SAK_ORIGIN_NONE;
+    sak->lifecycle_state = MACSEC_MKA_SAK_STATE_NONE;
+}
+
+static int macsec_mka_move_latest_to_old(macsec_mka_ctx_t *ctx, const char *reason)
+{
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+
+    if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_NONE)
+    {
+        return MACSEC_ERR_NOT_READY;
+    }
+
+    if (ctx->old_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE)
+    {
+        MACSEC_ERROR(("MKA cannot start overlapping rekey: old key=%lu an=%u state=%u\n",
+                      (unsigned long) ctx->old_sak.key_number, ctx->old_sak.an,
+                      (unsigned) ctx->old_sak.lifecycle_state));
+        return MACSEC_ERR_BUSY;
+    }
+
+    /*
+     * Only a SAK that reached the data-plane needs an old-key overlap.
+     * A candidate that was never installed can be securely superseded
+     * without occupying old_sak.
+     */
+    if (!ctx->latest_sak.rx_installed && !ctx->latest_sak.tx_installed)
+    {
+        MACSEC_MEDIUM(("MKA uninstalled latest SAK superseded: key_number=%lu an=%u\n",
+                       (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an));
+
+        macsec_mka_sak_clear(&ctx->latest_sak);
+        return MACSEC_ERR_OK;
+    }
+
+    ctx->old_sak = ctx->latest_sak;
+    ctx->old_sak.peer_rx_confirmed = MACSEC_FALSE;
+    ctx->old_sak.peer_tx_confirmed = MACSEC_FALSE;
+
+    macsec_mka_set_sak_state(ctx, &ctx->old_sak, MACSEC_MKA_SAK_STATE_RETIRING, reason);
+    if (ctx->old_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_RETIRING)
+    {
+        return MACSEC_ERR_STATE;
+    }
+
+    MACSEC_MEDIUM(("MKA latest SAK moved to old slot: key_number=%lu an=%u rx=%u tx=%u\n",
+                   (unsigned long) ctx->old_sak.key_number, ctx->old_sak.an,
+                   ctx->old_sak.rx_installed ? 1u : 0u, ctx->old_sak.tx_installed ? 1u : 0u));
+
+    macsec_mka_sak_clear(&ctx->latest_sak);
+    return MACSEC_ERR_OK;
 }
 
 static void macsec_mka_raise_events(macsec_mka_ctx_t *ctx, macsec_mka_event_flags_t events)
@@ -485,8 +547,8 @@ int macsec_mka_init(macsec_mka_ctx_t *ctx, const uint8_t *cak, size_t cak_len, c
      * changed later.
      */
     ctx->state = MACSEC_MKA_STATE_INIT;
-    ctx->latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_NONE;
-    ctx->latest_sak.origin = MACSEC_MKA_SAK_ORIGIN_NONE;
+    macsec_mka_sak_clear(&ctx->latest_sak);
+    macsec_mka_sak_clear(&ctx->old_sak);
 
     memcpy(ctx->local_mac, local_mac, MACSEC_MKA_SRC_LEN);
 
@@ -711,7 +773,7 @@ int macsec_mka_take_sak_for_install(macsec_mka_ctx_t *ctx, macsec_mka_sak_t *sak
      */
     if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_INSTALL_PENDING)
     {
-        macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_INSTALL_PENDING,
+        macsec_mka_set_sak_state(ctx, &ctx->latest_sak, MACSEC_MKA_SAK_STATE_INSTALL_PENDING,
                                  "SAK handed to MACsec data-plane");
     }
 
@@ -769,6 +831,16 @@ int macsec_mka_notify_sak_installed(macsec_mka_ctx_t *ctx, uint32_t key_number, 
     if ((installed_directions & MACSEC_MKA_INSTALL_TX) != 0u)
     {
         ctx->latest_sak.tx_installed = MACSEC_TRUE;
+
+        /*
+         * frame_crypto has a single active TX SA. Installing the latest TX
+         * SAK therefore means that the old SAK is no longer used for TX,
+         * although it may remain installed for RX during the overlap.
+         */
+        if (ctx->old_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_RETIRING)
+        {
+            ctx->old_sak.tx_installed = MACSEC_FALSE;
+        }
     }
 
     ctx->latest_sak.lowest_pn = normalized_lowest_pn;
@@ -784,7 +856,8 @@ int macsec_mka_notify_sak_installed(macsec_mka_ctx_t *ctx, uint32_t key_number, 
         return MACSEC_ERR_OK;
     }
 
-    macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_ACTIVE, "SAK installed for RX and TX");
+    macsec_mka_set_sak_state(ctx, &ctx->latest_sak, MACSEC_MKA_SAK_STATE_ACTIVE,
+                             "SAK installed for RX and TX");
 
     if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_ACTIVE)
     {
@@ -799,7 +872,7 @@ int macsec_mka_notify_sak_installed(macsec_mka_ctx_t *ctx, uint32_t key_number, 
      */
     if (ctx->latest_sak.peer_rx_confirmed && ctx->latest_sak.peer_tx_confirmed)
     {
-        macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_CONFIRMED,
+        macsec_mka_set_sak_state(ctx, &ctx->latest_sak, MACSEC_MKA_SAK_STATE_CONFIRMED,
                                  "locally installed SAK was already confirmed by peer");
 
         if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_CONFIRMED)
@@ -808,6 +881,11 @@ int macsec_mka_notify_sak_installed(macsec_mka_ctx_t *ctx, uint32_t key_number, 
         }
 
         macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_SAK_CONFIRMED);
+
+        if (ctx->old_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_RETIRING)
+        {
+            macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_SAK_RETIRE_REQUIRED);
+        }
     }
 
     macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_SAK_USE);
@@ -830,72 +908,43 @@ int macsec_mka_notify_sak_retired(macsec_mka_ctx_t *ctx, uint32_t key_number, ui
 {
     macsec_assert(ctx != NULL);
 
-    if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_NONE)
+    if (ctx->old_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_NONE)
     {
         return MACSEC_ERR_NOT_READY;
     }
 
-    if (ctx->latest_sak.key_number != key_number)
+    if (ctx->old_sak.key_number != key_number)
     {
-        MACSEC_ERROR(("MKA SAK retirement rejected: key_number=%lu expected=%lu\n",
-                      (unsigned long) key_number, (unsigned long) ctx->latest_sak.key_number));
-
+        MACSEC_ERROR(("MKA old SAK retirement rejected: key_number=%lu expected=%lu\n",
+                      (unsigned long) key_number, (unsigned long) ctx->old_sak.key_number));
         return MACSEC_ERR_PARAM;
     }
 
-    if ((ctx->latest_sak.an & 0x03u) != (an & 0x03u))
+    if ((ctx->old_sak.an & 0x03u) != (an & 0x03u))
     {
-        MACSEC_ERROR(("MKA SAK retirement rejected: AN=%u expected=%u\n", an & 0x03u,
-                      ctx->latest_sak.an & 0x03u));
-
+        MACSEC_ERROR(("MKA old SAK retirement rejected: AN=%u expected=%u\n", an & 0x03u,
+                      ctx->old_sak.an & 0x03u));
         return MACSEC_ERR_PARAM;
     }
 
-    if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_RETIRING)
+    if (ctx->old_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_RETIRING)
     {
         return MACSEC_ERR_STATE;
     }
 
-    MACSEC_MEDIUM(("MKA SAK retired: key_number=%lu an=%u\n",
-                   (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an));
+    MACSEC_MEDIUM(("MKA old SAK retired: key_number=%lu an=%u\n",
+                   (unsigned long) ctx->old_sak.key_number, ctx->old_sak.an));
 
-    macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_NONE,
-                             "retiring SAK removed from data-plane");
+    macsec_mka_set_sak_state(ctx, &ctx->old_sak, MACSEC_MKA_SAK_STATE_NONE,
+                             "retiring old SAK removed from data-plane");
 
-    if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE)
+    if (ctx->old_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE)
     {
         return MACSEC_ERR_STATE;
     }
 
-    /*
-     * Remove all key material and SAK metadata after completing the
-     * lifecycle transition.
-     */
-    macsec_zeroize(&ctx->latest_sak, sizeof(ctx->latest_sak));
-
-    ctx->latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_NONE;
-
-    ctx->latest_sak.origin = MACSEC_MKA_SAK_ORIGIN_NONE;
-
+    macsec_mka_sak_clear(&ctx->old_sak);
     macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_SAK_RETIRED);
-
-    /*
-     * With the current single-SAK representation, retirement means that
-     * no active data-plane key remains. During the later two-slot rekey
-     * implementation, retiring the old slot will not necessarily change
-     * the participant state.
-     */
-    if (ctx->state == MACSEC_MKA_STATE_OPERATIONAL)
-    {
-        if (ctx->peer.valid && ctx->peer.live)
-        {
-            macsec_mka_set_state(ctx, MACSEC_MKA_STATE_PEER_LIVE, "active SAK retired");
-        }
-        else
-        {
-            macsec_mka_set_state(ctx, MACSEC_MKA_STATE_WAIT_PEER, "SAK retired without live peer");
-        }
-    }
 
     return MACSEC_ERR_OK;
 }
@@ -1112,21 +1161,17 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
 
             key_number = macsec_rd_be32(&frame[body_pos]);
 
-            /*
-             * In the current stack, AN rotates together with Key Number:
-             *
-             *   Key Number 1 -> AN 0
-             *   Key Number 2 -> AN 1
-             *   ...
-             */
             if (key_number == 0u)
             {
-                an = 0u;
+                MACSEC_ERROR(("MKA Distributed SAK invalid key number 0\n"));
+                return MACSEC_ERR_BUFFER;
             }
-            else
-            {
-                an = (uint8_t) ((key_number - 1u) & 0x03u);
-            }
+
+            /*
+             * Bits 7..6 of the second Parameter Set header byte contain
+             * the Distributed Association Number.
+             */
+            an = (uint8_t) ((frame[pos + 1u] >> 6u) & 0x03u);
 
             wrapped_sak = &frame[body_pos + 4u];
             wrapped_sak_len = body_len - 4u;
@@ -1191,7 +1236,17 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
                 return MACSEC_ERR_NOT_READY;
             }
 
-            memset(&ctx->latest_sak, 0, sizeof(ctx->latest_sak));
+            if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE)
+            {
+                ret = macsec_mka_move_latest_to_old(ctx, "new Distributed SAK received");
+                if (ret != MACSEC_ERR_OK)
+                {
+                    macsec_zeroize(unwrapped_sak, sizeof(unwrapped_sak));
+                    return ret;
+                }
+            }
+
+            macsec_mka_sak_clear(&ctx->latest_sak);
 
             memcpy(ctx->latest_sak.sak, unwrapped_sak, sak_len);
 
@@ -1204,7 +1259,7 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
             ctx->latest_sak.tx_installed = MACSEC_FALSE;
             ctx->latest_sak.peer_rx_confirmed = MACSEC_FALSE;
             ctx->latest_sak.peer_tx_confirmed = MACSEC_FALSE;
-            macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_CANDIDATE,
+            macsec_mka_set_sak_state(ctx, &ctx->latest_sak, MACSEC_MKA_SAK_STATE_CANDIDATE,
                                      "remote Distributed SAK unwrapped");
 
             macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_SAK_AVAILABLE);
@@ -1325,23 +1380,40 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
                          (unsigned long) key_number, an, latest_tx ? 1u : 0u, latest_rx ? 1u : 0u));
 
             /*
-             * Peer confirmation is relevant here only when this participant
-             * is the Key Server for the referenced locally generated SAK.
+             * The peer can confirm latest_sak regardless of which participant
+             * is Key Server. The expected Key Server MI follows the SAK
+             * origin and the current election result.
              */
-            if (!ctx->local_key_server ||
-                ((ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_DISTRIBUTED) &&
+            if (((ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_DISTRIBUTED) &&
                  (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_INSTALL_PENDING) &&
                  (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_ACTIVE) &&
                  (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_CONFIRMED)) ||
-                (ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER))
+                (ctx->latest_sak.origin == MACSEC_MKA_SAK_ORIGIN_NONE))
             {
                 return MACSEC_ERR_NOT_READY;
             }
 
-            if ((macsec_compare(key_server_mi, ctx->local_mi, MACSEC_MKA_MI_LEN) != 0) ||
-                (key_number != ctx->latest_sak.key_number) || (an != (ctx->latest_sak.an & 0x03u)))
+            if (ctx->local_key_server)
             {
-                MACSEC_INFO(("MKA RX SAK Use does not reference current local SAK\n"));
+                if ((ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER) ||
+                    (macsec_compare(key_server_mi, ctx->local_mi, MACSEC_MKA_MI_LEN) != 0))
+                {
+                    return MACSEC_ERR_NOT_READY;
+                }
+            }
+            else
+            {
+                if ((ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER) ||
+                    !ctx->peer.valid ||
+                    (macsec_compare(key_server_mi, ctx->peer.mi, MACSEC_MKA_MI_LEN) != 0))
+                {
+                    return MACSEC_ERR_NOT_READY;
+                }
+            }
+
+            if ((key_number != ctx->latest_sak.key_number) || (an != (ctx->latest_sak.an & 0x03u)))
+            {
+                MACSEC_INFO(("MKA RX SAK Use does not reference latest SAK\n"));
                 return MACSEC_ERR_NOT_READY;
             }
 
@@ -1355,7 +1427,7 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
             {
                 if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_ACTIVE)
                 {
-                    macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_CONFIRMED,
+                    macsec_mka_set_sak_state(ctx, &ctx->latest_sak, MACSEC_MKA_SAK_STATE_CONFIRMED,
                                              "current peer confirmed active SAK through SAK Use");
 
                     if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_CONFIRMED)
@@ -1364,11 +1436,16 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
                     }
 
                     macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_SAK_CONFIRMED);
+
+                    if (ctx->old_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_RETIRING)
+                    {
+                        macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_SAK_RETIRE_REQUIRED);
+                    }
                 }
             }
             else if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_CONFIRMED)
             {
-                macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_ACTIVE,
+                macsec_mka_set_sak_state(ctx, &ctx->latest_sak, MACSEC_MKA_SAK_STATE_ACTIVE,
                                          "current peer no longer confirms active SAK");
             }
 
@@ -1389,6 +1466,64 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
     }
 
     return MACSEC_ERR_NOT_READY;
+}
+
+static int macsec_mka_start_rekey(macsec_mka_ctx_t *ctx, const char *reason)
+{
+    int ret;
+
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+    macsec_check(ctx->local_key_server, MACSEC_ERR_STATE);
+
+    if (ctx->old_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE)
+    {
+        /*
+         * The bounded two-slot implementation permits only one rekey
+         * overlap at a time.
+         */
+        return MACSEC_ERR_BUSY;
+    }
+
+    if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE)
+    {
+        ret = macsec_mka_move_latest_to_old(ctx, reason);
+        if (ret != MACSEC_ERR_OK)
+        {
+            return ret;
+        }
+    }
+
+    /*
+     * Peer identity can change before mutual peer-list recognition is
+     * complete. The old key is separated immediately, but generation and
+     * distribution of the replacement waits until the new peer is live.
+     */
+    if (ctx->peer.valid && ctx->peer.live)
+    {
+        ret = macsec_mka_key_server_ensure_sak(ctx);
+        if (ret != MACSEC_ERR_OK)
+        {
+            return ret;
+        }
+    }
+
+    macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_REKEY_REQUIRED);
+    macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_REKEY | MACSEC_MKA_TX_REASON_PEER_CHANGE);
+
+    if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE)
+    {
+        macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_TX_DISTRIBUTE_SAK);
+        macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK);
+    }
+
+    MACSEC_MEDIUM(
+        ("MKA rekey started: reason=%s latest_state=%u new_key=%lu new_an=%u "
+         "old_key=%lu old_an=%u peer_live=%u\n",
+         (reason != NULL) ? reason : "unspecified", (unsigned) ctx->latest_sak.lifecycle_state,
+         (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
+         (unsigned long) ctx->old_sak.key_number, ctx->old_sak.an, ctx->peer.live ? 1u : 0u));
+
+    return MACSEC_ERR_OK;
 }
 
 int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_len, uint32_t now_ms)
@@ -1601,27 +1736,19 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
                    ctx->local_key_server ? 1u : 0u, key_server_changed ? 1u : 0u));
 
     /*
-     * SAK confirmation belongs to the authenticated peer identity. A peer
-     * that restarts and selects a new MI must independently confirm the
-     * current SAK. The SAK remains installed locally, so CONFIRMED falls
-     * back to ACTIVE rather than restarting the SAK lifecycle.
+     * A replacement participant has a new MI and must never be provisioned
+     * with the previous current SAK as though it were a new key. If the
+     * local participant remains Key Server, begin a real rekey: move the
+     * current SAK to the old slot and generate a fresh latest SAK.
      */
-    if (peer_identity_changed && (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE) &&
-        (ctx->latest_sak.origin == MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER))
+    if (peer_identity_changed && ctx->local_key_server &&
+        (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE))
     {
-        ctx->latest_sak.peer_rx_confirmed = MACSEC_FALSE;
-        ctx->latest_sak.peer_tx_confirmed = MACSEC_FALSE;
-
-        if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_CONFIRMED)
+        ret = macsec_mka_start_rekey(ctx, "authenticated peer identity changed");
+        if ((ret != MACSEC_ERR_OK) && (ret != MACSEC_ERR_BUSY))
         {
-            macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_ACTIVE,
-                                     "current peer identity changed");
+            return ret;
         }
-
-        MACSEC_MEDIUM(("MKA current SAK confirmation reset for new peer: "
-                       "key_number=%lu an=%u lifecycle=%u\n",
-                       (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
-                       (unsigned) ctx->latest_sak.lifecycle_state));
     }
 
     /*
@@ -1647,24 +1774,6 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
                                 MACSEC_MKA_EVENT_PEER_DISCOVERED | MACSEC_MKA_EVENT_TX_PEER_CHANGE);
 
         macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_PEER_CHANGE);
-
-        /*
-         * A replacement peer does not possess the current locally generated
-         * SAK. Schedule an immediate MKPDU; subsequent periodic MKPDUs keep
-         * carrying Distributed SAK until SAK Use confirms peer RX.
-         */
-        if (ctx->local_key_server &&
-            ((ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING) ||
-             (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_DISTRIBUTED) ||
-             (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_INSTALL_PENDING) ||
-             (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_ACTIVE) ||
-             (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_CONFIRMED)) &&
-            (ctx->latest_sak.origin == MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER) &&
-            !ctx->latest_sak.peer_rx_confirmed)
-        {
-            macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_TX_DISTRIBUTE_SAK);
-            macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK);
-        }
     }
 
     if (peer_became_live)
@@ -1767,18 +1876,37 @@ static void macsec_mka_write_sak_use(uint8_t **p, const macsec_mka_ctx_t *ctx)
 {
     uint16_t body_len = 40u;
     uint8_t flags = 0u;
-    const uint8_t *key_server_mi;
+    const uint8_t *latest_key_server_mi;
+    const uint8_t *old_key_server_mi;
 
-    flags |= (uint8_t) ((ctx->latest_sak.an & 0x03u) << 6u);
-
-    if (ctx->latest_sak.tx_installed)
+    if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE)
     {
-        flags |= 0x20u;
+        flags |= (uint8_t) ((ctx->latest_sak.an & 0x03u) << 6u);
+
+        if (ctx->latest_sak.tx_installed)
+        {
+            flags |= 0x20u;
+        }
+
+        if (ctx->latest_sak.rx_installed)
+        {
+            flags |= 0x10u;
+        }
     }
 
-    if (ctx->latest_sak.rx_installed)
+    if (ctx->old_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_RETIRING)
     {
-        flags |= 0x10u;
+        flags |= (uint8_t) ((ctx->old_sak.an & 0x03u) << 2u);
+
+        if (ctx->old_sak.tx_installed)
+        {
+            flags |= 0x02u;
+        }
+
+        if (ctx->old_sak.rx_installed)
+        {
+            flags |= 0x01u;
+        }
     }
 
     (*p)[0] = MACSEC_MKA_PARAM_SAK_USE;
@@ -1787,37 +1915,43 @@ static void macsec_mka_write_sak_use(uint8_t **p, const macsec_mka_ctx_t *ctx)
     (*p)[3] = (uint8_t) (body_len & 0xFFu);
     *p += 4u;
 
-    /*
-     * Key Server MI:
-     * - if we are Key Server, use our local MI
-     * - if peer is Key Server, use peer MI
-     */
-    if (ctx->local_key_server)
+    latest_key_server_mi = ctx->local_key_server ? ctx->local_mi : ctx->peer.mi;
+
+    if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE)
     {
-        key_server_mi = ctx->local_mi;
+        memcpy(*p, latest_key_server_mi, MACSEC_MKA_MI_LEN);
+        *p += MACSEC_MKA_MI_LEN;
+        macsec_wr_be32(*p, ctx->latest_sak.key_number);
+        *p += 4u;
+        macsec_wr_be32(*p, ctx->latest_sak.lowest_pn ? ctx->latest_sak.lowest_pn : 1u);
+        *p += 4u;
     }
     else
     {
-        key_server_mi = ctx->peer.mi;
+        memset(*p, 0, MACSEC_MKA_MI_LEN + 8u);
+        *p += MACSEC_MKA_MI_LEN + 8u;
     }
 
-    memcpy(*p, key_server_mi, MACSEC_MKA_MI_LEN);
-    *p += MACSEC_MKA_MI_LEN;
+    if (ctx->old_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_RETIRING)
+    {
+        old_key_server_mi = (ctx->old_sak.origin == MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER)
+                                ? ctx->local_mi
+                                : ctx->peer.mi;
 
-    macsec_wr_be32(*p, ctx->latest_sak.key_number);
-    *p += 4u;
-
-    macsec_wr_be32(*p, ctx->latest_sak.lowest_pn ? ctx->latest_sak.lowest_pn : 1u);
-    *p += 4u;
-
-    memset(*p, 0, MACSEC_MKA_MI_LEN);
-    *p += MACSEC_MKA_MI_LEN;
-
-    macsec_wr_be32(*p, 0u);
-    *p += 4u;
-
-    macsec_wr_be32(*p, 1u);
-    *p += 4u;
+        memcpy(*p, old_key_server_mi, MACSEC_MKA_MI_LEN);
+        *p += MACSEC_MKA_MI_LEN;
+        macsec_wr_be32(*p, ctx->old_sak.key_number);
+        *p += 4u;
+        macsec_wr_be32(*p, ctx->old_sak.lowest_pn ? ctx->old_sak.lowest_pn : 1u);
+        *p += 4u;
+    }
+    else
+    {
+        memset(*p, 0, MACSEC_MKA_MI_LEN + 4u);
+        *p += MACSEC_MKA_MI_LEN + 4u;
+        macsec_wr_be32(*p, 1u);
+        *p += 4u;
+    }
 }
 
 static int macsec_mka_key_server_ensure_sak(macsec_mka_ctx_t *ctx)
@@ -1845,7 +1979,7 @@ static int macsec_mka_key_server_ensure_sak(macsec_mka_ctx_t *ctx)
         return MACSEC_ERR_OK;
     }
 
-    memset(&ctx->latest_sak, 0, sizeof(ctx->latest_sak));
+    macsec_mka_sak_clear(&ctx->latest_sak);
 
     /*
      * The current implementation generates a 128-bit SAK.
@@ -1875,9 +2009,10 @@ static int macsec_mka_key_server_ensure_sak(macsec_mka_ctx_t *ctx)
 
     ctx->latest_sak.peer_tx_confirmed = MACSEC_FALSE;
 
-    macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_CANDIDATE, "local Key Server generated SAK");
+    macsec_mka_set_sak_state(ctx, &ctx->latest_sak, MACSEC_MKA_SAK_STATE_CANDIDATE,
+                             "local Key Server generated SAK");
 
-    macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING,
+    macsec_mka_set_sak_state(ctx, &ctx->latest_sak, MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING,
                              "SAK ready for distribution");
 
     macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_TX_DISTRIBUTE_SAK);
@@ -1926,7 +2061,12 @@ static int macsec_mka_write_distributed_sak(uint8_t **p, macsec_mka_ctx_t *ctx)
     body_len = (uint16_t) (4u + wrapped_sak_len);
 
     (*p)[0] = MACSEC_MKA_PARAM_DISTRIBUTED_SAK;
-    (*p)[1] = 0u;
+    /*
+     * Bits 7..6: Distributed AN.
+     * Bits 5..4: Confidentiality Offset, currently zero.
+     * Bits 3..0: reserved.
+     */
+    (*p)[1] = (uint8_t) ((ctx->latest_sak.an & 0x03u) << 6u);
     (*p)[2] = (uint8_t) ((body_len >> 8u) & 0x0Fu);
     (*p)[3] = (uint8_t) (body_len & 0xFFu);
     *p += 4u;
@@ -2016,12 +2156,8 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
     distributed_sak_param_len = 0u;
 
     /*
-     * Include Distributed SAK while a new SAK awaits its first successful
-     * distribution or while the current peer has not confirmed RX use of
-     * the current locally generated SAK.
-     *
-     * This naturally covers a peer restart: peer confirmation is cleared
-     * when its identity changes, while the locally active SAK remains valid.
+     * Include only the latest locally generated SAK. The old SAK is never
+     * redistributed; it is represented only in the Old Key fields of SAK Use.
      */
     if (ctx->local_key_server && ctx->peer.valid && ctx->peer.live &&
         ((ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING) ||
@@ -2063,8 +2199,8 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
         meta->distributed_an = ctx->latest_sak.an;
     }
 
-    include_sak_use = ((ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE) &&
-                       (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_RETIRING) &&
+    include_sak_use = (((ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE) ||
+                        (ctx->old_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_RETIRING)) &&
                        ctx->peer.valid && ctx->peer.live)
                           ? MACSEC_TRUE
                           : MACSEC_FALSE;
@@ -2280,7 +2416,7 @@ int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta
          */
         if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING)
         {
-            macsec_mka_set_sak_state(ctx, MACSEC_MKA_SAK_STATE_DISTRIBUTED,
+            macsec_mka_set_sak_state(ctx, &ctx->latest_sak, MACSEC_MKA_SAK_STATE_DISTRIBUTED,
                                      "Distributed SAK MKPDU transmitted successfully");
 
             if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_DISTRIBUTED)

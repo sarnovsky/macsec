@@ -596,6 +596,41 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_e
     return MACSEC_ERR_OK;
 }
 
+int macsec_frame_crypto_remove_tx_sak(macsec_frame_crypto_ctx_t *ctx)
+{
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+
+    macsec_zeroize(&ctx->tx_sak, sizeof(ctx->tx_sak));
+
+    /*
+     * Cached GCM key is only a working cache. Clear it so that a removed TX
+     * key cannot remain selected by a later operation.
+     */
+    macsec_zeroize(ctx->current_gcm_key, sizeof(ctx->current_gcm_key));
+    ctx->current_gcm_key_len = 0u;
+    ctx->current_gcm_key_valid = MACSEC_FALSE;
+
+    return MACSEC_ERR_OK;
+}
+
+int macsec_frame_crypto_remove_rx_sak(macsec_frame_crypto_ctx_t *ctx, uint8_t an)
+{
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+    macsec_check(an < MACSEC_FRAME_MAX_SA, MACSEC_ERR_PARAM);
+
+    macsec_zeroize(&ctx->rx_sak[an], sizeof(ctx->rx_sak[an]));
+
+    /*
+     * The cached key may belong to this RX SA. Clear it unconditionally;
+     * the next encrypt/decrypt operation will load the required key.
+     */
+    macsec_zeroize(ctx->current_gcm_key, sizeof(ctx->current_gcm_key));
+    ctx->current_gcm_key_len = 0u;
+    ctx->current_gcm_key_valid = MACSEC_FALSE;
+
+    return MACSEC_ERR_OK;
+}
+
 #if (MACSEC_SELF_TEST != 0)
 
 static void macsec_frame_self_test_fill_packet(uint8_t *packet, size_t len, uint8_t seed)

@@ -154,14 +154,18 @@ typedef enum
 
     /*
      * Active SAK has also been confirmed by the current peer through
-     * SAK Use. A peer identity change returns the lifecycle to ACTIVE
-     * without uninstalling or replacing the SAK.
+     * SAK Use.
+     *
+     * A peer identity change invalidates confirmation by that participant.
+     * When the local participant is Key Server, a replacement SAK is generated
+     * and the confirmed SAK becomes the old SAK during rekey.
      */
     MACSEC_MKA_SAK_STATE_CONFIRMED,
 
     /*
-     * SAK is retained temporarily during rekey, but is no longer the main
-     * active transmit key.
+     * SAK is retained for receive compatibility during rekey, but is no
+     * longer the current transmit key. It is removed after the current peer
+     * confirms use of the replacement latest SAK.
      */
     MACSEC_MKA_SAK_STATE_RETIRING
 } macsec_mka_sak_state_t;
@@ -197,6 +201,14 @@ typedef uint32_t macsec_mka_event_flags_t;
 #define MACSEC_MKA_EVENT_SAK_ACTIVE 0x00000040u
 #define MACSEC_MKA_EVENT_SAK_CONFIRMED 0x00000080u
 #define MACSEC_MKA_EVENT_SAK_RETIRED 0x00000100u
+
+/*
+ * MKA requests removal of old_sak from the MACsec data-plane.
+ *
+ * macsec.c must remove the corresponding RX/TX Secure Association and then
+ * confirm completion through macsec_mka_notify_sak_retired().
+ */
+#define MACSEC_MKA_EVENT_SAK_RETIRE_REQUIRED 0x00000200u
 
 /*
  * Control-frame scheduling events.
@@ -302,8 +314,8 @@ typedef struct
 /******************************************************************************
  * MKA SAK
  *
- * The legacy valid member is temporarily retained so that the existing mka.c
- * and macsec.c continue to compile during state-machine migration.
+ * SAK validity is represented exclusively by lifecycle_state. A SAK in
+ * MACSEC_MKA_SAK_STATE_NONE contains no usable key material.
  *****************************************************************************/
 
 typedef struct
@@ -328,7 +340,7 @@ typedef struct
     uint32_t key_number;
 
     /*
-     * New lifecycle information.
+     * SAK origin and lifecycle state.
      */
     macsec_mka_sak_origin_t origin;
     macsec_mka_sak_state_t lifecycle_state;
@@ -342,9 +354,12 @@ typedef struct
     /*
      * Confirmation reported by the current peer through SAK Use.
      *
-     * These flags are cleared whenever the authenticated peer identity
-     * changes, because a replacement participant must independently confirm
-     * possession and use of the current SAK.
+     * For latest_sak, these flags describe confirmation of the current key.
+     * They are cleared when peer identity changes because a replacement
+     * participant must independently confirm possession and use of the new
+     * latest SAK.
+     *
+     * They are not used as validity flags and do not replace lifecycle_state.
      */
     macsec_bool_t peer_rx_confirmed;
     macsec_bool_t peer_tx_confirmed;
@@ -393,11 +408,21 @@ typedef struct
     macsec_mka_basic_t last_basic;
 
     /*
-     * Current/latest SAK.
+     * Current SAK being generated, distributed, installed or actively used.
      *
-     * The existing field name is retained for migration compatibility.
+     * New control-plane distribution and new protected transmission always
+     * use latest_sak.
      */
     macsec_mka_sak_t latest_sak;
+
+    /*
+     * Previous SAK retained temporarily during rekey.
+     *
+     * old_sak may remain installed for RX while latest_sak is distributed,
+     * installed and confirmed. It must not be distributed as a new SAK and
+     * must not be selected for new TX after latest_sak becomes active.
+     */
+    macsec_mka_sak_t old_sak;
 
     macsec_bool_t verify_icv;
     macsec_bool_t last_icv_valid;
@@ -495,7 +520,10 @@ int macsec_mka_notify_sak_installed(macsec_mka_ctx_t *ctx, uint32_t key_number, 
                                     uint32_t lowest_pn);
 
 /*
- * Notify MKA that an old SAK has been removed from the MACsec data-plane.
+ * Notify MKA that old_sak has been removed from the MACsec data-plane.
+ *
+ * key_number and AN must identify the current old_sak. On success, old_sak is
+ * securely cleared and MACSEC_MKA_EVENT_SAK_RETIRED is raised.
  */
 int macsec_mka_notify_sak_retired(macsec_mka_ctx_t *ctx, uint32_t key_number, uint8_t an);
 

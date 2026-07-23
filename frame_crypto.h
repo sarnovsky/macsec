@@ -111,6 +111,10 @@ int macsec_frame_decrypt(macsec_frame_crypto_ctx_t *ctx, const uint8_t *secure_e
                          size_t secure_eth_len, uint8_t *plain_eth, size_t *plain_eth_len,
                          size_t plain_eth_max_len);
 
+int macsec_frame_crypto_remove_tx_sak(macsec_frame_crypto_ctx_t *ctx);
+
+int macsec_frame_crypto_remove_rx_sak(macsec_frame_crypto_ctx_t *ctx, uint8_t an);
+
 /* Returns 0 on success and 1 on failure. */
 int macsec_frame_crypto_self_test(macsec_frame_crypto_self_test_ctx_t *test_ctx, int verbose);
 
