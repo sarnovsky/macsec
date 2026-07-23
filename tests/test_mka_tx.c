@@ -201,10 +201,6 @@ static int macsec_test_mka_tx_prepare_redistribution(macsec_test_mka_tx_case_dat
     data->mka.latest_sak.peer_rx_confirmed = MACSEC_FALSE;
     data->mka.latest_sak.peer_tx_confirmed = MACSEC_FALSE;
 
-    data->mka.latest_key_rx = MACSEC_TRUE;
-    data->mka.latest_key_tx = MACSEC_TRUE;
-    data->mka.latest_lowest_pn = 1u;
-
     data->mka.state = MACSEC_MKA_STATE_OPERATIONAL;
 
     /*
@@ -427,6 +423,12 @@ static int macsec_test_mka_tx_peer_restart_redistributes_sak(macsec_test_mka_tx_
                                                      MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
               MACSEC_TRUE);
 
+    TEST_TRUE(data->tx_meta.contains_distributed_sak == MACSEC_TRUE);
+
+    TEST_EQ_U32(data->tx_meta.distributed_key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
+
+    TEST_EQ_U32(data->tx_meta.distributed_an, MACSEC_TEST_MKA_TX_AN);
+
     TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
     TEST_TRUE(data->mka.latest_sak.peer_rx_confirmed == MACSEC_FALSE);
     TEST_TRUE(data->mka.latest_sak.peer_tx_confirmed == MACSEC_FALSE);
@@ -465,6 +467,12 @@ macsec_test_mka_tx_redistribution_repeats_until_confirmation(macsec_test_mka_tx_
                                                      MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
               MACSEC_TRUE);
 
+    TEST_TRUE(data->tx_meta.contains_distributed_sak == MACSEC_TRUE);
+
+    TEST_EQ_U32(data->tx_meta.distributed_key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
+
+    TEST_EQ_U32(data->tx_meta.distributed_an, MACSEC_TEST_MKA_TX_AN);
+
     ret = macsec_mka_notify_tx_success(&data->mka, &data->tx_meta, MACSEC_TEST_MKA_TX_TIME_MS);
 
     TEST_TRUE(ret == MACSEC_ERR_OK);
@@ -486,6 +494,12 @@ macsec_test_mka_tx_redistribution_repeats_until_confirmation(macsec_test_mka_tx_
     TEST_TRUE(macsec_test_mka_tx_frame_has_parameter(data->frame_b, frame_b_len,
                                                      MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
               MACSEC_TRUE);
+
+    TEST_TRUE(data->tx_meta.contains_distributed_sak == MACSEC_TRUE);
+
+    TEST_EQ_U32(data->tx_meta.distributed_key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
+
+    TEST_EQ_U32(data->tx_meta.distributed_an, MACSEC_TEST_MKA_TX_AN);
 
     TEST_EQ_U32(data->mka.latest_sak.key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
     TEST_EQ_U32(data->mka.latest_sak.an, MACSEC_TEST_MKA_TX_AN);
@@ -518,6 +532,12 @@ macsec_test_mka_tx_redistribution_stops_after_confirmation(macsec_test_mka_tx_ca
                                                      MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
               MACSEC_TRUE);
 
+    TEST_TRUE(data->tx_meta.contains_distributed_sak == MACSEC_TRUE);
+
+    TEST_EQ_U32(data->tx_meta.distributed_key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
+
+    TEST_EQ_U32(data->tx_meta.distributed_an, MACSEC_TEST_MKA_TX_AN);
+
     ret = macsec_mka_notify_tx_success(&data->mka, &data->tx_meta, MACSEC_TEST_MKA_TX_TIME_MS);
 
     TEST_TRUE(ret == MACSEC_ERR_OK);
@@ -541,8 +561,12 @@ macsec_test_mka_tx_redistribution_stops_after_confirmation(macsec_test_mka_tx_ca
                                                      MACSEC_TEST_MKA_TX_PARAM_DISTRIBUTED_SAK) ==
               MACSEC_FALSE);
 
+    TEST_TRUE(data->tx_meta.contains_distributed_sak == MACSEC_FALSE);
+
     TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_CONFIRMED);
+
     TEST_EQ_U32(data->mka.latest_sak.key_number, MACSEC_TEST_MKA_TX_KEY_NUMBER);
+
     TEST_EQ_U32(data->mka.latest_sak.an, MACSEC_TEST_MKA_TX_AN);
 
     macsec_mka_clear(&data->mka);

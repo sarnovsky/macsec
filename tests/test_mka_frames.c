@@ -750,6 +750,7 @@ static int
 macsec_test_mka_frames_sak_use_tx_rx_flags(macsec_test_mka_frames_sak_use_tx_rx_flags_data_t *data,
                                            const uint8_t *cak, size_t cak_len, int verbose)
 {
+    macsec_mka_sak_t sak;
     size_t frame_a_len;
     const uint8_t *param;
     uint16_t body_len;
@@ -766,8 +767,63 @@ macsec_test_mka_frames_sak_use_tx_rx_flags(macsec_test_mka_frames_sak_use_tx_rx_
     TEST_OK(test_mka_make_a_key_server_live(&data->a, &data->b, cak, cak_len, data->frame_a,
                                             data->frame_b, sizeof(data->frame_a), &frame_a_len));
 
+    /*
+     * The SAK has been distributed, but it has not yet been installed in
+     * either local data-plane direction.
+     */
+    TEST_EQ_U32(data->a.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_DISTRIBUTED);
+
+    TEST_TRUE(data->a.latest_sak.rx_installed == MACSEC_FALSE);
+    TEST_TRUE(data->a.latest_sak.tx_installed == MACSEC_FALSE);
+
     TEST_OK(
         test_mka_find_param(data->frame_a, frame_a_len, TEST_MKA_PARAM_SAK_USE, &param, &body_len));
+
+    TEST_EQ_U32(body_len, 40u);
+
+    flags = param[1];
+
+    TEST_EQ_U32((flags >> 6u) & 0x03u, 0u);
+    TEST_TRUE((flags & 0x20u) == 0u);
+    TEST_TRUE((flags & 0x10u) == 0u);
+
+    /*
+     * Hand the distributed SAK to the MACsec data-plane.
+     */
+    memset(&sak, 0, sizeof(sak));
+
+    TEST_OK(macsec_mka_take_sak_for_install(&data->a, &sak));
+
+    TEST_EQ_U32(sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+
+    /*
+     * Confirm only RX installation.
+     */
+    TEST_OK(macsec_mka_notify_sak_installed(&data->a, sak.key_number, sak.an, MACSEC_MKA_INSTALL_RX,
+                                            1u));
+
+    TEST_TRUE(data->a.latest_sak.rx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->a.latest_sak.tx_installed == MACSEC_FALSE);
+
+    TEST_EQ_U32(data->a.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_INSTALL_PENDING);
+
+    /*
+     * RX-only installation does not schedule an immediate transmission.
+     * Use the next periodic MKPDU to inspect the RX-only SAK Use state.
+     */
+    TEST_OK(macsec_mka_tick(&data->a, 5000u));
+
+    TEST_TRUE((data->a.tx_reasons & MACSEC_MKA_TX_REASON_PERIODIC) != 0u);
+
+    frame_a_len = 0u;
+
+    TEST_OK(macsec_test_mka_build_and_commit_tx(&data->a, data->frame_a, &frame_a_len,
+                                                sizeof(data->frame_a), 5000u));
+
+    TEST_OK(
+        test_mka_find_param(data->frame_a, frame_a_len, TEST_MKA_PARAM_SAK_USE, &param, &body_len));
+
+    TEST_EQ_U32(body_len, 40u);
 
     flags = param[1];
 
@@ -775,15 +831,29 @@ macsec_test_mka_frames_sak_use_tx_rx_flags(macsec_test_mka_frames_sak_use_tx_rx_
     TEST_TRUE((flags & 0x20u) == 0u);
     TEST_TRUE((flags & 0x10u) != 0u);
 
-    macsec_mka_set_latest_key_tx(&data->a, 0u, 1u);
+    /*
+     * Confirm TX installation as well. This activates the SAK and schedules an
+     * immediate SAK Use transmission.
+     */
+    TEST_OK(macsec_mka_notify_sak_installed(&data->a, sak.key_number, sak.an, MACSEC_MKA_INSTALL_TX,
+                                            1u));
+
+    TEST_TRUE(data->a.latest_sak.rx_installed == MACSEC_TRUE);
+    TEST_TRUE(data->a.latest_sak.tx_installed == MACSEC_TRUE);
+
+    TEST_EQ_U32(data->a.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_ACTIVE);
+
+    TEST_TRUE((data->a.tx_reasons & MACSEC_MKA_TX_REASON_SAK_USE) != 0u);
 
     frame_a_len = 0u;
 
     TEST_OK(macsec_test_mka_build_and_commit_tx(&data->a, data->frame_a, &frame_a_len,
-                                                sizeof(data->frame_a), 4000u));
+                                                sizeof(data->frame_a), 5001u));
 
     TEST_OK(
         test_mka_find_param(data->frame_a, frame_a_len, TEST_MKA_PARAM_SAK_USE, &param, &body_len));
+
+    TEST_EQ_U32(body_len, 40u);
 
     flags = param[1];
 
