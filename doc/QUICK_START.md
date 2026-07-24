@@ -167,6 +167,17 @@ The reduced runtime configuration is normally the best choice when Flash usage i
 
 The Linux TAP example connects the userspace MACsec stack to a physical Ethernet interface and exposes the unprotected side as a virtual TAP interface.
 
+> **Recommended network configuration**
+>
+> The physical Ethernet interface and the virtual TAP interface should use different IP subnets.
+>
+> ```text
+> Physical Ethernet : 10.0.0.0/24
+> Virtual TAP       : 10.10.0.0/24
+> ```
+>
+> This avoids ambiguous routing decisions and ensures that all traffic sent to the TAP subnet is protected by MACsec.
+
 The application requires administrator privileges because it creates and configures a TAP interface and accesses raw Ethernet frames.
 
 ## Build
@@ -238,7 +249,14 @@ After the application starts, configure an IP address on the TAP interface:
 
 ```bash
 sudo ip link set tap0 up
-sudo ip address add 10.0.0.1/24 dev tap0
+sudo ip addr add 10.10.0.1/24 dev tap0
+```
+
+On the remote system:
+
+```bash
+sudo ip link set tap0 up
+sudo ip addr add 10.10.0.2/24 dev tap0
 ```
 
 The remote peer must use:
@@ -287,7 +305,19 @@ During startup, the MKA participants:
 
 Once the connection reaches the secured state, traffic sent through `tap0` is protected automatically.
 
+Example configuration:
+
+| System | Physical | TAP |
+|---|---|---|
+| PC1 | 10.0.0.110 | 10.10.0.1 |
+| PC2 | 10.0.0.30 | 10.10.0.2 |
+
+
 ---
+
+> **Note**
+>
+> The Linux TAP example creates a protected virtual IP network on the TAP interface. A transparent STM32 MACsec bridge operates at Ethernet Layer 2 and does not require a separate IP subnet; end devices keep their original IP addresses.
 
 # 7. Test a 256-Bit CAK
 
@@ -402,6 +432,25 @@ ls -l /dev/net/tun
 The physical interface used by the example should not simultaneously carry ordinary IP traffic managed by NetworkManager or another network service.
 
 The interface may need to be disconnected from NetworkManager before starting the example.
+
+## Traffic Bypasses the TAP Interface
+
+If the physical Ethernet interface and TAP interface use the same subnet, Linux may choose the physical interface and bypass MACsec.
+
+Recommended configuration:
+
+```text
+Physical Ethernet : 10.0.0.0/24
+Virtual TAP       : 10.10.0.0/24
+```
+
+Verify with:
+
+```bash
+ip route get 10.10.0.2
+```
+
+The output should contain `dev tap0`.
 
 ## MKA Does Not Reach the Secured State
 
