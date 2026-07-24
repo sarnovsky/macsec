@@ -6,3 +6,5 @@
 /examples/linux_tap/build/
 /examples/mem_usage_stm32/build/
 /examples/mem_usage_stm32/results/
+
+.clang-format

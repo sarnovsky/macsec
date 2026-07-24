@@ -1,5 +1,5 @@
 /*
- * common.c
+ * macsec_common.c
  *
  * Lightweight MACsec stack
  * Common utility functions shared by the MACsec modules.
