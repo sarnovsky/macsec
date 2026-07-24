@@ -10,23 +10,30 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <ctype.h>
 #include <errno.h>
+#include <linux/if_ether.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-
 #include <time.h>
-
-#include <ctype.h>
+#include <unistd.h>
 
 #include <macsec.h>
 
 #include "raw_socket.h"
 #include "tap.h"
+
+#ifndef ETH_P_PAE
+#define ETH_P_PAE 0x888Eu
+#endif
+
+#ifndef ETH_P_MACSEC
+#define ETH_P_MACSEC 0x88E5u
+#endif
 
 #define LINUX_TAP_FRAME_MAX 2048u
 
@@ -75,12 +82,18 @@ typedef struct
     uint64_t tap_rx;
     uint64_t raw_tx;
     uint64_t raw_tx_dropped;
+
     uint64_t mka_rx;
     uint64_t macsec_rx;
+
     uint64_t tap_tx;
     uint64_t tap_tx_dropped;
+
     uint64_t encrypt_errors;
-    uint64_t decrypt_errors;
+
+    uint64_t auth_errors;
+    uint64_t unsupported_eapol;
+    uint64_t input_errors;
 } linux_tap_stats_t;
 
 static void linux_tap_signal_handler(int signal_number)
@@ -628,11 +641,11 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec, linux_raw_socket_t *
 
     ether_type = ((uint16_t) input[12] << 8) | (uint16_t) input[13];
 
-    if (ether_type == 0x888Eu)
+    if (ether_type == ETH_P_PAE)
     {
         stats->mka_rx++;
     }
-    else if (ether_type == 0x88E5u)
+    else if (ether_type == ETH_P_MACSEC)
     {
         stats->macsec_rx++;
     }
@@ -642,10 +655,25 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec, linux_raw_socket_t *
 
     if (ret != MACSEC_ERR_OK)
     {
-        stats->decrypt_errors++;
+        if ((ret == MACSEC_ERR_UNSUPPORTED) && (ether_type == ETH_P_PAE))
+        {
+            stats->unsupported_eapol++;
 
-        fprintf(stderr, "macsec_input failed: ret=%d type=0x%04X len=%d\n", ret, ether_type,
-                input_len);
+            fprintf(stderr, "Unsupported EAPOL frame ignored: len=%d\n", input_len);
+        }
+        else if ((ret == MACSEC_ERR_AUTH) && (ether_type == ETH_P_MACSEC))
+        {
+            stats->auth_errors++;
+
+            fprintf(stderr, "MACsec authentication failed: len=%d\n", input_len);
+        }
+        else
+        {
+            stats->input_errors++;
+
+            fprintf(stderr, "macsec_input failed: ret=%d type=0x%04X len=%d\n", ret, ether_type,
+                    input_len);
+        }
 
         return 0;
     }
@@ -681,15 +709,17 @@ static int linux_tap_process_physical(macsec_ctx_t *macsec, linux_raw_socket_t *
 static void linux_tap_print_stats(const linux_tap_stats_t *stats)
 {
     printf("\nStatistics:\n");
-    printf("  TAP -> stack        : %lu\n", (unsigned long) stats->tap_rx);
-    printf("  MACsec TX           : %lu\n", (unsigned long) stats->raw_tx);
-    printf("  MACsec TX dropped   : %lu\n", (unsigned long) stats->raw_tx_dropped);
-    printf("  MKA RX              : %lu\n", (unsigned long) stats->mka_rx);
-    printf("  MACsec RX           : %lu\n", (unsigned long) stats->macsec_rx);
-    printf("  stack -> TAP        : %lu\n", (unsigned long) stats->tap_tx);
-    printf("  TAP TX dropped      : %lu\n", (unsigned long) stats->tap_tx_dropped);
-    printf("  encrypt errors      : %lu\n", (unsigned long) stats->encrypt_errors);
-    printf("  decrypt/input errors: %lu\n", (unsigned long) stats->decrypt_errors);
+    printf("  TAP -> stack          : %lu\n", (unsigned long) stats->tap_rx);
+    printf("  MACsec TX             : %lu\n", (unsigned long) stats->raw_tx);
+    printf("  MACsec TX dropped     : %lu\n", (unsigned long) stats->raw_tx_dropped);
+    printf("  MKA RX                : %lu\n", (unsigned long) stats->mka_rx);
+    printf("  MACsec RX             : %lu\n", (unsigned long) stats->macsec_rx);
+    printf("  stack -> TAP          : %lu\n", (unsigned long) stats->tap_tx);
+    printf("  TAP TX dropped        : %lu\n", (unsigned long) stats->tap_tx_dropped);
+    printf("  encrypt errors        : %lu\n", (unsigned long) stats->encrypt_errors);
+    printf("  authentication errors : %lu\n", (unsigned long) stats->auth_errors);
+    printf("  unsupported EAPOL     : %lu\n", (unsigned long) stats->unsupported_eapol);
+    printf("  other input errors    : %lu\n", (unsigned long) stats->input_errors);
 }
 
 static uint32_t linux_tap_get_time_ms(void)
