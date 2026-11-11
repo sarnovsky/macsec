@@ -382,6 +382,9 @@ static void macsec_mka_schedule_tx(macsec_mka_ctx_t *ctx, macsec_mka_tx_reason_f
                  (unsigned long) ctx->tx_reasons));
 }
 
+/* Parameter body length excludes its zero padding to a four-octet boundary. */
+static size_t macsec_mka_padded_body_len(size_t body_len) { return (body_len + 3u) & ~(size_t) 3u; }
+
 static void macsec_mka_build_sci(uint8_t sci[MACSEC_MKA_SCI_LEN], const uint8_t mac[6],
                                  uint16_t port_id)
 {
@@ -491,7 +494,7 @@ int macsec_mka_parse_basic(const uint8_t *frame, size_t frame_len, macsec_mka_ba
      * Basic parameter set total = 4 B header + body_len.
      * ICV follows at the end of the MKPDU.
      */
-    basic_end_offset = 18u + 4u + body_len;
+    basic_end_offset = 18u + 4u + macsec_mka_padded_body_len(body_len);
     icv_offset = 14u + 4u + eapol_len - MACSEC_MKA_ICV_LEN;
 
     macsec_check(basic_end_offset <= icv_offset, MACSEC_ERR_BUFFER);
@@ -625,9 +628,9 @@ int macsec_mka_init(macsec_mka_ctx_t *ctx, const uint8_t *cak, size_t cak_len, c
         return ret;
     }
 
-    MACSEC_MEDIUM_HEX(("MKA derived ICK", ctx->crypto.keys.ick, 16));
+    MACSEC_SECRET_HEX(("MKA derived ICK", ctx->crypto.keys.ick, 16));
 
-    MACSEC_MEDIUM_HEX(("MKA derived KEK", ctx->crypto.keys.kek, 16));
+    MACSEC_SECRET_HEX(("MKA derived KEK", ctx->crypto.keys.kek, 16));
 
     ctx->verify_icv = MACSEC_TRUE;
     ctx->last_icv_valid = MACSEC_FALSE;
@@ -972,7 +975,7 @@ static macsec_bool_t macsec_mka_frame_contains_peer_entry(const uint8_t *frame, 
     size_t pos;
     size_t end;
 
-    if ((frame == NULL) || (mi == NULL) || (frame_len < 90u))
+    if ((frame == NULL) || (mi == NULL) || (frame_len < 18u))
     {
         MACSEC_INFO(("MKA peer-list scan skipped: frame_len=%lu\n", (unsigned long) frame_len));
         return MACSEC_FALSE;
@@ -1013,14 +1016,14 @@ static macsec_bool_t macsec_mka_frame_contains_peer_entry(const uint8_t *frame, 
             body_len = (uint16_t) (((uint16_t) (frame[pos + 2u] & 0x0Fu) << 8u) |
                                    (uint16_t) frame[pos + 3u]);
 
-            if ((pos + 4u + body_len) > end)
+            if ((pos + 4u + macsec_mka_padded_body_len(body_len)) > end)
             {
                 MACSEC_ERROR(("MKA Basic parameter overflow: body_len=%u end=%lu\n", body_len,
                               (unsigned long) end));
                 return MACSEC_FALSE;
             }
 
-            pos += 4u + body_len;
+            pos += 4u + macsec_mka_padded_body_len(body_len);
             continue;
         }
 
@@ -1033,7 +1036,7 @@ static macsec_bool_t macsec_mka_frame_contains_peer_entry(const uint8_t *frame, 
         MACSEC_INFO(("MKA parameter set: type=%u body_len=%u pos=%lu body_end=%lu\n", type,
                      body_len, (unsigned long) pos, (unsigned long) body_end));
 
-        if (body_end > end)
+        if ((body_end > end) || ((body_pos + macsec_mka_padded_body_len(body_len)) > end))
         {
             MACSEC_ERROR(("MKA parameter set overflow: type=%u body_end=%lu end=%lu\n", type,
                           (unsigned long) body_end, (unsigned long) end));
@@ -1073,7 +1076,7 @@ static macsec_bool_t macsec_mka_frame_contains_peer_entry(const uint8_t *frame, 
             }
         }
 
-        pos = body_end;
+        pos = body_pos + macsec_mka_padded_body_len(body_len);
     }
 
     MACSEC_INFO(("MKA local MI not found in peer lists\n"));
@@ -1091,7 +1094,7 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
     macsec_assert(ctx != NULL);
     macsec_assert(frame != NULL);
 
-    if (frame_len < 90u)
+    if (frame_len < 18u)
     {
         return MACSEC_ERR_NOT_READY;
     }
@@ -1127,12 +1130,12 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
             body_len = (uint16_t) (((uint16_t) (frame[pos + 2u] & 0x0Fu) << 8u) |
                                    (uint16_t) frame[pos + 3u]);
 
-            if ((pos + 4u + body_len) > end)
+            if ((pos + 4u + macsec_mka_padded_body_len(body_len)) > end)
             {
                 return MACSEC_ERR_BUFFER;
             }
 
-            pos += 4u + body_len;
+            pos += 4u + macsec_mka_padded_body_len(body_len);
             continue;
         }
 
@@ -1144,7 +1147,7 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
         body_pos = pos + 4u;
         body_end = body_pos + body_len;
 
-        if (body_end > end)
+        if ((body_end > end) || ((body_pos + macsec_mka_padded_body_len(body_len)) > end))
         {
             return MACSEC_ERR_BUFFER;
         }
@@ -1283,7 +1286,7 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
                            (unsigned long) ctx->latest_sak.key_number, ctx->latest_sak.an,
                            (unsigned long) ctx->latest_sak.sak_len));
 
-            MACSEC_MEDIUM_HEX(
+            MACSEC_SECRET_HEX(
                 ("MKA unwrapped SAK", ctx->latest_sak.sak, (int) ctx->latest_sak.sak_len));
 
             macsec_zeroize(unwrapped_sak, sizeof(unwrapped_sak));
@@ -1291,7 +1294,7 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
             return MACSEC_ERR_OK;
         }
 
-        pos = body_end;
+        pos = body_pos + macsec_mka_padded_body_len(body_len);
     }
 
     return MACSEC_ERR_NOT_READY;
@@ -1306,7 +1309,7 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
     macsec_assert(ctx != NULL);
     macsec_assert(frame != NULL);
 
-    if (frame_len < 90u)
+    if (frame_len < 18u)
     {
         return MACSEC_ERR_NOT_READY;
     }
@@ -1340,12 +1343,12 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
             body_len = (uint16_t) (((uint16_t) (frame[pos + 2u] & 0x0Fu) << 8u) |
                                    (uint16_t) frame[pos + 3u]);
 
-            if ((pos + 4u + body_len) > end)
+            if ((pos + 4u + macsec_mka_padded_body_len(body_len)) > end)
             {
                 return MACSEC_ERR_BUFFER;
             }
 
-            pos += 4u + body_len;
+            pos += 4u + macsec_mka_padded_body_len(body_len);
             continue;
         }
 
@@ -1356,7 +1359,7 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
         body_pos = pos + 4u;
         body_end = body_pos + body_len;
 
-        if (body_end > end)
+        if ((body_end > end) || ((body_pos + macsec_mka_padded_body_len(body_len)) > end))
         {
             return MACSEC_ERR_BUFFER;
         }
@@ -1477,7 +1480,7 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
             return MACSEC_ERR_OK;
         }
 
-        pos = body_end;
+        pos = body_pos + macsec_mka_padded_body_len(body_len);
     }
 
     return MACSEC_ERR_NOT_READY;
@@ -1539,6 +1542,18 @@ static int macsec_mka_start_rekey(macsec_mka_ctx_t *ctx, const char *reason)
          (unsigned long) ctx->old_sak.key_number, ctx->old_sak.an, ctx->peer.live ? 1u : 0u));
 
     return MACSEC_ERR_OK;
+}
+
+int macsec_mka_request_rekey(macsec_mka_ctx_t *ctx)
+{
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+    if (!ctx->local_key_server || !ctx->peer.valid || !ctx->peer.live ||
+        (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_ACTIVE &&
+         ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_CONFIRMED))
+    {
+        return MACSEC_ERR_NOT_READY;
+    }
+    return macsec_mka_start_rekey(ctx, "packet-number lifetime");
 }
 
 int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_len, uint32_t now_ms)
@@ -1619,6 +1634,17 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
         ctx->last_icv_valid = MACSEC_TRUE;
 
         MACSEC_INFO(("MKA RX ICV OK\n"));
+    }
+
+    /* A sender must not reuse/regress its message number within one MI.
+     * Authenticate first, then reject stale frames before Distributed SAK,
+     * liveness or election can be changed. A new MI starts a new sequence. */
+    if (basic.actor_mn == 0u ||
+        (ctx->peer.mn != 0u &&
+         macsec_compare(ctx->peer.mi, basic.actor_mi, MACSEC_MKA_MI_LEN) == 0 &&
+         basic.actor_mn <= ctx->peer.mn))
+    {
+        return MACSEC_ERR_REPLAY;
     }
 
     /*
@@ -2146,7 +2172,7 @@ static int macsec_mka_key_server_ensure_sak(macsec_mka_ctx_t *ctx)
                    ctx->latest_sak.an, (unsigned long) ctx->latest_sak.key_number,
                    (unsigned) ctx->latest_sak.lifecycle_state));
 
-    MACSEC_MEDIUM_HEX(("MKA generated SAK", ctx->latest_sak.sak, (int) ctx->latest_sak.sak_len));
+    MACSEC_SECRET_HEX(("MKA generated SAK", ctx->latest_sak.sak, (int) ctx->latest_sak.sak_len));
 
     return MACSEC_ERR_OK;
 }
@@ -2330,8 +2356,8 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
 
     sak_use_param_len = include_sak_use ? (4u + 40u) : 0u;
 
-    eapol_len = (uint16_t) (4u + body_len + peer_list_param_len + distributed_sak_param_len +
-                            sak_use_param_len + MACSEC_MKA_ICV_LEN);
+    eapol_len = (uint16_t) (4u + macsec_mka_padded_body_len(body_len) + peer_list_param_len +
+                            distributed_sak_param_len + sak_use_param_len + MACSEC_MKA_ICV_LEN);
 
     total_len = 14u + 4u + eapol_len;
 
@@ -2404,6 +2430,8 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
 
     memcpy(p, ctx->crypto.psk.ckn, ctx->crypto.psk.ckn_len);
     p += ctx->crypto.psk.ckn_len;
+    /* The frame was zeroed above; skip Basic body alignment padding. */
+    p += macsec_mka_padded_body_len(body_len) - body_len;
 
     if (include_peer_list)
     {
