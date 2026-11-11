@@ -266,7 +266,7 @@ int macsec_frame_crypto_set_tx_sak(macsec_frame_crypto_ctx_t *ctx, const macsec_
 
     MACSEC_MEDIUM(("Frame TX SAK installed: an=%u key_len=%u next_pn=%lu\n", ctx->tx_sak.an,
                    ctx->tx_sak.key_len, (unsigned long) ctx->tx_sak.next_pn));
-    MACSEC_INFO_HEX(("Frame TX SAK key", ctx->tx_sak.key, ctx->tx_sak.key_len));
+    MACSEC_SECRET_HEX(("Frame TX SAK key", ctx->tx_sak.key, ctx->tx_sak.key_len));
 
     return MACSEC_ERR_OK;
 }
@@ -297,7 +297,7 @@ int macsec_frame_crypto_set_rx_sak(macsec_frame_crypto_ctx_t *ctx, const macsec_
 
     MACSEC_MEDIUM(("Frame RX SAK installed: an=%u key_len=%u lowest_pn=%lu\n", an,
                    ctx->rx_sak[an].key_len, (unsigned long) ctx->rx_sak[an].lowest_acceptable_pn));
-    MACSEC_INFO_HEX(("Frame RX SAK key", ctx->rx_sak[an].key, ctx->rx_sak[an].key_len));
+    MACSEC_SECRET_HEX(("Frame RX SAK key", ctx->rx_sak[an].key, ctx->rx_sak[an].key_len));
 
     return MACSEC_ERR_OK;
 }
