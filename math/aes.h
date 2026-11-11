@@ -45,11 +45,15 @@ void math_aes_free(math_aes_context *ctx);
 
 int math_aes_setenckey(math_aes_context *ctx, const uint8_t *key, uint32_t keybits);
 
+#if MACSEC_MKA_CLIENT_SUPPORT
 int math_aes_setdeckey(math_aes_context *ctx, const uint8_t *key, uint32_t keybits);
+#endif
 
 int math_aes_encrypt(math_aes_context *ctx, const uint8_t input[16], uint8_t output[16]);
 
+#if MACSEC_MKA_CLIENT_SUPPORT
 int math_aes_decrypt(math_aes_context *ctx, const uint8_t input[16], uint8_t output[16]);
+#endif
 
 #if defined(MATH_SELF_TEST)
 int math_aes_self_test(math_aes_context *ctx, int verbose);

@@ -41,6 +41,35 @@ static const uint8_t test_ckn_24[24] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u
                                         0x88u, 0x99u, 0xAAu, 0xBBu, 0xCCu, 0xDDu, 0xEEu, 0xFFu,
                                         0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u, 0x66u, 0x77u};
 
+/* Independent AES-KW answers for the test CAKs, CKN 10..1f and
+ * SAK bytes (0x80 + 11*i). Both roles can test without the other engine. */
+static const uint8_t test_wrapped[2][2][40] = {
+    {
+        {
+            0xBAu, 0x41u, 0x45u, 0x94u, 0xC8u, 0x6Du, 0x3Eu, 0xABu,
+            0xD2u, 0x3Bu, 0x03u, 0xA2u, 0x5Bu, 0x05u, 0x1Eu, 0xA8u,
+            0x12u, 0x95u, 0xA5u, 0x9Fu, 0x71u, 0x53u, 0x97u, 0xDFu},
+        {
+            0xBAu, 0x90u, 0x6Du, 0x64u, 0xEEu, 0xF2u, 0x53u, 0x37u,
+            0x63u, 0x7Bu, 0x22u, 0x6Au, 0xDCu, 0x24u, 0x4Cu, 0xEBu,
+            0x06u, 0x34u, 0x98u, 0xD4u, 0x8Du, 0xF2u, 0xCDu, 0x06u,
+            0x94u, 0x1Cu, 0x1Bu, 0xEFu, 0x7Fu, 0x10u, 0xE2u, 0x60u,
+            0x15u, 0xCFu, 0xFEu, 0x63u, 0xDEu, 0xB4u, 0xAAu, 0x39u}
+    },
+    {
+        {
+            0x46u, 0x65u, 0x0Bu, 0xE9u, 0x25u, 0x3Eu, 0x15u, 0x2Du,
+            0xD9u, 0x55u, 0x7Du, 0x5Au, 0x73u, 0x59u, 0x3Cu, 0x4Cu,
+            0xD8u, 0xF7u, 0xE2u, 0xF3u, 0x0Au, 0x50u, 0x06u, 0x79u},
+        {
+            0x78u, 0x7Du, 0x97u, 0x98u, 0xA9u, 0x27u, 0x1Du, 0x8Au,
+            0x06u, 0x0Fu, 0x4Au, 0xE5u, 0xEDu, 0x0Eu, 0xADu, 0x30u,
+            0xDBu, 0x6Cu, 0xF8u, 0x27u, 0x23u, 0x46u, 0x38u, 0x48u,
+            0xE5u, 0x21u, 0xC5u, 0x25u, 0x3Eu, 0x95u, 0x05u, 0xC6u,
+            0x69u, 0x83u, 0xAAu, 0x12u, 0xAEu, 0xEEu, 0xC4u, 0x3Bu}
+    }
+};
+
 static void macsec_test_mka_crypto_fill(uint8_t *buf, size_t len, uint8_t seed)
 {
     size_t i;
@@ -262,16 +291,28 @@ static int macsec_test_mka_crypto_wrap_unwrap_sak(macsec_test_mka_crypto_wrap_da
 
     TEST_OK(macsec_test_mka_crypto_prepare(&data->ctx, cak, cak_len));
 
+#if MACSEC_MKA_SERVER_SUPPORT
     TEST_OK(macsec_mka_crypto_wrap_sak(&data->ctx, data->sak, sak_len, data->wrapped, &wrapped_len,
                                        sizeof(data->wrapped)));
-
     TEST_EQ_U32(wrapped_len, expected_wrapped_len);
-
-    TEST_OK(macsec_mka_crypto_unwrap_sak(&data->ctx, data->wrapped, wrapped_len, data->unwrapped,
+    TEST_MEM_EQ(data->wrapped, test_wrapped[cak_len == 32u][sak_len == 32u], wrapped_len);
+#else
+    TEST_TRUE(macsec_mka_crypto_wrap_sak(&data->ctx, data->sak, sak_len, data->wrapped,
+                                        &wrapped_len, sizeof(data->wrapped)) == MACSEC_ERR_UNSUPPORTED);
+    TEST_EQ_U32(wrapped_len, 0u);
+#endif
+#if MACSEC_MKA_CLIENT_SUPPORT
+    TEST_OK(macsec_mka_crypto_unwrap_sak(&data->ctx, test_wrapped[cak_len == 32u][sak_len == 32u],
+                                         expected_wrapped_len, data->unwrapped,
                                          &unwrapped_len, sizeof(data->unwrapped)));
-
     TEST_EQ_U32(unwrapped_len, sak_len);
     TEST_MEM_EQ(data->sak, data->unwrapped, sak_len);
+#else
+    TEST_TRUE(macsec_mka_crypto_unwrap_sak(&data->ctx, test_wrapped[cak_len == 32u][sak_len == 32u],
+                                          expected_wrapped_len, data->unwrapped, &unwrapped_len,
+                                          sizeof(data->unwrapped)) == MACSEC_ERR_UNSUPPORTED);
+    TEST_EQ_U32(unwrapped_len, 0u);
+#endif
 
     macsec_mka_crypto_clear(&data->ctx);
     return 0;
@@ -280,9 +321,15 @@ static int macsec_test_mka_crypto_wrap_unwrap_sak(macsec_test_mka_crypto_wrap_da
 static int macsec_test_mka_crypto_wrap_buffer_limits(macsec_test_mka_crypto_wrap_data_t *data,
                                                      int verbose)
 {
-    size_t wrapped_len = 123u;
-    size_t unwrapped_len = 123u;
+
+
     int ret;
+#if MACSEC_MKA_SERVER_SUPPORT
+    size_t wrapped_len = 123u;
+#endif
+#if MACSEC_MKA_CLIENT_SUPPORT
+    size_t unwrapped_len = 123u;
+#endif
 
     if (verbose)
     {
@@ -292,6 +339,7 @@ static int macsec_test_mka_crypto_wrap_buffer_limits(macsec_test_mka_crypto_wrap
     macsec_test_mka_crypto_fill(data->sak, 32u, 0x91u);
     TEST_OK(macsec_test_mka_crypto_prepare(&data->ctx, test_cak_32, sizeof(test_cak_32)));
 
+#if MACSEC_MKA_SERVER_SUPPORT
     memset(data->wrapped, 0xA5, sizeof(data->wrapped));
 
     ret = macsec_mka_crypto_wrap_sak(&data->ctx, data->sak, 32u, data->wrapped, &wrapped_len,
@@ -302,21 +350,25 @@ static int macsec_test_mka_crypto_wrap_buffer_limits(macsec_test_mka_crypto_wrap
     TEST_OK(macsec_mka_crypto_wrap_sak(&data->ctx, data->sak, 32u, data->wrapped, &wrapped_len,
                                        sizeof(data->wrapped)));
 
+#endif
+#if MACSEC_MKA_CLIENT_SUPPORT
     memset(data->unwrapped, 0xA5, sizeof(data->unwrapped));
 
-    ret = macsec_mka_crypto_unwrap_sak(&data->ctx, data->wrapped, wrapped_len, data->unwrapped,
+    ret = macsec_mka_crypto_unwrap_sak(&data->ctx, test_wrapped[1][1], 40u, data->unwrapped,
                                        &unwrapped_len, 31u);
     TEST_TRUE(ret == MACSEC_ERR_BUFFER);
     TEST_EQ_U32(unwrapped_len, 0u);
 
+#endif
     macsec_mka_crypto_clear(&data->ctx);
     return 0;
 }
 
+#if MACSEC_MKA_CLIENT_SUPPORT
 static int macsec_test_mka_crypto_wrap_auth_failure(macsec_test_mka_crypto_wrap_data_t *data,
                                                     size_t sak_len, int verbose)
 {
-    size_t wrapped_len = 0u;
+    size_t wrapped_len = sak_len + 8u;
     size_t unwrapped_len = 123u;
     size_t i;
     int ret;
@@ -330,8 +382,7 @@ static int macsec_test_mka_crypto_wrap_auth_failure(macsec_test_mka_crypto_wrap_
     macsec_test_mka_crypto_fill(data->sak, sak_len, 0xA0u);
     TEST_OK(macsec_test_mka_crypto_prepare(&data->ctx, test_cak_32, sizeof(test_cak_32)));
 
-    TEST_OK(macsec_mka_crypto_wrap_sak(&data->ctx, data->sak, sak_len, data->wrapped, &wrapped_len,
-                                       sizeof(data->wrapped)));
+    memcpy(data->wrapped, test_wrapped[1][sak_len == 32u], wrapped_len);
 
     memcpy(data->wrapped_copy, data->wrapped, wrapped_len);
     data->wrapped_copy[wrapped_len - 1u] ^= 0x01u;
@@ -352,6 +403,7 @@ static int macsec_test_mka_crypto_wrap_auth_failure(macsec_test_mka_crypto_wrap_
     macsec_mka_crypto_clear(&data->ctx);
     return 0;
 }
+#endif /* MACSEC_MKA_CLIENT_SUPPORT */
 
 static int macsec_test_mka_crypto_wrap_invalid_lengths(macsec_test_mka_crypto_wrap_data_t *data,
                                                        int verbose)
@@ -370,12 +422,12 @@ static int macsec_test_mka_crypto_wrap_invalid_lengths(macsec_test_mka_crypto_wr
 
     ret = macsec_mka_crypto_wrap_sak(&data->ctx, data->sak, 24u, data->wrapped, &wrapped_len,
                                      sizeof(data->wrapped));
-    TEST_TRUE(ret == MACSEC_ERR_PARAM);
+    TEST_TRUE(ret == (MACSEC_MKA_SERVER_SUPPORT ? MACSEC_ERR_PARAM : MACSEC_ERR_UNSUPPORTED));
     TEST_EQ_U32(wrapped_len, 0u);
 
     ret = macsec_mka_crypto_unwrap_sak(&data->ctx, data->wrapped, 32u, data->unwrapped,
                                        &unwrapped_len, sizeof(data->unwrapped));
-    TEST_TRUE(ret == MACSEC_ERR_PARAM);
+    TEST_TRUE(ret == (MACSEC_MKA_CLIENT_SUPPORT ? MACSEC_ERR_PARAM : MACSEC_ERR_UNSUPPORTED));
     TEST_EQ_U32(unwrapped_len, 0u);
 
     macsec_mka_crypto_clear(&data->ctx);
@@ -399,11 +451,11 @@ static int macsec_test_mka_crypto_wrap_requires_keys(macsec_test_mka_crypto_wrap
 
     ret = macsec_mka_crypto_wrap_sak(&data->ctx, data->sak, 16u, data->wrapped, &wrapped_len,
                                      sizeof(data->wrapped));
-    TEST_TRUE(ret == MACSEC_ERR_STATE);
+    TEST_TRUE(ret == (MACSEC_MKA_SERVER_SUPPORT ? MACSEC_ERR_STATE : MACSEC_ERR_UNSUPPORTED));
 
     ret = macsec_mka_crypto_unwrap_sak(&data->ctx, data->wrapped, MACSEC_MKA_WRAPPED_SAK_128_LEN,
                                        data->unwrapped, &unwrapped_len, sizeof(data->unwrapped));
-    TEST_TRUE(ret == MACSEC_ERR_STATE);
+    TEST_TRUE(ret == (MACSEC_MKA_CLIENT_SUPPORT ? MACSEC_ERR_STATE : MACSEC_ERR_UNSUPPORTED));
 
     macsec_mka_crypto_clear(&data->ctx);
     return 0;
@@ -451,11 +503,15 @@ int macsec_test_mka_crypto(macsec_test_mka_crypto_data_t *data, int verbose)
 
     TEST_OK(macsec_test_mka_crypto_wrap_buffer_limits(&data->test_mka_crypto_wrap_data, verbose));
 
+#if MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(
         macsec_test_mka_crypto_wrap_auth_failure(&data->test_mka_crypto_wrap_data, 16u, verbose));
+#endif
 
+#if MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(
         macsec_test_mka_crypto_wrap_auth_failure(&data->test_mka_crypto_wrap_data, 32u, verbose));
+#endif
 
     TEST_OK(macsec_test_mka_crypto_wrap_invalid_lengths(&data->test_mka_crypto_wrap_data, verbose));
 

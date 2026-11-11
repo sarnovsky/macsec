@@ -103,6 +103,8 @@ int macsec_mka_crypto_calc_mic(macsec_mka_crypto_ctx_t *ctx, const uint8_t *pdu,
 int macsec_mka_crypto_verify_mic(macsec_mka_crypto_ctx_t *ctx, const uint8_t *pdu, size_t pdu_len,
                                  const uint8_t mic[MACSEC_MKA_MIC_LEN]);
 
+/* Role-specific API: a disabled operation returns MACSEC_ERR_UNSUPPORTED
+ * and clears its output length; its AES-KW engine is not compiled. */
 int macsec_mka_crypto_wrap_sak(macsec_mka_crypto_ctx_t *ctx, const uint8_t *sak, size_t sak_len,
                                uint8_t *wrapped_sak, size_t *wrapped_sak_len,
                                size_t wrapped_sak_max_len);

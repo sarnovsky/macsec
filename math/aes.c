@@ -186,6 +186,7 @@ static const uint32_t FORWARD_TABLES_3[256] = {FORWARD_TABLES};
 /*
  * Reverse S-box
  */
+#if MACSEC_MKA_CLIENT_SUPPORT
 static const unsigned char REVERSE_S_BOX[256] = {
     0x52, 0x09, 0x6A, 0xD5, 0x30, 0x36, 0xA5, 0x38, 0xBF, 0x40, 0xA3, 0x9E, 0x81, 0xF3, 0xD7, 0xFB,
     0x7C, 0xE3, 0x39, 0x82, 0x9B, 0x2F, 0xFF, 0x87, 0x34, 0x8E, 0x43, 0x44, 0xC4, 0xDE, 0xE9, 0xCB,
@@ -293,6 +294,8 @@ static const uint32_t REVERSE_TABLES_3[256] = {REVERSE_TABLES};
 
 #undef REVERSE_TABLES
 
+#endif /* MACSEC_MKA_CLIENT_SUPPORT */
+
 /*
  * Round constants
  */
@@ -318,6 +321,7 @@ static uint32_t FORWARD_TABLES_3[256];
  * Runtime-generated shared inverse lookup tables.
  * Generated once during the first key expansion.
  */
+#if MACSEC_MKA_CLIENT_SUPPORT
 static unsigned char REVERSE_S_BOX[256];
 static uint32_t REVERSE_TABLES_0[256];
 
@@ -326,6 +330,8 @@ static uint32_t REVERSE_TABLES_1[256];
 static uint32_t REVERSE_TABLES_2[256];
 static uint32_t REVERSE_TABLES_3[256];
 #endif
+
+#endif /* MACSEC_MKA_CLIENT_SUPPORT */
 
 /*
  * Round constants
@@ -418,6 +424,7 @@ static void aes_gen_tables(math_aes_context *ctx)
         FORWARD_S_BOX[index] = (unsigned char) (substituted & 0xFFu);
     }
 
+#if MACSEC_MKA_CLIENT_SUPPORT
     /*
      * Construct the reverse S-box from the completed
      * forward S-box.
@@ -431,6 +438,8 @@ static void aes_gen_tables(math_aes_context *ctx)
 
         ++index;
     } while (index < 256u);
+
+#endif /* MACSEC_MKA_CLIENT_SUPPORT */
 
     /*
      * Generate the encryption lookup tables.
@@ -463,6 +472,7 @@ static void aes_gen_tables(math_aes_context *ctx)
         ++index;
     }
 
+#if MACSEC_MKA_CLIENT_SUPPORT
     /*
      * Generate the decryption lookup tables.
      */
@@ -483,6 +493,7 @@ static void aes_gen_tables(math_aes_context *ctx)
         REVERSE_TABLES_3[index] = table_word;
 #endif
     }
+#endif /* MACSEC_MKA_CLIENT_SUPPORT */
 }
 
 #endif /* MATH_AES_ROM_TABLES */
@@ -604,6 +615,7 @@ int math_aes_setenckey(math_aes_context *ctx, const uint8_t *key, uint32_t keybi
     return 0;
 }
 
+#if MACSEC_MKA_CLIENT_SUPPORT
 int math_aes_setdeckey(math_aes_context *ctx, const uint8_t *key, uint32_t keybits)
 {
     int ret;
@@ -674,6 +686,7 @@ int math_aes_setdeckey(math_aes_context *ctx, const uint8_t *key, uint32_t keybi
 
     return ret;
 }
+#endif /* MACSEC_MKA_CLIENT_SUPPORT */
 
 #define AES_FORWARD_ROUND_WORD(RK, A, B, C, D)                                                     \
     ((RK) ^ AES_FORWARD_TABLE_0(AES_BYTE0(A)) ^ AES_FORWARD_TABLE_1(AES_BYTE1(B)) ^                \
@@ -766,6 +779,7 @@ int math_aes_encrypt(math_aes_context *ctx, const uint8_t input[16], uint8_t out
     ((RK) ^ AES_U32_LE(REVERSE_S_BOX[AES_BYTE0(A)], REVERSE_S_BOX[AES_BYTE1(B)],                   \
                        REVERSE_S_BOX[AES_BYTE2(C)], REVERSE_S_BOX[AES_BYTE3(D)]))
 
+#if MACSEC_MKA_CLIENT_SUPPORT
 int math_aes_decrypt(math_aes_context *ctx, const uint8_t input[16], uint8_t output[16])
 {
     uint32_t round;
@@ -841,6 +855,7 @@ int math_aes_decrypt(math_aes_context *ctx, const uint8_t input[16], uint8_t out
 
     return 0;
 }
+#endif /* MACSEC_MKA_CLIENT_SUPPORT */
 
 #if defined(MATH_SELF_TEST)
 
@@ -874,6 +889,7 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
 
     for (key_size = 128, array_index = 0; key_size <= 256; key_size += 64, array_index++)
     {
+#if MACSEC_MKA_CLIENT_SUPPORT
         if (verbose != 0)
         {
             macsec_printf("  AES-ECB-%3d (dec): ", key_size);
@@ -902,6 +918,8 @@ int math_aes_self_test(math_aes_context *ctx, int verbose)
         {
             macsec_printf("passed\n");
         }
+
+#endif /* MACSEC_MKA_CLIENT_SUPPORT */
 
         if (verbose != 0)
         {
