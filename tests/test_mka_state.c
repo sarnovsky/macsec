@@ -1325,6 +1325,8 @@ static int macsec_test_mka_state_matching_sak_use_confirms_current_sak(
      * actor identity so macsec_mka_input() does not start a rekey.
      */
     memcpy(data->local.peer.mi, data->peer.local_mi, sizeof(data->local.peer.mi));
+    /* This is a new authenticated message from the same participant. */
+    data->peer.local_mn = data->local.peer.mn + 1u;
 
     data->local.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_ACTIVE;
     data->local.latest_sak.peer_rx_confirmed = MACSEC_FALSE;
@@ -1382,6 +1384,8 @@ static int macsec_test_mka_state_mismatching_sak_use_not_confirmed(
      * actor identity so macsec_mka_input() does not start a rekey.
      */
     memcpy(data->local.peer.mi, data->peer.local_mi, sizeof(data->local.peer.mi));
+    /* This is a new authenticated message from the same participant. */
+    data->peer.local_mn = data->local.peer.mn + 1u;
 
     data->local.latest_sak.lifecycle_state = MACSEC_MKA_SAK_STATE_ACTIVE;
     data->local.latest_sak.peer_rx_confirmed = MACSEC_FALSE;
