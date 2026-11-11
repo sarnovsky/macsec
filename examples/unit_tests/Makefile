@@ -24,6 +24,8 @@
 #   make tests
 #   make clean
 #   make tests MACSEC_DEBUG_LEVEL=2
+#   make tests BUILD_DIR=build-server MACSEC_MKA_CLIENT_SUPPORT=0
+#   make tests BUILD_DIR=build-client MACSEC_MKA_SERVER_SUPPORT=0
 ###############################################################################
 
 CC := gcc
@@ -51,6 +53,8 @@ TARGET := $(BUILD_DIR)/macsec_tests$(EXE_EXT)
 
 MACSEC_DEBUG_LEVEL ?= 1
 MACSEC_SELF_TEST   ?= 1
+MACSEC_MKA_SERVER_SUPPORT ?= 1
+MACSEC_MKA_CLIENT_SUPPORT ?= 1
 
 MATH_AES_ROM_TABLES   ?= 1
 MATH_AES_FEWER_TABLES ?= 0
@@ -61,7 +65,9 @@ MATH_AES_FEWER_TABLES ?= 0
 
 CPPFLAGS := \
 	-DMACSEC_DEBUG_LEVEL=$(MACSEC_DEBUG_LEVEL) \
-	-DMACSEC_SELF_TEST=$(MACSEC_SELF_TEST)
+	-DMACSEC_SELF_TEST=$(MACSEC_SELF_TEST) \
+	-DMACSEC_MKA_SERVER_SUPPORT=$(MACSEC_MKA_SERVER_SUPPORT) \
+	-DMACSEC_MKA_CLIENT_SUPPORT=$(MACSEC_MKA_CLIENT_SUPPORT)
 
 ifeq ($(MATH_AES_ROM_TABLES),1)
 CPPFLAGS += -DMATH_AES_ROM_TABLES
@@ -128,6 +134,7 @@ TEST_SRCS := \
 	tests/test_macsec_flow.c \
 	tests/test_math_selftest.c \
 	tests/test_mka_crypto.c \
+	tests/test_mka_roles.c \
 	tests/test_mka_frames.c \
 	tests/test_mka_negative.c \
 	tests/test_mka_state.c \
@@ -242,6 +249,8 @@ config:
 	@echo "TARGET                    = $(TARGET)"
 	@echo "MACSEC_DEBUG_LEVEL        = $(MACSEC_DEBUG_LEVEL)"
 	@echo "MACSEC_SELF_TEST          = $(MACSEC_SELF_TEST)"
+	@echo "MACSEC_MKA_SERVER_SUPPORT = $(MACSEC_MKA_SERVER_SUPPORT)"
+	@echo "MACSEC_MKA_CLIENT_SUPPORT = $(MACSEC_MKA_CLIENT_SUPPORT)"
 	@echo "MATH_AES_ROM_TABLES       = $(MATH_AES_ROM_TABLES)"
 	@echo "MATH_AES_FEWER_TABLES     = $(MATH_AES_FEWER_TABLES)"
 

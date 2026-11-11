@@ -25,6 +25,7 @@
 #include <tests/test_macsec_flow.h>
 #include <tests/test_math_selftest.h>
 #include <tests/test_mka_crypto.h>
+#include <tests/test_mka_roles.h>
 #include <tests/test_mka_frames.h>
 #include <tests/test_mka_negative.h>
 #include <tests/test_mka_state.h>
@@ -79,6 +80,7 @@ extern "C"
 
 typedef union
 {
+    macsec_test_mka_roles_data_t test_mka_roles_data;
     macsec_test_math_selftest_data_t test_math_selftest_data;
     macsec_test_mka_crypto_data_t test_mka_crypto_data;
     macsec_test_mka_frames_data_t test_mka_frames_data;
