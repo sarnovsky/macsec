@@ -129,6 +129,16 @@ typedef struct
      */
     uint8_t static_an;
 
+    /** First unused static TX PN. Zero selects 1 for compatibility.
+     * The caller must preserve this high-water mark for the same SAK+SCI,
+     * including across resets, or install a genuinely new key before reuse.
+     * Never pass zero for an exhausted previously used SA.
+     */
+    uint32_t static_tx_next_pn;
+
+    /** Initial static RX replay floor. Zero selects 1. */
+    uint32_t static_rx_lowest_pn;
+
     /**
      * Enable MACsec replay protection.
      *
@@ -144,9 +154,8 @@ typedef struct
     uint32_t replay_window;
 
     /**
-     * Seed for platform random generator.
-     *
-     * Used later by MKA for MI/SAK generation.
+     * Legacy application seed metadata. The core does not initialize RNG.
+     * The platform must initialize its cryptographic random source before use.
      */
     uint32_t seed;
 
@@ -221,6 +230,9 @@ void macsec_clear(macsec_ctx_t *ctx);
  * @return Current MACsec state.
  */
 macsec_state_t macsec_get_state(const macsec_ctx_t *ctx);
+
+/** First unused TX PN, or zero if there is no TX SA or it is exhausted. */
+uint32_t macsec_get_tx_next_pn(const macsec_ctx_t *ctx);
 
 /**
  * @brief Check whether data-plane is secured and ready.
