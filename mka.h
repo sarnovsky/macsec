@@ -466,6 +466,10 @@ macsec_mka_state_t macsec_mka_get_state(const macsec_mka_ctx_t *ctx);
 
 int macsec_mka_tick(macsec_mka_ctx_t *ctx, uint32_t now_ms);
 
+/** Request fresh SAK as local Key Server. Busy while another overlap is active.
+ * NOT_READY if the participant is not currently an established Key Server. */
+int macsec_mka_request_rekey(macsec_mka_ctx_t *ctx);
+
 macsec_bool_t macsec_mka_is_eapol_mka(const uint8_t *frame, size_t frame_len);
 
 int macsec_mka_parse_basic(const uint8_t *frame, size_t frame_len, macsec_mka_basic_t *out);
