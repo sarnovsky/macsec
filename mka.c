@@ -33,11 +33,14 @@ static void macsec_mka_raise_events(macsec_mka_ctx_t *ctx, macsec_mka_event_flag
 
 static void macsec_mka_schedule_tx(macsec_mka_ctx_t *ctx, macsec_mka_tx_reason_flags_t reasons);
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int macsec_mka_key_server_select_an(const macsec_mka_ctx_t *ctx, uint8_t *an_out);
 
 static int macsec_mka_key_server_ensure_sak(macsec_mka_ctx_t *ctx);
 
 static int macsec_mka_start_rekey(macsec_mka_ctx_t *ctx, const char *reason);
+
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
 #if (MACSEC_DEBUG_LEVEL >= MACSEC_DEBUG_LEVEL_ERROR)
 
@@ -303,6 +306,24 @@ static void macsec_mka_sak_clear(macsec_mka_sak_t *sak)
     sak->lifecycle_state = MACSEC_MKA_SAK_STATE_NONE;
 }
 
+/* A retained SA is not evidence that the current live peer still uses it.
+ * Keep installed keys and packet numbers; require a fresh SAK Use instead. */
+static void macsec_mka_forget_peer_confirmation(macsec_mka_ctx_t *ctx)
+{
+    ctx->latest_sak.peer_rx_confirmed = MACSEC_FALSE;
+    ctx->latest_sak.peer_tx_confirmed = MACSEC_FALSE;
+    ctx->old_sak.peer_rx_confirmed = MACSEC_FALSE;
+    ctx->old_sak.peer_tx_confirmed = MACSEC_FALSE;
+    ctx->pending_events &= ~(MACSEC_MKA_EVENT_SAK_CONFIRMED |
+                             MACSEC_MKA_EVENT_SAK_RETIRE_REQUIRED);
+
+    if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_CONFIRMED)
+    {
+        macsec_mka_set_sak_state(ctx, &ctx->latest_sak, MACSEC_MKA_SAK_STATE_ACTIVE,
+                                 "peer confirmation expired; installed SAK retained");
+    }
+}
+
 static int macsec_mka_move_latest_to_old(macsec_mka_ctx_t *ctx, const char *reason)
 {
     macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
@@ -392,28 +413,14 @@ static void macsec_mka_build_sci(uint8_t sci[MACSEC_MKA_SCI_LEN], const uint8_t 
     macsec_wr_be16(&sci[6], port_id);
 }
 
-static macsec_bool_t macsec_mka_local_wins_key_server(const macsec_mka_ctx_t *ctx)
+static macsec_bool_t macsec_mka_local_wins_key_server(const macsec_mka_ctx_t *ctx,
+                                                      const macsec_mka_basic_t *peer)
 {
-    if (!ctx->peer.valid)
+    if (ctx->key_server_priority != peer->key_server_priority)
     {
-        return MACSEC_TRUE;
+        return ctx->key_server_priority < peer->key_server_priority;
     }
-
-    if (ctx->key_server_priority < ctx->peer.key_server_priority)
-    {
-        return MACSEC_TRUE;
-    }
-
-    if (ctx->key_server_priority > ctx->peer.key_server_priority)
-    {
-        return MACSEC_FALSE;
-    }
-
-    /*
-     * Tie-breaker for early implementation.
-     * Lower SCI wins.
-     */
-    return macsec_compare(ctx->local_sci, ctx->peer.sci, MACSEC_MKA_SCI_LEN) < 0;
+    return macsec_compare(ctx->local_sci, peer->sci, MACSEC_MKA_SCI_LEN) < 0;
 }
 
 macsec_bool_t macsec_mka_is_eapol_mka(const uint8_t *frame, size_t frame_len)
@@ -567,17 +574,18 @@ int macsec_mka_init(macsec_mka_ctx_t *ctx, const uint8_t *cak, size_t cak_len, c
     ctx->key_server_priority = key_server_priority;
 
     /*
-     * Until a valid peer is known, the local participant provisionally
-     * considers itself the Key Server. Election is repeated after peer data
-     * is received.
+     * A client-only build never advertises itself as Key Server. Other
+     * builds provisionally advertise Key Server until authenticated election.
      */
-    ctx->local_key_server = MACSEC_TRUE;
+    ctx->local_key_server = MACSEC_MKA_SERVER_SUPPORT ? MACSEC_TRUE : MACSEC_FALSE;
 
     ctx->macsec_desired = MACSEC_TRUE;
     ctx->macsec_capability = MACSEC_MKA_DEFAULT_CAPABILITY;
 
+#if MACSEC_MKA_SERVER_SUPPORT
     ctx->key_server_next_key_number = 1u;
     ctx->key_server_next_an = 0u;
+#endif
 
     ctx->tx_interval_ms =
         (tx_interval_ms != 0u) ? tx_interval_ms : MACSEC_MKA_DEFAULT_TX_INTERVAL_MS;
@@ -722,27 +730,46 @@ int macsec_mka_take_sak_for_install(macsec_mka_ctx_t *ctx, macsec_mka_sak_t *sak
         return MACSEC_ERR_STATE;
     }
 
+#if !MACSEC_MKA_CLIENT_SUPPORT
+    if (ctx->latest_sak.origin == MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER)
+    {
+        return MACSEC_ERR_UNSUPPORTED;
+    }
+#endif
+#if !MACSEC_MKA_SERVER_SUPPORT
+    if (ctx->latest_sak.origin == MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER)
+    {
+        return MACSEC_ERR_UNSUPPORTED;
+    }
+#endif
+
     available = MACSEC_FALSE;
 
     /*
      * A SAK received from the remote Key Server can be installed as soon
      * as it has been successfully authenticated and unwrapped.
      */
+#if MACSEC_MKA_CLIENT_SUPPORT
     if ((ctx->latest_sak.origin == MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER) &&
         (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_CANDIDATE))
     {
         available = MACSEC_TRUE;
     }
 
+#endif /* MACSEC_MKA_CLIENT_SUPPORT */
+
     /*
      * A locally generated Key Server SAK must first be distributed in a
      * successfully transmitted MKPDU.
      */
+#if MACSEC_MKA_SERVER_SUPPORT
     if ((ctx->latest_sak.origin == MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER) &&
         (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_DISTRIBUTED))
     {
         available = MACSEC_TRUE;
     }
+
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
     /*
      * INSTALL_PENDING is intentionally returned again.
@@ -1154,6 +1181,7 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
 
         if (type == MACSEC_MKA_PARAM_DISTRIBUTED_SAK)
         {
+#if MACSEC_MKA_CLIENT_SUPPORT
             uint8_t unwrapped_sak[32];
             uint8_t an;
             const uint8_t *wrapped_sak;
@@ -1292,6 +1320,11 @@ static int macsec_mka_parse_distributed_sak(macsec_mka_ctx_t *ctx, const uint8_t
             macsec_zeroize(unwrapped_sak, sizeof(unwrapped_sak));
 
             return MACSEC_ERR_OK;
+#else
+            /* A server-only build recognizes this parameter but cannot
+             * accept a remotely distributed key. Never modify its SAs. */
+            return MACSEC_ERR_UNSUPPORTED;
+#endif
         }
 
         pos = body_pos + macsec_mka_padded_body_len(body_len);
@@ -1367,11 +1400,13 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
         if (type == MACSEC_MKA_PARAM_SAK_USE)
         {
             const uint8_t *key_server_mi;
+            const uint8_t *expected_key_server_mi;
             uint32_t key_number;
             uint8_t an;
             macsec_bool_t latest_tx;
             macsec_bool_t latest_rx;
             macsec_bool_t confirmation_changed;
+            unsigned slot;
 
             /*
              * Supported SAK Use body:
@@ -1388,15 +1423,6 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
                 return MACSEC_ERR_BUFFER;
             }
 
-            key_server_mi = &frame[body_pos];
-            key_number = macsec_rd_be32(&frame[body_pos + MACSEC_MKA_MI_LEN]);
-            an = (uint8_t) ((flags >> 6u) & 0x03u);
-            latest_tx = ((flags & 0x20u) != 0u) ? MACSEC_TRUE : MACSEC_FALSE;
-            latest_rx = ((flags & 0x10u) != 0u) ? MACSEC_TRUE : MACSEC_FALSE;
-
-            MACSEC_INFO(("MKA RX SAK Use: key_number=%lu an=%u latest_tx=%u latest_rx=%u\n",
-                         (unsigned long) key_number, an, latest_tx ? 1u : 0u, latest_rx ? 1u : 0u));
-
             /*
              * The peer can confirm latest_sak regardless of which participant
              * is Key Server. The expected Key Server MI follows the SAK
@@ -1411,29 +1437,76 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
                 return MACSEC_ERR_NOT_READY;
             }
 
+            if (!ctx->peer.valid || !ctx->peer.live)
+            {
+                return MACSEC_ERR_NOT_READY;
+            }
+
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
             if (ctx->local_key_server)
             {
-                if ((ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER) ||
-                    (macsec_compare(key_server_mi, ctx->local_mi, MACSEC_MKA_MI_LEN) != 0))
+                if (ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER)
                 {
                     return MACSEC_ERR_NOT_READY;
                 }
+                expected_key_server_mi = ctx->local_mi;
             }
             else
             {
-                if ((ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER) ||
-                    !ctx->peer.valid ||
-                    (macsec_compare(key_server_mi, ctx->peer.mi, MACSEC_MKA_MI_LEN) != 0))
+                if (ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER)
                 {
                     return MACSEC_ERR_NOT_READY;
                 }
+                expected_key_server_mi = ctx->peer.mi;
             }
 
-            if ((key_number != ctx->latest_sak.key_number) || (an != (ctx->latest_sak.an & 0x03u)))
+#elif MACSEC_MKA_SERVER_SUPPORT
+            if (!ctx->local_key_server ||
+                ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER)
+            {
+                return MACSEC_ERR_NOT_READY;
+            }
+            expected_key_server_mi = ctx->local_mi;
+#else
+            if (ctx->local_key_server ||
+                ctx->latest_sak.origin != MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER)
+            {
+                return MACSEC_ERR_NOT_READY;
+            }
+            expected_key_server_mi = ctx->peer.mi;
+#endif
+
+            /* Latest/Old describe the sender's slots. wpa_supplicant moves
+             * its active key to Old after CP RETIRE. Match the full key
+             * identity and AN in either slot, with that slot's RX/TX bits. */
+            for (slot = 0u; slot < 2u; ++slot)
+            {
+                key_server_mi = &frame[body_pos + slot * 20u];
+                key_number = macsec_rd_be32(key_server_mi + MACSEC_MKA_MI_LEN);
+                an = (uint8_t) ((flags >> ((slot == 0u) ? 6u : 2u)) & 0x03u);
+                if ((key_number == ctx->latest_sak.key_number) &&
+                    (an == (ctx->latest_sak.an & 0x03u)) &&
+                    (macsec_compare(key_server_mi, expected_key_server_mi,
+                                    MACSEC_MKA_MI_LEN) == 0))
+                {
+                    break;
+                }
+            }
+
+            if (slot == 2u)
             {
                 MACSEC_INFO(("MKA RX SAK Use does not reference latest SAK\n"));
                 return MACSEC_ERR_NOT_READY;
             }
+
+            latest_tx = ((flags & ((slot == 0u) ? 0x20u : 0x02u)) != 0u)
+                            ? MACSEC_TRUE : MACSEC_FALSE;
+            latest_rx = ((flags & ((slot == 0u) ? 0x10u : 0x01u)) != 0u)
+                            ? MACSEC_TRUE : MACSEC_FALSE;
+
+            MACSEC_INFO(("MKA RX SAK Use: slot=%u key_number=%lu an=%u tx=%u rx=%u\n",
+                         slot, (unsigned long) key_number, an,
+                         latest_tx ? 1u : 0u, latest_rx ? 1u : 0u));
 
             confirmation_changed = (ctx->latest_sak.peer_tx_confirmed != latest_tx) ||
                                    (ctx->latest_sak.peer_rx_confirmed != latest_rx);
@@ -1459,6 +1532,13 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
                     {
                         macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_SAK_RETIRE_REQUIRED);
                     }
+                }
+
+                if ((ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_CONFIRMED) &&
+                    ctx->latest_sak.rx_installed && ctx->latest_sak.tx_installed)
+                {
+                    macsec_mka_set_state(ctx, MACSEC_MKA_STATE_OPERATIONAL,
+                                         "live peer confirmed installed SAK");
                 }
             }
             else if (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_CONFIRMED)
@@ -1486,6 +1566,7 @@ static int macsec_mka_parse_sak_use(macsec_mka_ctx_t *ctx, const uint8_t *frame,
     return MACSEC_ERR_NOT_READY;
 }
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int macsec_mka_start_rekey(macsec_mka_ctx_t *ctx, const char *reason)
 {
     int ret;
@@ -1543,9 +1624,11 @@ static int macsec_mka_start_rekey(macsec_mka_ctx_t *ctx, const char *reason)
 
     return MACSEC_ERR_OK;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
 int macsec_mka_request_rekey(macsec_mka_ctx_t *ctx)
 {
+#if MACSEC_MKA_SERVER_SUPPORT
     macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
     if (!ctx->local_key_server || !ctx->peer.valid || !ctx->peer.live ||
         (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_ACTIVE &&
@@ -1554,6 +1637,10 @@ int macsec_mka_request_rekey(macsec_mka_ctx_t *ctx)
         return MACSEC_ERR_NOT_READY;
     }
     return macsec_mka_start_rekey(ctx, "packet-number lifetime");
+#else
+    macsec_check(ctx != NULL, MACSEC_ERR_PARAM);
+    return MACSEC_ERR_UNSUPPORTED;
+#endif
 }
 
 int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_len, uint32_t now_ms)
@@ -1567,6 +1654,7 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
 
     macsec_bool_t previous_peer_live;
     macsec_bool_t previous_local_key_server;
+    macsec_bool_t elected_local_key_server;
 
     macsec_bool_t local_seen_by_peer;
 
@@ -1647,6 +1735,38 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
         return MACSEC_ERR_REPLAY;
     }
 
+    elected_local_key_server = macsec_mka_local_wins_key_server(ctx, &basic);
+#if !MACSEC_MKA_SERVER_SUPPORT || !MACSEC_MKA_CLIENT_SUPPORT
+    if ((elected_local_key_server && !MACSEC_MKA_SERVER_SUPPORT) ||
+        (!elected_local_key_server && !MACSEC_MKA_CLIENT_SUPPORT))
+    {
+        /* Authenticated configuration conflict, not an internal fatal error.
+         * Revoke liveness and confirmations; retain SA counters for recovery.
+         * In particular, do not advertise a second Key Server after losing. */
+        ctx->local_key_server = MACSEC_FALSE;
+        ctx->peer.valid = MACSEC_FALSE;
+        ctx->peer.live = MACSEC_FALSE;
+        ctx->peer.seen_in_peer_list = MACSEC_FALSE;
+        /* Consume this authenticated MN for the retained peer identity.
+         * An older compatible MKPDU must not reopen the controlled port. */
+        if (macsec_compare(ctx->peer.mi, basic.actor_mi, MACSEC_MKA_MI_LEN) == 0)
+        {
+            ctx->peer.mn = basic.actor_mn;
+        }
+        macsec_mka_forget_peer_confirmation(ctx);
+        ctx->pending_events &= ~(MACSEC_MKA_EVENT_SAK_AVAILABLE |
+                                 MACSEC_MKA_EVENT_SAK_DISTRIBUTED |
+                                 MACSEC_MKA_EVENT_SAK_ACTIVE);
+        macsec_mka_set_state(ctx, MACSEC_MKA_STATE_WAIT_PEER,
+                             "elected MKA role is not compiled in");
+        macsec_mka_raise_events(ctx, MACSEC_MKA_EVENT_PEER_LOST);
+        ctx->tx_reasons &= ~(MACSEC_MKA_TX_REASON_DISTRIBUTE_SAK |
+                             MACSEC_MKA_TX_REASON_REKEY);
+        macsec_mka_schedule_tx(ctx, MACSEC_MKA_TX_REASON_PEER_CHANGE);
+        return MACSEC_ERR_UNSUPPORTED;
+    }
+#endif
+
     /*
      * From this point the received MKPDU is authenticated and may update
      * persistent state.
@@ -1659,10 +1779,11 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
 
     /*
      * actor_mn normally increases in every MKPDU and is deliberately not
-     * treated as a peer identity change.
+     * treated as a peer identity change. Timeout retains the last identity
+     * and MN: returning with the same MI/SCI/MAC is not a participant restart.
      */
     peer_identity_changed =
-        (!ctx->peer.valid) ||
+        (ctx->peer.mn == 0u) ||
         (macsec_compare(ctx->peer.mi, basic.actor_mi, MACSEC_MKA_MI_LEN) != 0) ||
         (macsec_compare(ctx->peer.sci, basic.sci, MACSEC_MKA_SCI_LEN) != 0) ||
         (macsec_compare(ctx->peer.mac, basic.src_mac, MACSEC_MKA_SRC_LEN) != 0);
@@ -1688,6 +1809,11 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
          * an unrecoverable internal participant error.
          */
         return distributed_sak_ret;
+    }
+
+    if (peer_identity_changed)
+    {
+        macsec_mka_forget_peer_confirmation(ctx);
     }
 
     listed_mn = 0u;
@@ -1738,8 +1864,11 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
         ctx->peer.seen_in_peer_list = MACSEC_TRUE;
         ctx->peer.live = MACSEC_TRUE;
 
-        macsec_mka_set_state(ctx, MACSEC_MKA_STATE_PEER_LIVE,
-                             "local MI listed by authenticated peer");
+        if (peer_identity_changed || (ctx->state != MACSEC_MKA_STATE_OPERATIONAL))
+        {
+            macsec_mka_set_state(ctx, MACSEC_MKA_STATE_PEER_LIVE,
+                                 "local MI listed by authenticated peer");
+        }
 
         MACSEC_MEDIUM(("MKA peer is LIVE: list_type=%u peer_mn=%lu listed_mn=%lu\n", peer_list_type,
                        (unsigned long) ctx->peer.mn, (unsigned long) listed_mn));
@@ -1788,7 +1917,7 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
     /*
      * Run Key Server election using the authenticated current peer data.
      */
-    ctx->local_key_server = macsec_mka_local_wins_key_server(ctx);
+    ctx->local_key_server = elected_local_key_server;
 
     key_server_changed =
         (previous_local_key_server != ctx->local_key_server) ? MACSEC_TRUE : MACSEC_FALSE;
@@ -1804,6 +1933,7 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
      * local participant remains Key Server, begin a real rekey: move the
      * current SAK to the old slot and generate a fresh latest SAK.
      */
+#if MACSEC_MKA_SERVER_SUPPORT
     if (peer_identity_changed && ctx->local_key_server &&
         (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE))
     {
@@ -1813,6 +1943,8 @@ int macsec_mka_input(macsec_mka_ctx_t *ctx, const uint8_t *frame, size_t frame_l
             return ret;
         }
     }
+
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
     /*
      * Process peer confirmation only after peer identity update and Key
@@ -1906,6 +2038,8 @@ int macsec_mka_tick(macsec_mka_ctx_t *ctx, uint32_t now_ms)
             ctx->peer.valid = MACSEC_FALSE;
             ctx->peer.live = MACSEC_FALSE;
             ctx->peer.seen_in_peer_list = MACSEC_FALSE;
+
+            macsec_mka_forget_peer_confirmation(ctx);
 
             macsec_mka_set_state(ctx, MACSEC_MKA_STATE_WAIT_PEER, "authenticated peer timeout");
 
@@ -2015,7 +2149,13 @@ static void macsec_mka_write_sak_use(uint8_t **p, const macsec_mka_ctx_t *ctx)
     (*p)[3] = (uint8_t) (body_len & 0xFFu);
     *p += 4u;
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     latest_key_server_mi = ctx->local_key_server ? ctx->local_mi : ctx->peer.mi;
+#elif MACSEC_MKA_SERVER_SUPPORT
+    latest_key_server_mi = ctx->local_mi;
+#else
+    latest_key_server_mi = ctx->peer.mi;
+#endif
 
     if (ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE)
     {
@@ -2034,9 +2174,15 @@ static void macsec_mka_write_sak_use(uint8_t **p, const macsec_mka_ctx_t *ctx)
 
     if (ctx->old_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_RETIRING)
     {
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
         old_key_server_mi = (ctx->old_sak.origin == MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER)
                                 ? ctx->local_mi
                                 : ctx->peer.mi;
+#elif MACSEC_MKA_SERVER_SUPPORT
+        old_key_server_mi = ctx->local_mi;
+#else
+        old_key_server_mi = ctx->peer.mi;
+#endif
 
         memcpy(*p, old_key_server_mi, MACSEC_MKA_MI_LEN);
         *p += MACSEC_MKA_MI_LEN;
@@ -2054,6 +2200,7 @@ static void macsec_mka_write_sak_use(uint8_t **p, const macsec_mka_ctx_t *ctx)
     }
 }
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int macsec_mka_key_server_select_an(const macsec_mka_ctx_t *ctx, uint8_t *an_out)
 {
     uint8_t candidate;
@@ -2102,7 +2249,9 @@ static int macsec_mka_key_server_select_an(const macsec_mka_ctx_t *ctx, uint8_t 
      */
     return MACSEC_ERR_BUSY;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int macsec_mka_key_server_ensure_sak(macsec_mka_ctx_t *ctx)
 {
     int ret;
@@ -2176,7 +2325,9 @@ static int macsec_mka_key_server_ensure_sak(macsec_mka_ctx_t *ctx)
 
     return MACSEC_ERR_OK;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int macsec_mka_write_distributed_sak(uint8_t **p, macsec_mka_ctx_t *ctx)
 {
     uint8_t wrapped_sak[40];
@@ -2234,6 +2385,7 @@ static int macsec_mka_write_distributed_sak(uint8_t **p, macsec_mka_ctx_t *ctx)
 
     return MACSEC_ERR_OK;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
 int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *frame_len,
                               size_t frame_max_len, macsec_mka_tx_meta_t *meta)
@@ -2260,6 +2412,9 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
 
     *frame_len = 0u;
     memset(meta, 0, sizeof(*meta));
+#if !MACSEC_MKA_SERVER_SUPPORT
+    macsec_check(!ctx->local_key_server, MACSEC_ERR_UNSUPPORTED);
+#endif
 
     /*
      * TX is scheduled whenever at least one reason is pending.
@@ -2279,6 +2434,7 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
      * SAK generation is persistent protocol state, but it does not commit
      * successful frame transmission.
      */
+#if MACSEC_MKA_SERVER_SUPPORT
     if (ctx->local_key_server && ctx->peer.valid && ctx->peer.live)
     {
         ret = macsec_mka_key_server_ensure_sak(ctx);
@@ -2287,6 +2443,8 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
             return ret;
         }
     }
+
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
     /*
      * macsec_mka_key_server_ensure_sak() may have added the
@@ -2308,6 +2466,7 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
      * Include only the latest locally generated SAK. The old SAK is never
      * redistributed; it is represented only in the Old Key fields of SAK Use.
      */
+#if MACSEC_MKA_SERVER_SUPPORT
     if (ctx->local_key_server && ctx->peer.valid && ctx->peer.live &&
         ((ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING) ||
          (ctx->latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_DISTRIBUTED) ||
@@ -2347,6 +2506,8 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
 
         meta->distributed_an = ctx->latest_sak.an;
     }
+
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
     include_sak_use = (((ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_NONE) ||
                         (ctx->old_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_RETIRING)) &&
@@ -2396,10 +2557,13 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
 
     flags_len_hi = (uint8_t) ((body_len >> 8u) & 0x0Fu);
 
+#if MACSEC_MKA_SERVER_SUPPORT
     if (ctx->local_key_server)
     {
         flags_len_hi |= 0x80u;
     }
+
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
     if (ctx->macsec_desired)
     {
@@ -2441,6 +2605,7 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
                                    &ctx->peer);
     }
 
+#if MACSEC_MKA_SERVER_SUPPORT
     if (include_distributed_sak)
     {
         ret = macsec_mka_write_distributed_sak(&p, ctx);
@@ -2450,6 +2615,8 @@ int macsec_mka_build_tx_frame(macsec_mka_ctx_t *ctx, uint8_t *frame, size_t *fra
             return ret;
         }
     }
+
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
     if (include_sak_use)
     {
@@ -2540,6 +2707,7 @@ int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta
      * or installed the SAK. Peer confirmation is accepted only from an
      * authenticated SAK Use Parameter Set.
      */
+#if MACSEC_MKA_SERVER_SUPPORT
     if (meta->contains_distributed_sak)
     {
         if (((ctx->latest_sak.lifecycle_state != MACSEC_MKA_SAK_STATE_DISTRIBUTION_PENDING) &&
@@ -2597,6 +2765,15 @@ int macsec_mka_notify_tx_success(macsec_mka_ctx_t *ctx, const macsec_mka_tx_meta
                            ctx->latest_sak.peer_tx_confirmed ? 1u : 0u));
         }
     }
+
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
+
+#if !MACSEC_MKA_SERVER_SUPPORT
+    if (meta->contains_distributed_sak)
+    {
+        return MACSEC_ERR_UNSUPPORTED;
+    }
+#endif
 
     /*
      * Commit the transmitted message number only after successful TX.

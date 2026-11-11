@@ -468,6 +468,7 @@ int macsec_mka_tick(macsec_mka_ctx_t *ctx, uint32_t now_ms);
 
 /** Request fresh SAK as local Key Server. Busy while another overlap is active.
  * NOT_READY if the participant is not currently an established Key Server. */
+/* Client-only builds return MACSEC_ERR_UNSUPPORTED. */
 int macsec_mka_request_rekey(macsec_mka_ctx_t *ctx);
 
 macsec_bool_t macsec_mka_is_eapol_mka(const uint8_t *frame, size_t frame_len);

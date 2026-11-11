@@ -427,6 +427,10 @@ macsec_test_macsec_flow_eapol_consumed(macsec_test_macsec_flow_eapol_consumed_da
     macsec_test_mka_config(&data->cfg_rx, test_mac_b, test_cak_16, sizeof(test_cak_16),
                            MACSEC_TEST_MACSEC_FLOW_PEER_PRIORITY);
 
+#if !MACSEC_MKA_CLIENT_SUPPORT
+    data->cfg_tx.key_server_priority = 200u;
+    data->cfg_rx.key_server_priority = 100u;
+#endif
     ret = macsec_init(&data->tx, &data->cfg_tx);
     TEST_OK(ret);
 
@@ -880,6 +884,7 @@ static int macsec_test_macsec_flow_short_frame(macsec_test_macsec_flow_short_fra
     return 0;
 }
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static int macsec_test_macsec_flow_exchange_control_frame(macsec_ctx_t *tx, macsec_ctx_t *rx,
                                                           uint8_t *control, size_t control_max_len,
                                                           uint8_t *plain, size_t plain_max_len,
@@ -1148,6 +1153,8 @@ static int macsec_test_macsec_flow_mka_secure_bidirectional(
     return 0;
 }
 
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
+
 int macsec_test_macsec_flow(macsec_test_macsec_flow_data_t *data, int verbose)
 {
     int ret;
@@ -1237,12 +1244,15 @@ int macsec_test_macsec_flow(macsec_test_macsec_flow_data_t *data, int verbose)
         return ret;
     }
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     ret = macsec_test_macsec_flow_mka_secure_bidirectional(
         &data->test_mka_secure_bidirectional_data, verbose);
     if (ret != 0)
     {
         return ret;
     }
+
+#endif
 
     if (verbose)
     {

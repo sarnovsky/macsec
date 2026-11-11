@@ -20,6 +20,24 @@
 #define MACSEC_CONFIG_H
 
 /* =========================================================================
+ * MKA roles (numeric 0/1 switches)
+ * ========================================================================= */
+
+/* Defaults retain automatic Key Server election and both roles.
+ * A single-role build still requires compatible peer priorities: it rejects
+ * an authenticated election selecting the unavailable role. These switches
+ * do not restrict MACsec data TX/RX or static-SAK mode.
+ * This stack's inverse AES is needed only by the MKA client (AES-KW unwrap).
+ * Keep CLIENT_SUPPORT=1 if another user of math/aes needs inverse AES.
+ */
+#ifndef MACSEC_MKA_SERVER_SUPPORT
+#define MACSEC_MKA_SERVER_SUPPORT 1
+#endif
+#ifndef MACSEC_MKA_CLIENT_SUPPORT
+#define MACSEC_MKA_CLIENT_SUPPORT 1
+#endif
+
+/* =========================================================================
  * AES lookup-table configuration
  * ========================================================================= */
 
@@ -126,6 +144,16 @@
 /* =========================================================================
  * Configuration validation
  * ========================================================================= */
+
+#if (MACSEC_MKA_SERVER_SUPPORT != 0) && (MACSEC_MKA_SERVER_SUPPORT != 1)
+#error "MACSEC_MKA_SERVER_SUPPORT must be 0 or 1"
+#endif
+#if (MACSEC_MKA_CLIENT_SUPPORT != 0) && (MACSEC_MKA_CLIENT_SUPPORT != 1)
+#error "MACSEC_MKA_CLIENT_SUPPORT must be 0 or 1"
+#endif
+#if !MACSEC_MKA_SERVER_SUPPORT && !MACSEC_MKA_CLIENT_SUPPORT
+#error "At least one MKA role must be enabled"
+#endif
 
 #if (MACSEC_SELF_TEST != 0) && (MACSEC_SELF_TEST != 1)
 #error "MACSEC_SELF_TEST must be 0 or 1"

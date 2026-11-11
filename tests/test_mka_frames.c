@@ -133,7 +133,13 @@ macsec_test_mka_frames_linux_basic_icv(macsec_test_mka_frames_linux_basic_icv_da
         MACSEC_PRINT(("  MKA frames Linux Basic/ICV test, 16-byte CAK\n"));
     }
 
+#if MACSEC_MKA_SERVER_SUPPORT
     ret = macsec_test_mka_init_ctx(&data->mka, s_cak_16, sizeof(s_cak_16), s_mac_a, 100u);
+#else
+    /* Captured peer priority is 255: lose the SCI tie-break as a client. */
+    static const uint8_t client_mac[6] = {0xFE, 0, 0, 0, 0, 1};
+    ret = macsec_test_mka_init_ctx(&data->mka, s_cak_16, sizeof(s_cak_16), client_mac, 255u);
+#endif
     TEST_OK(ret);
 
     for (i = 0u; i < MKA_LINUX_BASIC_FRAME_COUNT; i++)
@@ -244,10 +250,10 @@ macsec_test_mka_frames_generated_icv_ok(macsec_test_mka_frames_generated_icv_ok_
         MACSEC_PRINT(("  MKA generated frame ICV OK test, %u-byte CAK\n", (unsigned int) cak_len));
     }
 
-    ret = macsec_test_mka_init_ctx(&data->tx, cak, cak_len, s_mac_a, 255u);
+    ret = macsec_test_mka_init_ctx(&data->tx, cak, cak_len, s_mac_a, MACSEC_MKA_SERVER_SUPPORT ? 255u : 100u);
     TEST_OK(ret);
 
-    ret = macsec_test_mka_init_ctx(&data->rx, cak, cak_len, s_mac_b, 100u);
+    ret = macsec_test_mka_init_ctx(&data->rx, cak, cak_len, s_mac_b, MACSEC_MKA_SERVER_SUPPORT ? 100u : 255u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->tx);
@@ -347,6 +353,7 @@ macsec_test_mka_frames_generated_icv_bad(macsec_test_mka_frames_generated_icv_ba
     return 0;
 }
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static int
 macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_peer_exchange_data_t *data,
                                          const uint8_t *cak, size_t cak_len, int verbose)
@@ -463,6 +470,7 @@ macsec_test_mka_frames_two_peer_exchange(macsec_test_mka_frames_two_peer_exchang
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
 
 static int
 macsec_test_mka_frames_periodic_tx_timing(macsec_test_mka_frames_periodic_tx_timing_data_t *data,
@@ -528,6 +536,7 @@ macsec_test_mka_frames_periodic_tx_timing(macsec_test_mka_frames_periodic_tx_tim
 #define TEST_MKA_PARAM_SAK_USE 3u
 #define TEST_MKA_PARAM_DISTRIBUTED_SAK 4u
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static int test_mka_find_param(const uint8_t *frame, size_t frame_len, uint8_t wanted_type,
                                const uint8_t **param, uint16_t *body_len)
 {
@@ -867,6 +876,8 @@ macsec_test_mka_frames_sak_use_tx_rx_flags(macsec_test_mka_frames_sak_use_tx_rx_
     return 0;
 }
 
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
+
 static int macsec_test_mka_frames_build_buffer_too_small(
     macsec_test_mka_frames_build_buffer_too_small_data_t *data, const uint8_t *cak, size_t cak_len,
     int verbose)
@@ -938,11 +949,15 @@ int macsec_test_mka_frames(macsec_test_mka_frames_data_t *data, int verbose)
     TEST_OK(macsec_test_mka_frames_generated_icv_bad(&data->test_mka_frames_generated_icv_bad_data,
                                                      s_cak_32, sizeof(s_cak_32), verbose));
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_frames_two_peer_exchange(&data->test_mka_frames_two_peer_exchange_data,
                                                      s_cak_16, sizeof(s_cak_16), verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_frames_two_peer_exchange(&data->test_mka_frames_two_peer_exchange_data,
                                                      s_cak_32, sizeof(s_cak_32), verbose));
+#endif
 
     TEST_OK(macsec_test_mka_frames_periodic_tx_timing(
         &data->test_mka_frames_periodic_tx_timing_data, s_cak_16, sizeof(s_cak_16), verbose));
@@ -950,25 +965,37 @@ int macsec_test_mka_frames(macsec_test_mka_frames_data_t *data, int verbose)
     TEST_OK(macsec_test_mka_frames_periodic_tx_timing(
         &data->test_mka_frames_periodic_tx_timing_data, s_cak_32, sizeof(s_cak_32), verbose));
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_frames_stm32_key_server_distributes_sak(
         &data->test_mka_frames_stm32_key_server_distributes_sak_data, s_cak_16, sizeof(s_cak_16),
         verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_frames_stm32_key_server_distributes_sak(
         &data->test_mka_frames_stm32_key_server_distributes_sak_data, s_cak_32, sizeof(s_cak_32),
         verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_frames_sak_use_key_server_mi(
         &data->test_mka_frames_sak_use_key_server_mi_data, s_cak_16, sizeof(s_cak_16), verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_frames_sak_use_key_server_mi(
         &data->test_mka_frames_sak_use_key_server_mi_data, s_cak_32, sizeof(s_cak_32), verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_frames_sak_use_tx_rx_flags(
         &data->test_mka_frames_sak_use_tx_rx_flags_data, s_cak_16, sizeof(s_cak_16), verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_frames_sak_use_tx_rx_flags(
         &data->test_mka_frames_sak_use_tx_rx_flags_data, s_cak_32, sizeof(s_cak_32), verbose));
+#endif
 
     TEST_OK(macsec_test_mka_frames_build_buffer_too_small(
         &data->test_mka_frames_build_buffer_too_small_data, s_cak_16, sizeof(s_cak_16), verbose));

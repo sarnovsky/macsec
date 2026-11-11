@@ -41,6 +41,7 @@
 #define MACSEC_TEST_MKA_TX_INTERVAL_MS 1000u
 #define MACSEC_TEST_MKA_RX_TIME_MS 1000u
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static const uint8_t s_macsec_test_mka_cak[16] = {0x00u, 0x11u, 0x22u, 0x33u, 0x44u, 0x55u,
                                                   0x66u, 0x77u, 0x88u, 0x99u, 0xAAu, 0xBBu,
                                                   0xCCu, 0xDDu, 0xEEu, 0xFFu};
@@ -54,6 +55,8 @@ static const uint8_t s_macsec_test_mka_local_mac[MACSEC_MKA_SRC_LEN] = {0x02u, 0
 
 static const uint8_t s_macsec_test_mka_peer_mac[MACSEC_MKA_SRC_LEN] = {0x02u, 0x00u, 0x00u,
                                                                        0x00u, 0x00u, 0x02u};
+
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
 
 static const uint8_t s_macsec_test_mka_sak[16] = {0x00u, 0x01u, 0x02u, 0x03u, 0x04u, 0x05u,
                                                   0x06u, 0x07u, 0x08u, 0x09u, 0x0Au, 0x0Bu,
@@ -127,14 +130,19 @@ static void macsec_test_mka_state_prepare_old_sak(macsec_mka_ctx_t *mka,
     mka->old_sak.peer_tx_confirmed = MACSEC_FALSE;
 }
 
-static void macsec_test_mka_state_prepare_remote_candidate(macsec_mka_ctx_t *mka)
+static void macsec_test_mka_state_prepare_available_sak(macsec_mka_ctx_t *mka)
 {
     macsec_assert(mka != NULL);
 
     macsec_test_mka_state_clear_context(mka);
 
+#if MACSEC_MKA_CLIENT_SUPPORT
     macsec_test_mka_state_prepare_sak(mka, MACSEC_MKA_SAK_ORIGIN_REMOTE_KEY_SERVER,
                                       MACSEC_MKA_SAK_STATE_CANDIDATE);
+#else
+    macsec_test_mka_state_prepare_sak(mka, MACSEC_MKA_SAK_ORIGIN_LOCAL_KEY_SERVER,
+                                      MACSEC_MKA_SAK_STATE_DISTRIBUTED);
+#endif
 }
 
 static int macsec_test_mka_state_prepare_install_pending(macsec_mka_ctx_t *mka,
@@ -143,7 +151,7 @@ static int macsec_test_mka_state_prepare_install_pending(macsec_mka_ctx_t *mka,
     macsec_assert(mka != NULL);
     macsec_assert(sak != NULL);
 
-    macsec_test_mka_state_prepare_remote_candidate(mka);
+    macsec_test_mka_state_prepare_available_sak(mka);
 
     memset(sak, 0, sizeof(*sak));
 
@@ -167,6 +175,7 @@ static macsec_bool_t macsec_test_mka_state_buffer_is_zero(const uint8_t *buffer,
     return MACSEC_TRUE;
 }
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static int macsec_test_mka_state_prepare_peer_confirmation(
     macsec_test_mka_state_peer_confirmation_data_t *data)
 {
@@ -242,7 +251,9 @@ static int macsec_test_mka_state_prepare_peer_confirmation(
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static void
 macsec_test_mka_state_clear_peer_confirmation(macsec_test_mka_state_peer_confirmation_data_t *data)
 {
@@ -251,7 +262,9 @@ macsec_test_mka_state_clear_peer_confirmation(macsec_test_mka_state_peer_confirm
     macsec_mka_clear(&data->local);
     macsec_mka_clear(&data->peer);
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static int
 macsec_test_mka_state_build_peer_frame(macsec_test_mka_state_peer_confirmation_data_t *data)
 {
@@ -263,6 +276,7 @@ macsec_test_mka_state_build_peer_frame(macsec_test_mka_state_peer_confirmation_d
     return macsec_mka_build_tx_frame(&data->peer, data->frame, &data->frame_len,
                                      sizeof(data->frame), &data->tx_meta);
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
 
 /******************************************************************************
  * Event tests
@@ -380,6 +394,7 @@ static int macsec_test_mka_state_sak_take_no_sak(macsec_test_mka_state_sak_take_
     return 0;
 }
 
+#if MACSEC_MKA_CLIENT_SUPPORT
 static int
 macsec_test_mka_state_sak_take_remote_candidate(macsec_test_mka_state_sak_take_data_t *data,
                                                 int verbose)
@@ -393,7 +408,7 @@ macsec_test_mka_state_sak_take_remote_candidate(macsec_test_mka_state_sak_take_d
         MACSEC_PRINT(("  MKA remote candidate SAK take test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
+    macsec_test_mka_state_prepare_available_sak(&data->mka);
 
     memset(&data->sak, 0, sizeof(data->sak));
 
@@ -419,6 +434,7 @@ macsec_test_mka_state_sak_take_remote_candidate(macsec_test_mka_state_sak_take_d
 
     return 0;
 }
+#endif /* MACSEC_MKA_CLIENT_SUPPORT */
 
 static int
 macsec_test_mka_state_sak_take_install_pending_retry(macsec_test_mka_state_sak_take_data_t *data,
@@ -431,7 +447,7 @@ macsec_test_mka_state_sak_take_install_pending_retry(macsec_test_mka_state_sak_t
         MACSEC_PRINT(("  MKA INSTALL_PENDING SAK retry test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
+    macsec_test_mka_state_prepare_available_sak(&data->mka);
 
     memset(&data->sak, 0, sizeof(data->sak));
 
@@ -506,7 +522,7 @@ static int macsec_test_mka_state_sak_take_install_pending_retry_after_tx(
         MACSEC_PRINT(("  MKA INSTALL_PENDING SAK retry after TX test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
+    macsec_test_mka_state_prepare_available_sak(&data->mka);
 
     memset(&data->sak, 0, sizeof(data->sak));
     memset(&data->second_sak, 0, sizeof(data->second_sak));
@@ -567,6 +583,7 @@ macsec_test_mka_state_sak_take_active_rejected(macsec_test_mka_state_sak_take_da
     return 0;
 }
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int
 macsec_test_mka_state_sak_take_local_candidate_rejected(macsec_test_mka_state_sak_take_data_t *data,
                                                         int verbose)
@@ -593,7 +610,9 @@ macsec_test_mka_state_sak_take_local_candidate_rejected(macsec_test_mka_state_sa
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int macsec_test_mka_state_sak_take_distribution_pending_rejected(
     macsec_test_mka_state_sak_take_data_t *data, int verbose)
 {
@@ -619,7 +638,9 @@ static int macsec_test_mka_state_sak_take_distribution_pending_rejected(
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int
 macsec_test_mka_state_sak_take_local_distributed(macsec_test_mka_state_sak_take_data_t *data,
                                                  int verbose)
@@ -650,6 +671,7 @@ macsec_test_mka_state_sak_take_local_distributed(macsec_test_mka_state_sak_take_
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
 static int
 macsec_test_mka_state_sak_take_invalid_length(macsec_test_mka_state_sak_take_data_t *data,
@@ -664,7 +686,7 @@ macsec_test_mka_state_sak_take_invalid_length(macsec_test_mka_state_sak_take_dat
         MACSEC_PRINT(("  MKA invalid SAK length test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
+    macsec_test_mka_state_prepare_available_sak(&data->mka);
 
     data->mka.latest_sak.sak_len = 24u;
 
@@ -672,7 +694,8 @@ macsec_test_mka_state_sak_take_invalid_length(macsec_test_mka_state_sak_take_dat
 
     TEST_TRUE(ret == MACSEC_ERR_STATE);
 
-    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_CANDIDATE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_CLIENT_SUPPORT
+                    ? MACSEC_MKA_SAK_STATE_CANDIDATE : MACSEC_MKA_SAK_STATE_DISTRIBUTED);
 
     return 0;
 }
@@ -689,7 +712,7 @@ static int macsec_test_mka_state_sak_take_invalid_an(macsec_test_mka_state_sak_t
         MACSEC_PRINT(("  MKA invalid SAK AN test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
+    macsec_test_mka_state_prepare_available_sak(&data->mka);
 
     data->mka.latest_sak.an = 4u;
 
@@ -697,7 +720,8 @@ static int macsec_test_mka_state_sak_take_invalid_an(macsec_test_mka_state_sak_t
 
     TEST_TRUE(ret == MACSEC_ERR_STATE);
 
-    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_CANDIDATE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_CLIENT_SUPPORT
+                    ? MACSEC_MKA_SAK_STATE_CANDIDATE : MACSEC_MKA_SAK_STATE_DISTRIBUTED);
 
     return 0;
 }
@@ -715,7 +739,7 @@ macsec_test_mka_state_sak_take_invalid_key_number(macsec_test_mka_state_sak_take
         MACSEC_PRINT(("  MKA invalid SAK key number test\n"));
     }
 
-    macsec_test_mka_state_prepare_remote_candidate(&data->mka);
+    macsec_test_mka_state_prepare_available_sak(&data->mka);
 
     data->mka.latest_sak.key_number = 0u;
 
@@ -723,7 +747,8 @@ macsec_test_mka_state_sak_take_invalid_key_number(macsec_test_mka_state_sak_take
 
     TEST_TRUE(ret == MACSEC_ERR_STATE);
 
-    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_SAK_STATE_CANDIDATE);
+    TEST_EQ_U32(data->mka.latest_sak.lifecycle_state, MACSEC_MKA_CLIENT_SUPPORT
+                    ? MACSEC_MKA_SAK_STATE_CANDIDATE : MACSEC_MKA_SAK_STATE_DISTRIBUTED);
 
     return 0;
 }
@@ -1244,6 +1269,7 @@ macsec_test_mka_state_sak_install_without_live_peer(macsec_test_mka_state_sak_in
  * Peer SAK confirmation tests
  *****************************************************************************/
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static int macsec_test_mka_state_peer_restart_resets_confirmation(
     macsec_test_mka_state_peer_confirmation_data_t *data, int verbose)
 {
@@ -1304,7 +1330,9 @@ static int macsec_test_mka_state_peer_restart_resets_confirmation(
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static int macsec_test_mka_state_matching_sak_use_confirms_current_sak(
     macsec_test_mka_state_peer_confirmation_data_t *data, int verbose)
 {
@@ -1363,7 +1391,9 @@ static int macsec_test_mka_state_matching_sak_use_confirms_current_sak(
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static int macsec_test_mka_state_mismatching_sak_use_not_confirmed(
     macsec_test_mka_state_peer_confirmation_data_t *data, int verbose)
 {
@@ -1426,6 +1456,7 @@ static int macsec_test_mka_state_mismatching_sak_use_not_confirmed(
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
 
 /******************************************************************************
  * SAK retirement tests
@@ -1653,8 +1684,10 @@ int macsec_test_mka_state(macsec_test_mka_state_data_t *data, int verbose)
 
     TEST_OK(macsec_test_mka_state_sak_take_no_sak(&data->test_mka_state_sak_take_data, verbose));
 
+#if MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_state_sak_take_remote_candidate(&data->test_mka_state_sak_take_data,
                                                             verbose));
+#endif
 
     TEST_OK(macsec_test_mka_state_sak_take_install_pending_retry(
         &data->test_mka_state_sak_take_data, verbose));
@@ -1665,14 +1698,20 @@ int macsec_test_mka_state(macsec_test_mka_state_data_t *data, int verbose)
     TEST_OK(macsec_test_mka_state_sak_take_active_rejected(&data->test_mka_state_sak_take_data,
                                                            verbose));
 
+#if MACSEC_MKA_SERVER_SUPPORT
     TEST_OK(macsec_test_mka_state_sak_take_local_candidate_rejected(
         &data->test_mka_state_sak_take_data, verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT
     TEST_OK(macsec_test_mka_state_sak_take_distribution_pending_rejected(
         &data->test_mka_state_sak_take_data, verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT
     TEST_OK(macsec_test_mka_state_sak_take_local_distributed(&data->test_mka_state_sak_take_data,
                                                              verbose));
+#endif
 
     TEST_OK(macsec_test_mka_state_sak_take_invalid_length(&data->test_mka_state_sak_take_data,
                                                           verbose));
@@ -1728,14 +1767,20 @@ int macsec_test_mka_state(macsec_test_mka_state_data_t *data, int verbose)
     TEST_OK(macsec_test_mka_state_sak_install_without_live_peer(
         &data->test_mka_state_sak_install_data, verbose));
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_state_peer_restart_resets_confirmation(
         &data->test_mka_state_peer_confirmation_data, verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_state_matching_sak_use_confirms_current_sak(
         &data->test_mka_state_peer_confirmation_data, verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_mka_state_mismatching_sak_use_not_confirmed(
         &data->test_mka_state_peer_confirmation_data, verbose));
+#endif
 
     TEST_OK(
         macsec_test_mka_state_sak_retire_no_sak(&data->test_mka_state_sak_retire_data, verbose));

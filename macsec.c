@@ -336,6 +336,31 @@ cleanup:
     return ret;
 }
 
+/* Check the installed SA rather than reinstalling it on peer recovery.
+ * Reinstallation would reset TX PN and RX replay state for the same key. */
+static macsec_bool_t macsec_mka_latest_installed(const macsec_ctx_t *ctx)
+{
+    const macsec_mka_sak_t *sak = &ctx->mka.latest_sak;
+    const macsec_frame_sak_t *tx = &ctx->frame_crypto.tx_sak;
+    const macsec_frame_sak_t *rx;
+
+    if (!ctx->mka.peer.valid || !ctx->mka.peer.live ||
+        !sak->rx_installed || !sak->tx_installed ||
+        (sak->an >= MACSEC_FRAME_MAX_SA) ||
+        !macsec_frame_crypto_ready_tx(&ctx->frame_crypto) ||
+        !macsec_frame_crypto_ready_rx(&ctx->frame_crypto, sak->an))
+    {
+        return MACSEC_FALSE;
+    }
+
+    rx = &ctx->frame_crypto.rx_sak[sak->an];
+    return ((tx->an == sak->an) && (tx->key_len == sak->sak_len) &&
+            (rx->key_len == sak->sak_len) &&
+            (macsec_compare(tx->key, sak->sak, sak->sak_len) == 0) &&
+            (macsec_compare(rx->key, sak->sak, sak->sak_len) == 0))
+               ? MACSEC_TRUE : MACSEC_FALSE;
+}
+
 static int macsec_process_mka_events(macsec_ctx_t *ctx)
 {
     macsec_mka_event_flags_t events;
@@ -372,11 +397,22 @@ static int macsec_process_mka_events(macsec_ctx_t *ctx)
         MACSEC_MEDIUM(("MACsec state: WAIT_MKA after peer loss\n"));
     }
 
-    if ((events & MACSEC_MKA_EVENT_SAK_ACTIVE) != 0u)
+    if (((events & MACSEC_MKA_EVENT_SAK_ACTIVE) != 0u) &&
+        (ctx->state != MACSEC_STATE_ERROR) && macsec_mka_latest_installed(ctx))
     {
         ctx->state = MACSEC_STATE_SECURED;
 
         MACSEC_MEDIUM(("MACsec state: SECURED after active MKA SAK\n"));
+    }
+
+    if (((events & MACSEC_MKA_EVENT_SAK_CONFIRMED) != 0u) &&
+        (ctx->state == MACSEC_STATE_WAIT_MKA) &&
+        (ctx->mka.latest_sak.lifecycle_state == MACSEC_MKA_SAK_STATE_CONFIRMED) &&
+        ctx->mka.latest_sak.peer_rx_confirmed && ctx->mka.latest_sak.peer_tx_confirmed &&
+        macsec_mka_latest_installed(ctx))
+    {
+        ctx->state = MACSEC_STATE_SECURED;
+        MACSEC_MEDIUM(("MACsec state: SECURED after fresh peer SAK confirmation; PN retained\n"));
     }
 
     if ((events & MACSEC_MKA_EVENT_SAK_RETIRE_REQUIRED) != 0u)
@@ -391,8 +427,8 @@ static int macsec_process_mka_events(macsec_ctx_t *ctx)
     if ((events & MACSEC_MKA_EVENT_SAK_RETIRED) != 0u)
     {
         /*
-         * Only old_sak was removed. latest_sak remains installed and active,
-         * so the external MACsec state remains SECURED.
+         * Only old_sak was removed. latest_sak remains installed. Retirement
+         * itself does not open a controlled port closed by peer loss.
          */
         MACSEC_MEDIUM(("MACsec old MKA SAK retired; active latest SAK retained\n"));
     }
@@ -637,6 +673,20 @@ int macsec_input(macsec_ctx_t *ctx, const uint8_t *rx_frame, size_t rx_len, uint
         {
             /* A rejected network packet is not a fatal internal error.
              * mka_input validates/authenticates before changing peer state. */
+#if !MACSEC_MKA_SERVER_SUPPORT || !MACSEC_MKA_CLIENT_SUPPORT
+            /* A role conflict is authenticated and explicitly revokes the
+             * peer. Close now, not at the next timer tick; never install a
+             * SAK while handling this rejected control frame. */
+            if (ret == MACSEC_ERR_UNSUPPORTED &&
+                (ctx->mka.pending_events & MACSEC_MKA_EVENT_PEER_LOST) != 0u)
+            {
+                int event_ret = macsec_process_mka_events(ctx);
+                if (event_ret != MACSEC_ERR_OK)
+                {
+                    return event_ret;
+                }
+            }
+#endif
             MACSEC_ERROR(("MACsec MKA input rejected ret=%d\n", ret));
             return ret;
         }
@@ -763,6 +813,7 @@ int macsec_output(macsec_ctx_t *ctx, const uint8_t *plain_frame, size_t plain_le
     return MACSEC_ERR_OK;
 }
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int macsec_check_mka_pn_lifetime(macsec_ctx_t *ctx)
 {
     const macsec_mka_sak_t *latest = &ctx->mka.latest_sak;
@@ -799,6 +850,7 @@ static int macsec_check_mka_pn_lifetime(macsec_ctx_t *ctx)
     ret = macsec_mka_request_rekey(&ctx->mka);
     return (ret == MACSEC_ERR_BUSY || ret == MACSEC_ERR_NOT_READY) ? MACSEC_ERR_OK : ret;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
 int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms)
 {
@@ -821,7 +873,11 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms)
             return ret;
         }
 
+#if MACSEC_MKA_SERVER_SUPPORT
         ret = macsec_check_mka_pn_lifetime(ctx);
+#else
+        ret = MACSEC_ERR_OK;
+#endif
         if (ret == MACSEC_ERR_OK)
         {
             ret = macsec_service_mka(ctx);

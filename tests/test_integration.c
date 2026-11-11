@@ -102,6 +102,7 @@ static void macsec_test_fill_mka_config(macsec_config_t *cfg, const uint8_t loca
     cfg->mka_tx_interval_ms = 2000u;
 }
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static int macsec_test_integration_transfer_mka(macsec_ctx_t *tx, macsec_ctx_t *rx, uint8_t *frame,
                                                 size_t frame_max_len, uint8_t *plain,
                                                 size_t plain_max_len, uint32_t now_ms)
@@ -141,6 +142,7 @@ static int macsec_test_integration_transfer_mka(macsec_ctx_t *tx, macsec_ctx_t *
 
     return MACSEC_ERR_OK;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
 
 static int macsec_test_integration_static_sak_ping_like(
     macsec_test_integration_static_sak_ping_like_data_t *data, int verbose)
@@ -402,6 +404,7 @@ static int macsec_test_integration_output_not_ready_mka_cak_32(
     return 0;
 }
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
 static int
 macsec_test_integration_mka_secure_path(macsec_test_integration_mka_secure_path_data_t *data,
                                         size_t cak_len, int verbose)
@@ -588,6 +591,7 @@ macsec_test_integration_mka_secure_path(macsec_test_integration_mka_secure_path_
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT */
 
 int macsec_test_integration(macsec_test_integration_data_t *data, int verbose)
 {
@@ -611,11 +615,15 @@ int macsec_test_integration(macsec_test_integration_data_t *data, int verbose)
     TEST_OK(macsec_test_integration_output_not_ready_mka_cak_32(
         &data->test_integration_output_not_ready_mka_data, verbose));
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_integration_mka_secure_path(&data->test_integration_mka_secure_path_data,
                                                     16u, verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT && MACSEC_MKA_CLIENT_SUPPORT
     TEST_OK(macsec_test_integration_mka_secure_path(&data->test_integration_mka_secure_path_data,
                                                     32u, verbose));
+#endif
 
     return 0;
 }

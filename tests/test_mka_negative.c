@@ -362,10 +362,10 @@ static int macsec_test_mka_negative_bad_icv_does_not_refresh_peer(
                       (unsigned int) cak_len));
     }
 
-    ret = macsec_test_mka_negative_init(&data->tx, cak, cak_len, test_mac_a, 255u);
+    ret = macsec_test_mka_negative_init(&data->tx, cak, cak_len, test_mac_a, MACSEC_MKA_SERVER_SUPPORT ? 255u : 100u);
     TEST_OK(ret);
 
-    ret = macsec_test_mka_negative_init(&data->rx, cak, cak_len, test_mac_b, 100u);
+    ret = macsec_test_mka_negative_init(&data->rx, cak, cak_len, test_mac_b, MACSEC_MKA_SERVER_SUPPORT ? 100u : 255u);
     if (ret != MACSEC_ERR_OK)
     {
         macsec_mka_clear(&data->tx);

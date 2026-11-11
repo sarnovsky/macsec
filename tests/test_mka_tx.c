@@ -61,6 +61,7 @@ static const uint8_t s_macsec_test_mka_tx_ckn[24] = {
 
 static const uint8_t s_macsec_test_mka_tx_mac[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x01u};
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static const uint8_t s_macsec_test_mka_tx_peer_mac[6] = {0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x02u};
 
 static const uint8_t s_macsec_test_mka_tx_old_sak[16] = {0x00u, 0x01u, 0x02u, 0x03u, 0x04u, 0x05u,
@@ -70,6 +71,8 @@ static const uint8_t s_macsec_test_mka_tx_old_sak[16] = {0x00u, 0x01u, 0x02u, 0x
 static const uint8_t s_macsec_test_mka_tx_sak[16] = {0x10u, 0x11u, 0x12u, 0x13u, 0x14u, 0x15u,
                                                      0x16u, 0x17u, 0x18u, 0x19u, 0x1Au, 0x1Bu,
                                                      0x1Cu, 0x1Du, 0x1Eu, 0x1Fu};
+
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
 /******************************************************************************
  * Test helpers
@@ -112,6 +115,7 @@ static int macsec_test_mka_tx_build(macsec_test_mka_tx_case_data_t *data, uint8_
     return macsec_mka_parse_basic(frame, *frame_len, basic);
 }
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static macsec_bool_t macsec_test_mka_tx_frame_has_parameter(const uint8_t *frame, size_t frame_len,
                                                             uint8_t expected_type)
 {
@@ -167,7 +171,9 @@ static macsec_bool_t macsec_test_mka_tx_frame_has_parameter(const uint8_t *frame
 
     return MACSEC_FALSE;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int macsec_test_mka_tx_prepare_redistribution(macsec_test_mka_tx_case_data_t *data)
 {
     macsec_assert(data != NULL);
@@ -235,6 +241,7 @@ static int macsec_test_mka_tx_prepare_redistribution(macsec_test_mka_tx_case_dat
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
 /******************************************************************************
  * Existing explicit TX lifecycle tests
@@ -428,6 +435,7 @@ static int macsec_test_mka_tx_periodic_after_success(macsec_test_mka_tx_case_dat
  * Distributed SAK retransmission tests
  *****************************************************************************/
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int macsec_test_mka_tx_peer_restart_redistributes_sak(macsec_test_mka_tx_case_data_t *data,
                                                              int verbose)
 {
@@ -471,7 +479,9 @@ static int macsec_test_mka_tx_peer_restart_redistributes_sak(macsec_test_mka_tx_
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int
 macsec_test_mka_tx_redistribution_repeats_until_confirmation(macsec_test_mka_tx_case_data_t *data,
                                                              int verbose)
@@ -524,7 +534,9 @@ macsec_test_mka_tx_redistribution_repeats_until_confirmation(macsec_test_mka_tx_
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int
 macsec_test_mka_tx_redistribution_stops_after_confirmation(macsec_test_mka_tx_case_data_t *data,
                                                            int verbose)
@@ -579,7 +591,9 @@ macsec_test_mka_tx_redistribution_stops_after_confirmation(macsec_test_mka_tx_ca
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
+#if MACSEC_MKA_SERVER_SUPPORT
 static int macsec_test_mka_tx_retiring_sak_is_not_advertised(macsec_test_mka_tx_case_data_t *data,
                                                              int verbose)
 {
@@ -639,6 +653,7 @@ static int macsec_test_mka_tx_retiring_sak_is_not_advertised(macsec_test_mka_tx_
 
     return 0;
 }
+#endif /* MACSEC_MKA_SERVER_SUPPORT */
 
 /******************************************************************************
  * Public test entry point
@@ -664,16 +679,24 @@ int macsec_test_mka_tx(macsec_test_mka_tx_data_t *data, int verbose)
 
     TEST_OK(macsec_test_mka_tx_periodic_after_success(&data->periodic_after_success_data, verbose));
 
+#if MACSEC_MKA_SERVER_SUPPORT
     TEST_OK(macsec_test_mka_tx_peer_restart_redistributes_sak(
         &data->peer_restart_redistribution_data, verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT
     TEST_OK(macsec_test_mka_tx_redistribution_repeats_until_confirmation(
         &data->redistribution_repeat_data, verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT
     TEST_OK(macsec_test_mka_tx_redistribution_stops_after_confirmation(
         &data->redistribution_stop_data, verbose));
+#endif
 
+#if MACSEC_MKA_SERVER_SUPPORT
     TEST_OK(macsec_test_mka_tx_retiring_sak_is_not_advertised(&data->retiring_sak_data, verbose));
+#endif
 
     if (verbose)
     {
