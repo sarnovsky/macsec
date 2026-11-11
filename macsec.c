@@ -110,7 +110,9 @@ static int macsec_install_tx_sak(macsec_ctx_t *ctx, const uint8_t *sak_key, size
 
     sak.key_len = (uint8_t) sak_len;
     sak.an = real_an;
-    sak.next_pn = 1u;
+    sak.next_pn = ((ctx->cfg.mode == MACSEC_MODE_STATIC_SAK) && (ctx->cfg.static_tx_next_pn != 0u))
+                      ? ctx->cfg.static_tx_next_pn
+                      : 1u;
     sak.lowest_acceptable_pn = 1u;
     sak.valid = MACSEC_TRUE;
 
@@ -221,7 +223,8 @@ static int macsec_install_static_sak(macsec_ctx_t *ctx)
 
     MACSEC_MEDIUM(("MACsec install static SAK an=%u\n", an));
 
-    ret = macsec_install_rx_sak(ctx, ctx->cfg.static_sak, ctx->cfg.static_sak_len, an, 1u);
+    ret = macsec_install_rx_sak(ctx, ctx->cfg.static_sak, ctx->cfg.static_sak_len, an,
+                                ctx->cfg.static_rx_lowest_pn);
     if (ret != MACSEC_ERR_OK)
     {
         return ret;
@@ -572,6 +575,11 @@ macsec_state_t macsec_get_state(const macsec_ctx_t *ctx)
     return ctx->state;
 }
 
+uint32_t macsec_get_tx_next_pn(const macsec_ctx_t *ctx)
+{
+    return (ctx != NULL && ctx->frame_crypto.tx_sak.valid) ? ctx->frame_crypto.tx_sak.next_pn : 0u;
+}
+
 macsec_bool_t macsec_is_secured(const macsec_ctx_t *ctx)
 {
     macsec_assert(ctx != NULL);
@@ -615,14 +623,21 @@ int macsec_input(macsec_ctx_t *ctx, const uint8_t *rx_frame, size_t rx_len, uint
     {
         MACSEC_INFO(("MACsec RX EAPOL/MKA len=%lu\n", (unsigned long) rx_len));
 
-        ret = macsec_mka_input(&ctx->mka, rx_frame, rx_len, ctx->last_tick_ms);
-
         *pass_to_stack = MACSEC_FALSE;
+        if (ctx->cfg.mode != MACSEC_MODE_MKA_PSK)
+        {
+            /* Static SAK has no MKA participant. Consume control traffic
+             * without allowing it to change an established static SA. */
+            return MACSEC_ERR_UNSUPPORTED;
+        }
+
+        ret = macsec_mka_input(&ctx->mka, rx_frame, rx_len, ctx->last_tick_ms);
 
         if (ret != MACSEC_ERR_OK)
         {
-            ctx->state = MACSEC_STATE_ERROR;
-            MACSEC_ERROR(("MACsec MKA input failed ret=%d\n", ret));
+            /* A rejected network packet is not a fatal internal error.
+             * mka_input validates/authenticates before changing peer state. */
+            MACSEC_ERROR(("MACsec MKA input rejected ret=%d\n", ret));
             return ret;
         }
 
@@ -735,9 +750,54 @@ int macsec_output(macsec_ctx_t *ctx, const uint8_t *plain_frame, size_t plain_le
         return ret;
     }
 
+    if (ctx->frame_crypto.tx_sak.next_pn == 0u)
+    {
+        /* The last legal PN was sent. Keep MKA control processing alive,
+         * but never claim the exhausted data path is still secured. */
+        ctx->state =
+            (ctx->cfg.mode == MACSEC_MODE_MKA_PSK) ? MACSEC_STATE_WAIT_MKA : MACSEC_STATE_ERROR;
+    }
+
     MACSEC_INFO(("MACsec encrypt OK tx_len=%lu\n", (unsigned long) *tx_len));
 
     return MACSEC_ERR_OK;
+}
+
+static int macsec_check_mka_pn_lifetime(macsec_ctx_t *ctx)
+{
+    const macsec_mka_sak_t *latest = &ctx->mka.latest_sak;
+    macsec_bool_t near_limit = MACSEC_FALSE;
+    unsigned an;
+    int ret;
+
+    if (!ctx->mka.local_key_server || (latest->lifecycle_state != MACSEC_MKA_SAK_STATE_ACTIVE &&
+                                       latest->lifecycle_state != MACSEC_MKA_SAK_STATE_CONFIRMED))
+    {
+        return MACSEC_ERR_OK;
+    }
+    /* Consider both transmitters. The Key Server observes the remote PN
+     * through authenticated receive/replay bookkeeping. */
+    if (macsec_sak_equal(&ctx->frame_crypto.tx_sak, latest->sak, latest->sak_len) &&
+        (ctx->frame_crypto.tx_sak.next_pn == 0u ||
+         ctx->frame_crypto.tx_sak.next_pn >= MACSEC_REKEY_PN_THRESHOLD))
+    {
+        near_limit = MACSEC_TRUE;
+    }
+    for (an = 0u; an < MACSEC_FRAME_MAX_SA; ++an)
+    {
+        const macsec_frame_sak_t *rx = &ctx->frame_crypto.rx_sak[an];
+        if (macsec_sak_equal(rx, latest->sak, latest->sak_len) &&
+            (rx->replay_exhausted || rx->highest_received_pn >= MACSEC_REKEY_PN_THRESHOLD))
+        {
+            near_limit = MACSEC_TRUE;
+        }
+    }
+    if (!near_limit)
+    {
+        return MACSEC_ERR_OK;
+    }
+    ret = macsec_mka_request_rekey(&ctx->mka);
+    return (ret == MACSEC_ERR_BUSY || ret == MACSEC_ERR_NOT_READY) ? MACSEC_ERR_OK : ret;
 }
 
 int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms)
@@ -761,7 +821,11 @@ int macsec_tick(macsec_ctx_t *ctx, uint32_t now_ms)
             return ret;
         }
 
-        ret = macsec_service_mka(ctx);
+        ret = macsec_check_mka_pn_lifetime(ctx);
+        if (ret == MACSEC_ERR_OK)
+        {
+            ret = macsec_service_mka(ctx);
+        }
         if (ret != MACSEC_ERR_OK)
         {
             ctx->state = MACSEC_STATE_ERROR;
