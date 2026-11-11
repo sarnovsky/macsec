@@ -548,10 +548,10 @@ static int macsec_test_macsec_flow_bad_eapol_icv(macsec_test_macsec_flow_bad_eap
     TEST_EQ_U32(plain_len, 0u);
 
     /*
-     * The current top-level MACsec implementation enters ERROR after an
-     * MKA control frame fails ICV verification.
+     * An unauthenticated packet must not terminate a valid participant.
+     * Initialization was waiting for MKA and that state must be preserved.
      */
-    TEST_TRUE(macsec_get_state(&data->rx) == MACSEC_STATE_ERROR);
+    TEST_TRUE(macsec_get_state(&data->rx) == MACSEC_STATE_WAIT_MKA);
 
     macsec_clear(&data->tx);
     macsec_clear(&data->rx);
