@@ -68,6 +68,8 @@ typedef struct
     size_t ckn_len;
 
     uint8_t mka_priority;
+    macsec_bool_t replay_protect;
+    macsec_bool_t replay_set;
 
     uint8_t static_sak[32];
     size_t static_sak_len;
@@ -261,7 +263,7 @@ static int linux_tap_parse_hex(const char *text, uint8_t *output, size_t output_
 static int linux_tap_parse_priority(const char *text, uint8_t *priority)
 {
     char *end;
-    uint32_t value;
+    unsigned long value;
 
     if ((text == NULL) || (priority == NULL))
     {
@@ -271,9 +273,9 @@ static int linux_tap_parse_priority(const char *text, uint8_t *priority)
     errno = 0;
     end = NULL;
 
-    value = (uint32_t) strtoul(text, &end, 10);
+    value = strtoul(text, &end, 10);
 
-    if ((errno != 0) || (end == text) || (*end != '\0') || (value > 255u))
+    if ((*text == '-') || (errno != 0) || (end == text) || (*end != '\0') || (value > 255ul))
     {
         return -1;
     }
@@ -297,6 +299,7 @@ static int linux_tap_load_config(const char *path, linux_tap_config_t *config)
 
     memset(config, 0, sizeof(*config));
     config->mode = LINUX_TAP_MODE_MKA_PSK;
+    config->replay_protect = MACSEC_TRUE;
 
     file = fopen(path, "r");
     if (file == NULL)
@@ -410,6 +413,18 @@ static int linux_tap_load_config(const char *path, linux_tap_config_t *config)
 
             config->priority_set = MACSEC_TRUE;
         }
+        else if (strncmp(text, "replay_protect=", 15u) == 0)
+        {
+            const char *value = linux_tap_trim(text + 15u);
+            if (config->replay_set || (strcmp(value, "0") != 0 && strcmp(value, "1") != 0))
+            {
+                fprintf(stderr, "%s:%u: replay_protect must be 0 or 1, once\n", path, line_number);
+                fclose(file);
+                return -1;
+            }
+            config->replay_protect = (*value == '1') ? MACSEC_TRUE : MACSEC_FALSE;
+            config->replay_set = MACSEC_TRUE;
+        }
         else
         {
             /*
@@ -467,6 +482,7 @@ static int linux_tap_parse_static_sak(const char *argument, linux_tap_config_t *
 
     memset(config, 0, sizeof(*config));
     config->mode = LINUX_TAP_MODE_STATIC_SAK;
+    config->replay_protect = MACSEC_TRUE;
 
     if (linux_tap_parse_hex(value, config->static_sak, sizeof(config->static_sak),
                             &config->static_sak_len) < 0)
@@ -498,7 +514,7 @@ static int linux_tap_init_macsec(macsec_ctx_t *ctx, const uint8_t local_mac[6],
     memcpy(cfg.local_mac.addr, local_mac, 6u);
     cfg.port_id = 1u;
 
-    cfg.replay_protect = MACSEC_FALSE;
+    cfg.replay_protect = config->replay_protect;
     cfg.replay_window = 0u;
 
     if (config->mode == LINUX_TAP_MODE_STATIC_SAK)
@@ -946,7 +962,7 @@ int main(int argc, char *argv[])
         printf("  CKN     : %zu bytes\n", config.ckn_len);
         printf("  priority: %u\n", (unsigned) config.mka_priority);
     }
-    printf("  replay  : disabled\n");
+    printf("  replay  : %s\n", config.replay_protect ? "enabled (strict PN)" : "disabled");
 
     printf("\nConfigure the TAP address in another shell, for example:\n");
     printf("  sudo ip addr add 10.0.0.1/24 dev %s\n", tap_name);
