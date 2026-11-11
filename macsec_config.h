@@ -107,6 +107,17 @@
 #define MACSEC_DEBUG_LEVEL 1
 #endif
 
+/* Key material stays hidden even in verbose diagnostics unless explicitly
+ * enabled for a controlled test build. Never enable this with real keys. */
+#ifndef MACSEC_DEBUG_SECRETS
+#define MACSEC_DEBUG_SECRETS 0
+#endif
+
+/* Start MKA key-server rollover with one million packet numbers remaining. */
+#ifndef MACSEC_REKEY_PN_THRESHOLD
+#define MACSEC_REKEY_PN_THRESHOLD 0xFFF00000u
+#endif
+
 #define MACSEC_DEBUG_LEVEL_NONE 0u
 #define MACSEC_DEBUG_LEVEL_ERROR 1u
 #define MACSEC_DEBUG_LEVEL_MEDIUM 2u
