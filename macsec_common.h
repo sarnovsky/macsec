@@ -314,4 +314,11 @@ int macsec_hex_to_bin(const char *hex, uint8_t *out, size_t *out_len, size_t out
 }
 #endif
 
+/* Explicitly sensitive diagnostics; ordinary log levels never expose keys. */
+#if MACSEC_DEBUG_SECRETS
+#define MACSEC_SECRET_HEX(MSG) MACSEC_INFO_HEX(MSG)
+#else
+#define MACSEC_SECRET_HEX(MSG) ((void) 0)
+#endif
+
 #endif /* MACSEC_COMMON_H */
