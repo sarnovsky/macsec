@@ -59,7 +59,7 @@ static int macsec_mka_cmac(macsec_mka_crypto_ctx_t *ctx, const uint8_t *key, siz
         return MACSEC_ERR_CRYPTO;
     }
 
-    MACSEC_INFO_HEX(("MKA CMAC output", out, 16));
+    MACSEC_SECRET_HEX(("MKA CMAC output", out, 16));
 
     return MACSEC_ERR_OK;
 }
@@ -144,7 +144,7 @@ static int macsec_mka_kdf(macsec_mka_crypto_ctx_t *ctx, const uint8_t *key, size
         counter++;
     }
 
-    MACSEC_MEDIUM_HEX(("MKA KDF output", out, (int) out_len));
+    MACSEC_SECRET_HEX(("MKA KDF output", out, (int) out_len));
 
     macsec_zeroize(buf, sizeof(buf));
     macsec_zeroize(cmac_out, sizeof(cmac_out));
@@ -183,7 +183,7 @@ static int macsec_mka_derive_one(macsec_mka_crypto_ctx_t *ctx, const char *label
 
     if (ret == MACSEC_ERR_OK)
     {
-        MACSEC_MEDIUM_HEX(("MKA derived key", out, (int) out_len));
+        MACSEC_SECRET_HEX(("MKA derived key", out, (int) out_len));
     }
 
     macsec_zeroize(keyid, sizeof(keyid));
@@ -222,7 +222,7 @@ static int macsec_mka_aes_kw_wrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t *k
     MACSEC_MEDIUM(("MKA AES-KW wrap: plain_len=%lu wrapped_max_len=%lu\n",
                    (unsigned long) plain_len, (unsigned long) wrapped_max_len));
 
-    MACSEC_INFO_HEX(("MKA AES-KW wrap plain", plain, (int) plain_len));
+    MACSEC_SECRET_HEX(("MKA AES-KW wrap plain", plain, (int) plain_len));
 
     if (!ctx->aes_initialized)
     {
@@ -409,7 +409,7 @@ static int macsec_mka_aes_kw_unwrap(macsec_mka_crypto_ctx_t *ctx, const uint8_t 
 
     MACSEC_MEDIUM(("MKA AES-KW unwrap done: plain_len=%lu\n", (unsigned long) *plain_len));
 
-    MACSEC_INFO_HEX(("MKA AES-KW unwrapped plain", plain, (int) *plain_len));
+    MACSEC_SECRET_HEX(("MKA AES-KW unwrapped plain", plain, (int) *plain_len));
 
     macsec_zeroize(block, sizeof(block));
     macsec_zeroize(b, sizeof(b));
@@ -480,7 +480,7 @@ int macsec_mka_crypto_set_psk(macsec_mka_crypto_ctx_t *ctx, const uint8_t *cak, 
     MACSEC_MEDIUM(("MKA PSK set: cak_len=%lu ckn_len=%lu\n", (unsigned long) cak_len,
                    (unsigned long) ckn_len));
 
-    MACSEC_INFO_HEX(("MKA CAK", ctx->psk.cak, ctx->psk.cak_len));
+    MACSEC_SECRET_HEX(("MKA CAK", ctx->psk.cak, ctx->psk.cak_len));
     MACSEC_INFO_HEX(("MKA CKN", ctx->psk.ckn, ctx->psk.ckn_len));
 
     return MACSEC_ERR_OK;
@@ -518,9 +518,9 @@ int macsec_mka_crypto_derive_ick_kek(macsec_mka_crypto_ctx_t *ctx)
     ctx->keys.kek_len = (uint8_t) derived_len;
     ctx->keys.valid = MACSEC_TRUE;
 
-    MACSEC_MEDIUM_HEX(("MKA ICK", ctx->keys.ick, ctx->keys.ick_len));
+    MACSEC_SECRET_HEX(("MKA ICK", ctx->keys.ick, ctx->keys.ick_len));
 
-    MACSEC_MEDIUM_HEX(("MKA KEK", ctx->keys.kek, ctx->keys.kek_len));
+    MACSEC_SECRET_HEX(("MKA KEK", ctx->keys.kek, ctx->keys.kek_len));
 
     return MACSEC_ERR_OK;
 }
@@ -590,7 +590,7 @@ int macsec_mka_crypto_wrap_sak(macsec_mka_crypto_ctx_t *ctx, const uint8_t *sak,
     macsec_check((sak_len == 16u) || (sak_len == 32u), MACSEC_ERR_PARAM);
 
     MACSEC_MEDIUM(("MKA wrap SAK: sak_len=%lu\n", (unsigned long) sak_len));
-    MACSEC_INFO_HEX(("MKA SAK plain", sak, (int) sak_len));
+    MACSEC_SECRET_HEX(("MKA SAK plain", sak, (int) sak_len));
 
     return macsec_mka_aes_kw_wrap(ctx, ctx->keys.kek, ctx->keys.kek_len, sak, sak_len, wrapped_sak,
                                   wrapped_sak_len, wrapped_sak_max_len);
@@ -638,7 +638,7 @@ int macsec_mka_crypto_unwrap_sak(macsec_mka_crypto_ctx_t *ctx, const uint8_t *wr
 
     MACSEC_MEDIUM(("MKA unwrap SAK OK: sak_len=%lu\n", (unsigned long) *sak_len));
 
-    MACSEC_INFO_HEX(("MKA unwrapped SAK", sak, (int) *sak_len));
+    MACSEC_SECRET_HEX(("MKA unwrapped SAK", sak, (int) *sak_len));
 
     return MACSEC_ERR_OK;
 }
